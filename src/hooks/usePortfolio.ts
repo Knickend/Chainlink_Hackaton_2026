@@ -1,14 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
-import { useState } from 'react';
+import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
 
-export function usePortfolio(livePrices?: LivePrices) {
+export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const {
-    assets,
-    income,
-    expenses,
+    assets: userAssets,
+    income: userIncome,
+    expenses: userExpenses,
     loading,
     addAsset,
     updateAsset,
@@ -22,6 +22,11 @@ export function usePortfolio(livePrices?: LivePrices) {
   } = usePortfolioData();
 
   const [displayUnit, setDisplayUnit] = useState<DisplayUnit>('USD');
+
+  // Use mock data for demo mode, real data otherwise
+  const assets = isDemo ? mockAssets : userAssets;
+  const income = isDemo ? mockIncome : userIncome;
+  const expenses = isDemo ? mockExpenses : userExpenses;
 
   const conversionRates = useMemo(() => {
     if (livePrices) {
@@ -104,7 +109,7 @@ export function usePortfolio(livePrices?: LivePrices) {
     categoryTotals,
     convertValue,
     formatValue,
-    loading,
+    loading: isDemo ? false : loading,
     addAsset,
     updateAsset,
     deleteAsset,

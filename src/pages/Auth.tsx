@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -19,7 +19,8 @@ const authSchema = z.object({
 type AuthFormData = z.infer<typeof authSchema>;
 
 const Auth = () => {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [isSignUp, setIsSignUp] = useState(searchParams.get('signup') === 'true');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, signUp, signIn } = useAuth();
   const navigate = useNavigate();

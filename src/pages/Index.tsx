@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, Coins, LogOut, Loader2 } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, Coins, LogOut, Loader2, LogIn } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useLivePrices } from '@/hooks/useLivePrices';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,13 +13,18 @@ import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
+import { DemoBanner } from '@/components/DemoBanner';
 import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 import { AssetCategory } from '@/lib/types';
 
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices } = useLivePrices();
+  
+  // Demo mode when user is not logged in
+  const isDemo = !user;
   
   const {
     income,
@@ -42,15 +45,9 @@ const Index = () => {
     addExpense,
     updateExpense,
     deleteExpense,
-  } = usePortfolio(prices);
+  } = usePortfolio(prices, isDemo);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
-  }, [user, authLoading, navigate]);
-
-  if (authLoading || dataLoading) {
+  if (authLoading || (!isDemo && dataLoading)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -59,10 +56,6 @@ const Index = () => {
         </div>
       </div>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (
@@ -74,6 +67,9 @@ const Index = () => {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Demo Banner */}
+        {isDemo && <DemoBanner />}
+
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
@@ -96,17 +92,29 @@ const Index = () => {
               error={pricesError}
               onRefresh={refetchPrices}
             />
-            <AddAssetDialog onAdd={addAsset} livePrices={prices} />
+            {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={signOut}
-              className="gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign out
-            </Button>
+            {isDemo ? (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={() => navigate('/auth')}
+                className="gap-2"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign in
+              </Button>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={signOut}
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </Button>
+            )}
           </div>
         </motion.header>
 
@@ -169,8 +177,8 @@ const Index = () => {
                   total={formatValue(cat.total)}
                   percentage={(cat.total / metrics.totalNetWorth) * 100}
                   formatValue={formatValue}
-                  onUpdateAsset={updateAsset}
-                  onDeleteAsset={deleteAsset}
+                  onUpdateAsset={isDemo ? undefined : updateAsset}
+                  onDeleteAsset={isDemo ? undefined : deleteAsset}
                   livePrices={prices}
                   delay={index * 0.1}
                 />
@@ -186,18 +194,18 @@ const Index = () => {
             items={income}
             total={formatValue(metrics.totalIncome)}
             formatValue={formatValue}
-            actionButton={<AddIncomeDialog onAdd={addIncome} />}
-            onUpdateIncome={updateIncome}
-            onDeleteIncome={deleteIncome}
+            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={addIncome} />}
+            onUpdateIncome={isDemo ? undefined : updateIncome}
+            onDeleteIncome={isDemo ? undefined : deleteIncome}
           />
           <IncomeExpenseCard
             type="expense"
             items={expenses}
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
-            actionButton={<AddExpenseDialog onAdd={addExpense} />}
-            onUpdateExpense={updateExpense}
-            onDeleteExpense={deleteExpense}
+            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={addExpense} />}
+            onUpdateExpense={isDemo ? undefined : updateExpense}
+            onDeleteExpense={isDemo ? undefined : deleteExpense}
           />
         </div>
 
