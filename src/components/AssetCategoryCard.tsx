@@ -89,12 +89,7 @@ export function AssetCategoryCard({
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <span className="font-mono text-sm">{formatValue(asset.value)}</span>
-                  {originalAmount && asset.symbol !== 'USD' && (
-                    <span className="text-xs text-muted-foreground ml-2">
-                      ({originalAmount})
-                    </span>
-                  )}
+                  <span className="font-mono text-sm">{originalAmount || formatValue(asset.value)}</span>
                 </div>
                 {onUpdateAsset && (
                   <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} livePrices={livePrices} />
