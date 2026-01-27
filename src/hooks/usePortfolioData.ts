@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Asset, Income, Expense, AssetCategory } from '@/lib/types';
+import { Asset, Income, Expense, AssetCategory, CommodityUnit } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 export function usePortfolioData() {
@@ -42,6 +42,7 @@ export function usePortfolioData() {
         quantity: a.quantity ? Number(a.quantity) : undefined,
         symbol: a.symbol || undefined,
         yield: a.yield ? Number(a.yield) : undefined,
+        unit: (a as any).unit as CommodityUnit | undefined,
       })));
 
       setIncome(incomeRes.data.map(i => ({
@@ -81,6 +82,7 @@ export function usePortfolioData() {
     symbol?: string;
     yield?: number;
     stakingRate?: number;
+    unit?: CommodityUnit;
   }) => {
     if (!user) return;
 
@@ -93,7 +95,8 @@ export function usePortfolioData() {
         quantity: assetData.quantity,
         symbol: assetData.symbol || null,
         yield: assetData.yield || assetData.stakingRate || null,
-      }).select().single();
+        unit: assetData.unit || null,
+      } as any).select().single();
 
       if (error) throw error;
 
@@ -105,6 +108,7 @@ export function usePortfolioData() {
         quantity: data.quantity ? Number(data.quantity) : undefined,
         symbol: data.symbol || undefined,
         yield: data.yield ? Number(data.yield) : undefined,
+        unit: (data as any).unit as CommodityUnit | undefined,
       }, ...prev]);
 
       toast({ title: 'Asset added successfully' });
@@ -128,7 +132,8 @@ export function usePortfolioData() {
         quantity: assetData.quantity,
         symbol: assetData.symbol || null,
         yield: assetData.yield || null,
-      }).eq('id', id);
+        unit: assetData.unit || null,
+      } as any).eq('id', id);
 
       if (error) throw error;
 
