@@ -14,6 +14,7 @@ import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
 import { DemoBanner } from '@/components/DemoBanner';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory } from '@/lib/types';
@@ -94,6 +95,7 @@ const Index = () => {
             />
             {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+            <ThemeToggle />
             {isDemo ? (
               <Button 
                 variant="default" 
