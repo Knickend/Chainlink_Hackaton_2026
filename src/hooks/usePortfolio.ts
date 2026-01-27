@@ -62,9 +62,12 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
 
       if (canCompute && price !== null) {
         // For commodities, convert quantity to troy oz for price calculation
-        const effectiveQuantity = isCommodity && asset.unit
-          ? convertToTroyOz(asset.quantity!, asset.unit)
-          : asset.quantity!;
+        // Ensure unit is properly typed and default to 'oz' if not set
+        let effectiveQuantity = asset.quantity!;
+        if (isCommodity) {
+          const unit = (asset.unit as CommodityUnit) || 'oz';
+          effectiveQuantity = convertToTroyOz(asset.quantity!, unit);
+        }
         return {
           ...asset,
           value: effectiveQuantity * price,
