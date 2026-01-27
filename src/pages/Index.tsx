@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, Coins } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { useLivePrices } from '@/hooks/useLivePrices';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
 import { AssetCategoryCard } from '@/components/AssetCategoryCard';
@@ -10,9 +11,12 @@ import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
+import { PriceIndicator } from '@/components/PriceIndicator';
 import { AssetCategory } from '@/lib/types';
 
 const Index = () => {
+  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices } = useLivePrices();
+  
   const {
     income,
     expenses,
@@ -31,7 +35,7 @@ const Index = () => {
     addExpense,
     updateExpense,
     deleteExpense,
-  } = usePortfolio();
+  } = usePortfolio(prices);
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,6 +62,12 @@ const Index = () => {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
+            <PriceIndicator
+              isLoading={pricesLoading}
+              lastUpdated={lastUpdated}
+              error={pricesError}
+              onRefresh={refetchPrices}
+            />
             <AddAssetDialog onAdd={addAsset} />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
           </div>
