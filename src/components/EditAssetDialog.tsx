@@ -47,7 +47,9 @@ function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number
     case 'LINK': return prices.link;
     case 'GOLD': return prices.gold;
     case 'SILVER': return prices.silver;
-    default: return null;
+    default:
+      // Stock/ETF prices cached in the LivePrices hook
+      return prices.stocks?.[upperSymbol]?.price ?? null;
   }
 }
 
@@ -70,7 +72,8 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
   const quantity = form.watch('quantity');
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
-  const isPriceAvailable = currentPrice !== null && (selectedCategory === 'crypto' || selectedCategory === 'metals');
+  const isMarketPricedCategory = selectedCategory === 'crypto' || selectedCategory === 'metals' || selectedCategory === 'stocks';
+  const isPriceAvailable = currentPrice !== null && isMarketPricedCategory;
 
   useEffect(() => {
     if (open) {
@@ -87,13 +90,24 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
 
   // Auto-calculate value when quantity and price are available
   useEffect(() => {
-    if (isPriceAvailable && quantity && currentPrice) {
+    if (isPriceAvailable && typeof quantity === 'number' && typeof currentPrice === 'number') {
       form.setValue('value', quantity * currentPrice);
     }
   }, [quantity, currentPrice, isPriceAvailable, form]);
 
   const onSubmit = (data: AssetFormData) => {
-    onUpdate(asset.id, data);
+    const computedValue = (
+      isMarketPricedCategory &&
+      typeof data.quantity === 'number' &&
+      typeof getSymbolPrice(data.symbol, livePrices) === 'number'
+    )
+      ? (data.quantity * (getSymbolPrice(data.symbol, livePrices) as number))
+      : data.value;
+
+    onUpdate(asset.id, {
+      ...data,
+      value: computedValue,
+    });
     setOpen(false);
   };
 
@@ -262,6 +276,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
                           step="0.01"
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          readOnly={selectedCategory === 'stocks' && isPriceAvailable}
                           className="bg-secondary/50"
                         />
                       </FormControl>
@@ -330,6 +345,23 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
                   </FormItem>
                 )}
               />
+            )}
+
+            {selectedCategory === 'stocks' && isPriceAvailable && (
+              <div className="space-y-2 p-3 rounded-lg bg-secondary/30">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Current Price</span>
+                  <span className="font-mono text-success">
+                    ${currentPrice?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-border/50 pt-2">
+                  <span className="text-muted-foreground">Total Value</span>
+                  <span className="font-mono font-semibold">
+                    ${((quantity || 0) * (currentPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
             )}
 
             <Button type="submit" className="w-full">

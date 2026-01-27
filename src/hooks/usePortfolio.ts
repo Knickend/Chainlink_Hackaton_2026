@@ -4,6 +4,25 @@ import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
 
+function getLiveAssetPriceUSD(asset: Asset, livePrices?: LivePrices): number | null {
+  if (!livePrices || !asset.symbol) return null;
+  const sym = asset.symbol.toUpperCase();
+  switch (sym) {
+    case 'BTC':
+      return livePrices.btc;
+    case 'ETH':
+      return livePrices.eth;
+    case 'LINK':
+      return livePrices.link;
+    case 'GOLD':
+      return livePrices.gold;
+    case 'SILVER':
+      return livePrices.silver;
+    default:
+      return livePrices.stocks?.[sym]?.price ?? null;
+  }
+}
+
 export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const {
     assets: userAssets,
@@ -24,9 +43,26 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const [displayUnit, setDisplayUnit] = useState<DisplayUnit>('USD');
 
   // Use mock data for demo mode, real data otherwise
-  const assets = isDemo ? mockAssets : userAssets;
+  const baseAssets = isDemo ? mockAssets : userAssets;
   const income = isDemo ? mockIncome : userIncome;
   const expenses = isDemo ? mockExpenses : userExpenses;
+
+  // Compute market-priced asset values from quantity × live price when possible.
+  // This ensures Shares/Amount inputs affect net worth even if the stored value is 0.
+  const assets = useMemo(() => {
+    return baseAssets.map((asset) => {
+      const price = getLiveAssetPriceUSD(asset, livePrices);
+      const canCompute =
+        (asset.category === 'crypto' || asset.category === 'metals' || asset.category === 'stocks') &&
+        typeof asset.quantity === 'number' &&
+        typeof price === 'number';
+
+      return {
+        ...asset,
+        value: canCompute ? asset.quantity! * price : asset.value,
+      };
+    });
+  }, [baseAssets, livePrices]);
 
   const conversionRates = useMemo(() => {
     if (livePrices) {
