@@ -1,12 +1,26 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Asset, Income, Expense, DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates } from '@/lib/types';
-import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
+import { useMemo } from 'react';
+import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
+import { usePortfolioData } from './usePortfolioData';
+import { useState } from 'react';
 
 export function usePortfolio(livePrices?: LivePrices) {
-  const [assets, setAssets] = useState<Asset[]>(mockAssets);
-  const [income, setIncome] = useState<Income[]>(mockIncome);
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
+  const {
+    assets,
+    income,
+    expenses,
+    loading,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    addIncome,
+    updateIncome,
+    deleteIncome,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+  } = usePortfolioData();
+
   const [displayUnit, setDisplayUnit] = useState<DisplayUnit>('USD');
 
   const conversionRates = useMemo(() => {
@@ -79,85 +93,6 @@ export function usePortfolio(livePrices?: LivePrices) {
     return `${symbol}${formatted}`;
   };
 
-  const addAsset = useCallback((assetData: {
-    name: string;
-    category: Asset['category'];
-    value: number;
-    quantity?: number;
-    symbol?: string;
-    yield?: number;
-    stakingRate?: number;
-  }) => {
-    const newAsset: Asset = {
-      id: crypto.randomUUID(),
-      name: assetData.name,
-      category: assetData.category,
-      value: assetData.value,
-      quantity: assetData.quantity,
-      symbol: assetData.symbol || undefined,
-      yield: assetData.yield || assetData.stakingRate,
-    };
-    setAssets((prev) => [...prev, newAsset]);
-  }, []);
-
-  const updateAsset = useCallback((id: string, assetData: Partial<Omit<Asset, 'id'>>) => {
-    setAssets((prev) => prev.map((asset) => 
-      asset.id === id ? { ...asset, ...assetData } : asset
-    ));
-  }, []);
-
-  const deleteAsset = useCallback((id: string) => {
-    setAssets((prev) => prev.filter((asset) => asset.id !== id));
-  }, []);
-
-  const addIncome = useCallback((incomeData: {
-    source: string;
-    amount: number;
-    type: Income['type'];
-  }) => {
-    const newIncome: Income = {
-      id: crypto.randomUUID(),
-      source: incomeData.source,
-      amount: incomeData.amount,
-      type: incomeData.type,
-    };
-    setIncome((prev) => [...prev, newIncome]);
-  }, []);
-
-  const updateIncome = useCallback((id: string, incomeData: Partial<Omit<Income, 'id'>>) => {
-    setIncome((prev) => prev.map((inc) => 
-      inc.id === id ? { ...inc, ...incomeData } : inc
-    ));
-  }, []);
-
-  const deleteIncome = useCallback((id: string) => {
-    setIncome((prev) => prev.filter((inc) => inc.id !== id));
-  }, []);
-
-  const addExpense = useCallback((expenseData: {
-    name: string;
-    amount: number;
-    category: string;
-  }) => {
-    const newExpense: Expense = {
-      id: crypto.randomUUID(),
-      name: expenseData.name,
-      amount: expenseData.amount,
-      category: expenseData.category,
-    };
-    setExpenses((prev) => [...prev, newExpense]);
-  }, []);
-
-  const updateExpense = useCallback((id: string, expenseData: Partial<Omit<Expense, 'id'>>) => {
-    setExpenses((prev) => prev.map((exp) => 
-      exp.id === id ? { ...exp, ...expenseData } : exp
-    ));
-  }, []);
-
-  const deleteExpense = useCallback((id: string) => {
-    setExpenses((prev) => prev.filter((exp) => exp.id !== id));
-  }, []);
-
   return {
     assets,
     income,
@@ -169,6 +104,7 @@ export function usePortfolio(livePrices?: LivePrices) {
     categoryTotals,
     convertValue,
     formatValue,
+    loading,
     addAsset,
     updateAsset,
     deleteAsset,

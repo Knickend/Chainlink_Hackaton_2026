@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, Coins } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, Coins, LogOut, Loader2 } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useLivePrices } from '@/hooks/useLivePrices';
+import { useAuth } from '@/contexts/AuthContext';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
 import { AssetCategoryCard } from '@/components/AssetCategoryCard';
@@ -12,9 +15,12 @@ import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
+import { Button } from '@/components/ui/button';
 import { AssetCategory } from '@/lib/types';
 
 const Index = () => {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const navigate = useNavigate();
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices } = useLivePrices();
   
   const {
@@ -26,6 +32,7 @@ const Index = () => {
     assetsByCategory,
     categoryTotals,
     formatValue,
+    loading: dataLoading,
     addAsset,
     updateAsset,
     deleteAsset,
@@ -36,6 +43,27 @@ const Index = () => {
     updateExpense,
     deleteExpense,
   } = usePortfolio(prices);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    }
+  }, [user, authLoading, navigate]);
+
+  if (authLoading || dataLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading your portfolio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -70,6 +98,15 @@ const Index = () => {
             />
             <AddAssetDialog onAdd={addAsset} livePrices={prices} />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={signOut}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign out
+            </Button>
           </div>
         </motion.header>
 
@@ -118,22 +155,28 @@ const Index = () => {
         {/* Asset Categories */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Assets by Category</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {categoryTotals.map((cat, index) => (
-              <AssetCategoryCard
-                key={cat.category}
-                category={cat.category as AssetCategory}
-                assets={assetsByCategory[cat.category] || []}
-                total={formatValue(cat.total)}
-                percentage={(cat.total / metrics.totalNetWorth) * 100}
-                formatValue={formatValue}
-                onUpdateAsset={updateAsset}
-                onDeleteAsset={deleteAsset}
-                livePrices={prices}
-                delay={index * 0.1}
-              />
-            ))}
-          </div>
+          {categoryTotals.length === 0 ? (
+            <div className="glass-card rounded-xl p-8 text-center">
+              <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {categoryTotals.map((cat, index) => (
+                <AssetCategoryCard
+                  key={cat.category}
+                  category={cat.category as AssetCategory}
+                  assets={assetsByCategory[cat.category] || []}
+                  total={formatValue(cat.total)}
+                  percentage={(cat.total / metrics.totalNetWorth) * 100}
+                  formatValue={formatValue}
+                  onUpdateAsset={updateAsset}
+                  onDeleteAsset={deleteAsset}
+                  livePrices={prices}
+                  delay={index * 0.1}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Income & Expenses */}
@@ -165,7 +208,7 @@ const Index = () => {
           transition={{ delay: 0.5 }}
           className="mt-12 text-center text-sm text-muted-foreground"
         >
-          <p>Prices updated in real-time • Data is for demonstration purposes</p>
+          <p>Prices updated in real-time • Your data is securely stored</p>
         </motion.footer>
       </div>
     </div>
