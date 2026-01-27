@@ -4,6 +4,7 @@ import { AssetCategory, Asset } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditAssetDialog } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { LivePrices } from '@/hooks/useLivePrices';
 
 interface AssetCategoryCardProps {
   category: AssetCategory;
@@ -13,6 +14,7 @@ interface AssetCategoryCardProps {
   formatValue: (value: number) => string;
   onUpdateAsset?: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
   onDeleteAsset?: (id: string) => void;
+  livePrices?: LivePrices;
   delay?: number;
 }
 
@@ -31,6 +33,7 @@ export function AssetCategoryCard({
   formatValue,
   onUpdateAsset,
   onDeleteAsset,
+  livePrices,
   delay = 0,
 }: AssetCategoryCardProps) {
   const config = categoryConfig[category];
@@ -74,7 +77,7 @@ export function AssetCategoryCard({
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm">{formatValue(asset.value)}</span>
               {onUpdateAsset && (
-                <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} />
+                <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} livePrices={livePrices} />
               )}
               {onDeleteAsset && (
                 <DeleteConfirmDialog
