@@ -23,8 +23,14 @@ const Index = () => {
     categoryTotals,
     formatValue,
     addAsset,
+    updateAsset,
+    deleteAsset,
     addIncome,
+    updateIncome,
+    deleteIncome,
     addExpense,
+    updateExpense,
+    deleteExpense,
   } = usePortfolio();
 
   return (
@@ -111,6 +117,8 @@ const Index = () => {
                 total={formatValue(cat.total)}
                 percentage={(cat.total / metrics.totalNetWorth) * 100}
                 formatValue={formatValue}
+                onUpdateAsset={updateAsset}
+                onDeleteAsset={deleteAsset}
                 delay={index * 0.1}
               />
             ))}
@@ -125,6 +133,8 @@ const Index = () => {
             total={formatValue(metrics.totalIncome)}
             formatValue={formatValue}
             actionButton={<AddIncomeDialog onAdd={addIncome} />}
+            onUpdateIncome={updateIncome}
+            onDeleteIncome={deleteIncome}
           />
           <IncomeExpenseCard
             type="expense"
@@ -132,6 +142,8 @@ const Index = () => {
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
             actionButton={<AddExpenseDialog onAdd={addExpense} />}
+            onUpdateExpense={updateExpense}
+            onDeleteExpense={deleteExpense}
           />
         </div>
 

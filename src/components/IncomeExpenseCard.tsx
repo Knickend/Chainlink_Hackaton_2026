@@ -3,6 +3,9 @@ import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Income, Expense } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { EditIncomeDialog } from './EditIncomeDialog';
+import { EditExpenseDialog } from './EditExpenseDialog';
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 
 interface IncomeExpenseCardProps {
   type: 'income' | 'expense';
@@ -10,6 +13,10 @@ interface IncomeExpenseCardProps {
   total: string;
   formatValue: (value: number) => string;
   actionButton?: ReactNode;
+  onUpdateIncome?: (id: string, data: Partial<Omit<Income, 'id'>>) => void;
+  onDeleteIncome?: (id: string) => void;
+  onUpdateExpense?: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
+  onDeleteExpense?: (id: string) => void;
 }
 
 export function IncomeExpenseCard({
@@ -18,6 +25,10 @@ export function IncomeExpenseCard({
   total,
   formatValue,
   actionButton,
+  onUpdateIncome,
+  onDeleteIncome,
+  onUpdateExpense,
+  onDeleteExpense,
 }: IncomeExpenseCardProps) {
   const isIncome = type === 'income';
 
@@ -69,7 +80,7 @@ export function IncomeExpenseCard({
         {items.map((item) => (
           <div
             key={item.id}
-            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30"
+            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
           >
             <div className="flex items-center gap-2">
               <span className="text-sm">
@@ -80,13 +91,35 @@ export function IncomeExpenseCard({
                   {item.type}
                 </span>
               )}
-              {'category' in item && (
+              {'category' in item && !('source' in item) && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
                   {item.category}
                 </span>
               )}
             </div>
-            <span className="font-mono text-sm">{formatValue(item.amount)}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm">{formatValue(item.amount)}</span>
+              {isIncome && 'source' in item && onUpdateIncome && (
+                <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} />
+              )}
+              {isIncome && onDeleteIncome && (
+                <DeleteConfirmDialog
+                  itemName={'source' in item ? item.source : item.name}
+                  itemType="income"
+                  onConfirm={() => onDeleteIncome(item.id)}
+                />
+              )}
+              {!isIncome && 'name' in item && onUpdateExpense && (
+                <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} />
+              )}
+              {!isIncome && onDeleteExpense && (
+                <DeleteConfirmDialog
+                  itemName={'name' in item ? item.name : ''}
+                  itemType="expense"
+                  onConfirm={() => onDeleteExpense(item.id)}
+                />
+              )}
+            </div>
           </div>
         ))}
       </div>

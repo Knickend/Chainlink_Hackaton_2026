@@ -2,6 +2,8 @@ import { motion } from 'framer-motion';
 import { Landmark, Bitcoin, TrendingUp, Gem, LucideIcon } from 'lucide-react';
 import { AssetCategory, Asset } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { EditAssetDialog } from './EditAssetDialog';
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 
 interface AssetCategoryCardProps {
   category: AssetCategory;
@@ -9,6 +11,8 @@ interface AssetCategoryCardProps {
   total: string;
   percentage: number;
   formatValue: (value: number) => string;
+  onUpdateAsset?: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
+  onDeleteAsset?: (id: string) => void;
   delay?: number;
 }
 
@@ -25,6 +29,8 @@ export function AssetCategoryCard({
   total,
   percentage,
   formatValue,
+  onUpdateAsset,
+  onDeleteAsset,
   delay = 0,
 }: AssetCategoryCardProps) {
   const config = categoryConfig[category];
@@ -35,7 +41,7 @@ export function AssetCategoryCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, delay }}
-      className="glass-card p-5 hover:border-primary/30 transition-colors group"
+      className="glass-card p-5 hover:border-primary/30 transition-colors"
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -57,7 +63,7 @@ export function AssetCategoryCard({
         {assets.slice(0, 3).map((asset) => (
           <div
             key={asset.id}
-            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30"
+            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
           >
             <div className="flex items-center gap-2">
               {asset.symbol && (
@@ -65,7 +71,19 @@ export function AssetCategoryCard({
               )}
               <span className="text-sm">{asset.name}</span>
             </div>
-            <span className="font-mono text-sm">{formatValue(asset.value)}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm">{formatValue(asset.value)}</span>
+              {onUpdateAsset && (
+                <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} />
+              )}
+              {onDeleteAsset && (
+                <DeleteConfirmDialog
+                  itemName={asset.name}
+                  itemType="asset"
+                  onConfirm={() => onDeleteAsset(asset.id)}
+                />
+              )}
+            </div>
           </div>
         ))}
         {assets.length > 3 && (
