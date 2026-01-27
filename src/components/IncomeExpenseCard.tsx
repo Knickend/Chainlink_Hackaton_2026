@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Income, Expense } from '@/lib/types';
@@ -8,6 +9,7 @@ interface IncomeExpenseCardProps {
   items: Income[] | Expense[];
   total: string;
   formatValue: (value: number) => string;
+  actionButton?: ReactNode;
 }
 
 export function IncomeExpenseCard({
@@ -15,6 +17,7 @@ export function IncomeExpenseCard({
   items,
   total,
   formatValue,
+  actionButton,
 }: IncomeExpenseCardProps) {
   const isIncome = type === 'income';
 
@@ -46,16 +49,19 @@ export function IncomeExpenseCard({
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <p
-            className={cn(
-              'font-mono font-semibold text-xl',
-              isIncome ? 'text-success' : 'text-danger'
-            )}
-          >
-            {isIncome ? '+' : '-'}{total}
-          </p>
-          <p className="text-xs text-muted-foreground">per month</p>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p
+              className={cn(
+                'font-mono font-semibold text-xl',
+                isIncome ? 'text-success' : 'text-danger'
+              )}
+            >
+              {isIncome ? '+' : '-'}{total}
+            </p>
+            <p className="text-xs text-muted-foreground">per month</p>
+          </div>
+          {actionButton}
         </div>
       </div>
 

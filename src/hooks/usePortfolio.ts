@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Asset, Income, Expense, DisplayUnit, PortfolioMetrics, CONVERSION_RATES, UNIT_SYMBOLS } from '@/lib/types';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
 
 export function usePortfolio() {
-  const [assets] = useState<Asset[]>(mockAssets);
-  const [income] = useState<Income[]>(mockIncome);
-  const [expenses] = useState<Expense[]>(mockExpenses);
+  const [assets, setAssets] = useState<Asset[]>(mockAssets);
+  const [income, setIncome] = useState<Income[]>(mockIncome);
+  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
   const [displayUnit, setDisplayUnit] = useState<DisplayUnit>('USD');
 
   const metrics: PortfolioMetrics = useMemo(() => {
@@ -71,6 +71,55 @@ export function usePortfolio() {
     return `${symbol}${formatted}`;
   };
 
+  const addAsset = useCallback((assetData: {
+    name: string;
+    category: Asset['category'];
+    value: number;
+    quantity?: number;
+    symbol?: string;
+    yield?: number;
+    stakingRate?: number;
+  }) => {
+    const newAsset: Asset = {
+      id: crypto.randomUUID(),
+      name: assetData.name,
+      category: assetData.category,
+      value: assetData.value,
+      quantity: assetData.quantity,
+      symbol: assetData.symbol || undefined,
+      yield: assetData.yield || assetData.stakingRate,
+    };
+    setAssets((prev) => [...prev, newAsset]);
+  }, []);
+
+  const addIncome = useCallback((incomeData: {
+    source: string;
+    amount: number;
+    type: Income['type'];
+  }) => {
+    const newIncome: Income = {
+      id: crypto.randomUUID(),
+      source: incomeData.source,
+      amount: incomeData.amount,
+      type: incomeData.type,
+    };
+    setIncome((prev) => [...prev, newIncome]);
+  }, []);
+
+  const addExpense = useCallback((expenseData: {
+    name: string;
+    amount: number;
+    category: string;
+  }) => {
+    const newExpense: Expense = {
+      id: crypto.randomUUID(),
+      name: expenseData.name,
+      amount: expenseData.amount,
+      category: expenseData.category,
+    };
+    setExpenses((prev) => [...prev, newExpense]);
+  }, []);
+
   return {
     assets,
     income,
@@ -82,5 +131,8 @@ export function usePortfolio() {
     categoryTotals,
     convertValue,
     formatValue,
+    addAsset,
+    addIncome,
+    addExpense,
   };
 }
