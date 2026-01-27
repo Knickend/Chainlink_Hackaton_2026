@@ -168,7 +168,7 @@ const Auth = () => {
             </form>
           </Form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center space-y-3">
             <button
               type="button"
               onClick={() => {
@@ -181,6 +181,16 @@ const Auth = () => {
                 ? 'Already have an account? Sign in'
                 : "Don't have an account? Sign up"}
             </button>
+            
+            <div className="pt-2 border-t border-border/50">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="text-sm text-primary hover:text-primary/80 transition-colors"
+              >
+                ← Back to demo
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>
