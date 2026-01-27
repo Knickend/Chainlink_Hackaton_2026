@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import { Landmark, Bitcoin, TrendingUp, Gem, LucideIcon } from 'lucide-react';
-import { AssetCategory, Asset, getCurrencySymbol, BANKING_CURRENCIES } from '@/lib/types';
+import { Landmark, Bitcoin, TrendingUp, Gem, LucideIcon, Package } from 'lucide-react';
+import { AssetCategory, Asset, getCurrencySymbol, BANKING_CURRENCIES, COMMODITY_UNITS } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditAssetDialog } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
@@ -22,7 +22,7 @@ const categoryConfig: Record<AssetCategory, { icon: LucideIcon; label: string; c
   banking: { icon: Landmark, label: 'Banking', color: 'text-blue-400' },
   crypto: { icon: Bitcoin, label: 'Crypto', color: 'text-bitcoin' },
   stocks: { icon: TrendingUp, label: 'Stocks', color: 'text-success' },
-  metals: { icon: Gem, label: 'Precious Metals', color: 'text-gold' },
+  commodities: { icon: Package, label: 'Commodities', color: 'text-gold' },
 };
 
 export function AssetCategoryCard({
