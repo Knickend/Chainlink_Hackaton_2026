@@ -8,26 +8,27 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol } from '@/lib/types';
+import { AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol, COMMODITY_UNITS, CommodityUnit, convertToTroyOz } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
 import { TickerSearchInput } from './TickerSearchInput';
 import { TickerResult } from '@/hooks/useTickerSearch';
 
 const assetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
-  category: z.enum(['banking', 'crypto', 'stocks', 'metals'] as const),
+  category: z.enum(['banking', 'crypto', 'stocks', 'commodities'] as const),
   value: z.number().min(0, 'Value must be positive'),
   quantity: z.number().optional(),
   symbol: z.string().max(10).optional(),
   yield: z.number().min(0).max(100).optional(),
   stakingRate: z.number().min(0).max(100).optional(),
-  currency: z.string().optional(), // For banking forex
+  currency: z.string().optional(),
+  unit: z.string().optional(),
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
 
 interface AddAssetDialogProps {
-  onAdd: (asset: AssetFormData) => void;
+  onAdd: (asset: AssetFormData & { unit?: CommodityUnit }) => void;
   livePrices?: LivePrices;
   onStockPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
   onCryptoPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
@@ -37,19 +38,20 @@ const categoryOptions: { value: AssetCategory; label: string }[] = [
   { value: 'banking', label: 'Banking' },
   { value: 'crypto', label: 'Cryptocurrency' },
   { value: 'stocks', label: 'Stocks & ETFs' },
-  { value: 'metals', label: 'Precious Metals' },
+  { value: 'commodities', label: 'Commodities' },
 ];
-
-const metalSymbols = ['GOLD', 'SILVER'];
 
 function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number | null {
   if (!symbol || !prices) return null;
   const upperSymbol = symbol.toUpperCase();
   switch (upperSymbol) {
-    case 'GOLD': return prices.gold;
-    case 'SILVER': return prices.silver;
+    case 'GOLD':
+    case 'XAU':
+      return prices.gold;
+    case 'SILVER':
+    case 'XAG':
+      return prices.silver;
     default:
-      // Check if it's a stock/crypto price in the cache
       return prices.stocks?.[upperSymbol]?.price ?? null;
   }
 }
@@ -69,6 +71,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       yield: undefined,
       stakingRate: undefined,
       currency: 'USD',
+      unit: 'oz',
     },
   });
 
@@ -76,19 +79,21 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
   const selectedSymbol = form.watch('symbol');
   const quantity = form.watch('quantity');
   const selectedCurrency = form.watch('currency') || 'USD';
+  const selectedUnit = (form.watch('unit') || 'oz') as CommodityUnit;
   const bankingAmount = form.watch('value');
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
-  const isPriceAvailable = currentPrice !== null && selectedCategory === 'metals';
+  const isCommodityPriceAvailable = selectedCategory === 'commodities' && typeof selectedTicker?.price === 'number';
   const isCryptoPriceAvailable = selectedCategory === 'crypto' && typeof selectedTicker?.price === 'number';
   const isStockPriceAvailable = selectedCategory === 'stocks' && typeof selectedTicker?.price === 'number';
   
-  // Auto-calculate value when quantity and price are available (metals)
+  // Auto-calculate value for commodities when quantity changes
   useEffect(() => {
-    if (isPriceAvailable && typeof quantity === 'number' && typeof currentPrice === 'number') {
-      form.setValue('value', quantity * currentPrice);
+    if (isCommodityPriceAvailable && typeof quantity === 'number' && typeof selectedTicker?.price === 'number') {
+      const quantityInOz = convertToTroyOz(quantity, selectedUnit);
+      form.setValue('value', quantityInOz * selectedTicker.price);
     }
-  }, [quantity, currentPrice, isPriceAvailable, form]);
+  }, [quantity, selectedTicker, isCommodityPriceAvailable, selectedUnit, form]);
 
   // Auto-calculate value for stocks/crypto when quantity changes
   useEffect(() => {
@@ -102,7 +107,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
     form.setValue('symbol', ticker.symbol);
     form.setValue('name', ticker.name);
     
-    // Store the price (for both stocks and crypto)
+    // Store the price
     if (ticker.price) {
       if (ticker.type === 'Crypto' && onCryptoPriceUpdate) {
         onCryptoPriceUpdate(ticker.symbol, ticker.price, ticker.change || 0, ticker.changePercent || 0);
@@ -114,7 +119,12 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
     // Auto-calculate value if quantity is set
     const currentQuantity = form.getValues('quantity');
     if (typeof ticker.price === 'number' && typeof currentQuantity === 'number') {
-      form.setValue('value', currentQuantity * ticker.price);
+      if (selectedCategory === 'commodities') {
+        const quantityInOz = convertToTroyOz(currentQuantity, selectedUnit);
+        form.setValue('value', quantityInOz * ticker.price);
+      } else {
+        form.setValue('value', currentQuantity * ticker.price);
+      }
     }
   };
 
@@ -124,13 +134,34 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
       const usdValue = data.value * forexRate;
       onAdd({
-        ...data,
-        symbol: data.currency, // Store currency code in symbol
-        quantity: data.value, // Store original amount in quantity
-        value: usdValue, // Store USD equivalent in value
+        name: data.name,
+        category: data.category,
+        value: usdValue,
+        symbol: data.currency,
+        quantity: data.value,
+        yield: data.yield,
+        stakingRate: data.stakingRate,
+      });
+    } else if (data.category === 'commodities') {
+      // For commodities, store the unit
+      onAdd({
+        name: data.name,
+        category: data.category,
+        value: data.value,
+        symbol: data.symbol,
+        quantity: data.quantity,
+        unit: (data.unit as CommodityUnit) || 'oz',
       });
     } else {
-      onAdd(data);
+      onAdd({
+        name: data.name,
+        category: data.category,
+        value: data.value,
+        symbol: data.symbol,
+        quantity: data.quantity,
+        yield: data.yield,
+        stakingRate: data.stakingRate,
+      });
     }
     form.reset();
     setSelectedTicker(null);
@@ -143,6 +174,10 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       form.reset();
       setSelectedTicker(null);
     }
+  };
+
+  const getUnitLabel = (unit: CommodityUnit): string => {
+    return COMMODITY_UNITS.find(u => u.value === unit)?.label.split(' ')[0] || unit;
   };
 
   return (
@@ -218,10 +253,10 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   <FormLabel>Asset Name</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder={selectedCategory === 'stocks' ? 'Auto-filled from search' : 'e.g., Chase Savings'} 
+                      placeholder={selectedCategory === 'stocks' || selectedCategory === 'commodities' ? 'Auto-filled from search' : 'e.g., Chase Savings'} 
                       {...field} 
                       className="bg-secondary/50"
-                      readOnly={selectedCategory === 'stocks' && !!selectedTicker}
+                      readOnly={(selectedCategory === 'stocks' || selectedCategory === 'commodities' || selectedCategory === 'crypto') && !!selectedTicker}
                     />
                   </FormControl>
                   <FormMessage />
@@ -345,41 +380,59 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
               </>
             )}
 
-            {selectedCategory === 'metals' && (
-              <FormField
-                control={form.control}
-                name="symbol"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Metal</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
-                      <FormControl>
-                        <SelectTrigger className="bg-secondary/50">
-                          <SelectValue placeholder="Select metal" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {metalSymbols.map((sym) => (
-                          <SelectItem key={sym} value={sym}>
-                            {sym} {livePrices && `($${getSymbolPrice(sym, livePrices)?.toLocaleString()}/oz)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {selectedCategory === 'metals' && (
+            {selectedCategory === 'commodities' && (
               <>
+                <FormField
+                  control={form.control}
+                  name="symbol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Search Commodity</FormLabel>
+                      <FormControl>
+                        <TickerSearchInput
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          onSelect={handleTickerSelect}
+                          placeholder="Search gold, silver, oil, copper..."
+                          assetType="commodities"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="unit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Unit</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || 'oz'}>
+                        <FormControl>
+                          <SelectTrigger className="bg-secondary/50">
+                            <SelectValue placeholder="Select unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {COMMODITY_UNITS.map((unit) => (
+                            <SelectItem key={unit.value} value={unit.value}>
+                              {unit.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Quantity (oz)</FormLabel>
+                      <FormLabel>Quantity ({getUnitLabel(selectedUnit)})</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -396,21 +449,61 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   )}
                 />
 
-                {isPriceAvailable && (
-                  <div className="space-y-2">
+                {isCommodityPriceAvailable && selectedTicker && (
+                  <div className="space-y-2 rounded-lg bg-secondary/30 p-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Current Price</span>
                       <span className="font-mono text-success">
-                        ${currentPrice?.toLocaleString()}/oz
+                        ${selectedTicker.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs text-muted-foreground ml-1">{selectedTicker.priceUnit || 'per oz'}</span>
                       </span>
                     </div>
+                    {selectedTicker.changePercent !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Today's Change</span>
+                        <span className={`font-mono ${selectedTicker.changePercent >= 0 ? 'text-success' : 'text-destructive'}`}>
+                          {selectedTicker.changePercent >= 0 ? '+' : ''}{selectedTicker.changePercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                    {quantity && selectedUnit !== 'oz' && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Equivalent (oz)</span>
+                        <span className="font-mono">
+                          {convertToTroyOz(quantity, selectedUnit).toFixed(4)} oz
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm border-t border-border/50 pt-2">
                       <span className="text-muted-foreground">Total Value</span>
                       <span className="font-mono font-semibold">
-                        ${((quantity || 0) * (currentPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${(convertToTroyOz(quantity || 0, selectedUnit) * (selectedTicker.price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>
+                )}
+
+                {!selectedTicker && (
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Value (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="10000"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
               </>
             )}
@@ -598,30 +691,6 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   )}
                 />
               </>
-            )}
-
-            {selectedCategory === 'crypto' && (
-              <FormField
-                control={form.control}
-                name="stakingRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Staking Yield (%)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="4.5"
-                        {...field}
-                        value={field.value ?? ''}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                        className="bg-secondary/50"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             )}
 
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90">

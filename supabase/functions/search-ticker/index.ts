@@ -24,6 +24,7 @@ interface TickerResult {
   price?: number;
   change?: number;
   changePercent?: number;
+  priceUnit?: string;
 }
 
 serve(async (req) => {
@@ -55,14 +56,16 @@ serve(async (req) => {
     }
 
     const sanitizedQuery = query.trim().slice(0, 50);
-    const searchType = assetType === 'crypto' ? 'crypto' : 'stocks';
+    const searchType = assetType === 'crypto' ? 'crypto' : assetType === 'commodities' ? 'commodities' : 'stocks';
     
     console.log(`Searching for ${searchType}: "${sanitizedQuery}"`);
 
     const systemPrompt = 'You are a financial data assistant. Return ONLY valid JSON arrays with no additional text or markdown formatting.';
     
-    const userPrompt = searchType === 'crypto' 
-      ? `Search for cryptocurrencies matching "${sanitizedQuery}". Return up to 8 results.
+    let userPrompt: string;
+    
+    if (searchType === 'crypto') {
+      userPrompt = `Search for cryptocurrencies matching "${sanitizedQuery}". Return up to 8 results.
 
 Return ONLY a JSON array in this exact format with no markdown:
 [{"symbol": "BTC", "name": "Bitcoin", "type": "Crypto", "exchange": "Crypto", "price": 97000.00, "change": 1500.00, "changePercent": 1.57}]
@@ -78,8 +81,32 @@ Include:
 - change: 24h price change in USD (number, can be negative)
 - changePercent: 24h percentage change (number, can be negative)
 
-If no matches found, return an empty array: []`
-      : `Search for stocks and ETFs matching "${sanitizedQuery}". Return up to 5 results.
+If no matches found, return an empty array: []`;
+    } else if (searchType === 'commodities') {
+      userPrompt = `Search for commodities matching "${sanitizedQuery}". Return up to 8 results.
+
+Return ONLY a JSON array in this exact format with no markdown:
+[{"symbol": "GOLD", "name": "Gold", "type": "Commodity", "exchange": "COMEX", "price": 2650.00, "change": 15.00, "changePercent": 0.57, "priceUnit": "per oz"}]
+
+Include precious metals, industrial metals, energy, and agricultural commodities. Common examples:
+- Precious metals: Gold (GOLD/XAU), Silver (SILVER/XAG), Platinum (PLATINUM/XPT), Palladium (PALLADIUM/XPD)
+- Industrial metals: Copper (COPPER), Aluminum (ALUMINUM), Nickel (NICKEL), Zinc (ZINC), Lead (LEAD)
+- Energy: Crude Oil (WTI/CRUDE), Brent Crude (BRENT), Natural Gas (NATGAS)
+- Agricultural: Wheat (WHEAT), Corn (CORN), Soybeans (SOYBEAN), Coffee (COFFEE), Sugar (SUGAR), Cotton (COTTON)
+
+Include:
+- symbol: the ticker symbol (uppercase, e.g., GOLD, SILVER, COPPER, WTI)
+- name: full commodity name
+- type: always "Commodity"
+- exchange: the primary exchange (COMEX, NYMEX, CBOT, ICE, LME, etc.)
+- price: current price in USD per troy ounce for metals, per barrel for oil, per unit for others (number)
+- change: price change today in USD (number, can be negative)
+- changePercent: percentage change today (number, can be negative)
+- priceUnit: the unit the price is quoted in (e.g., "per oz", "per barrel", "per lb", "per bushel")
+
+If no matches found, return an empty array: []`;
+    } else {
+      userPrompt = `Search for stocks and ETFs matching "${sanitizedQuery}". Return up to 5 results.
 
 Return ONLY a JSON array in this exact format with no markdown:
 [{"symbol": "AAPL", "name": "Apple Inc.", "type": "Stock", "exchange": "NASDAQ", "price": 178.50, "change": 2.30, "changePercent": 1.31}]
@@ -94,6 +121,7 @@ Include:
 - changePercent: percentage change today (number, can be negative)
 
 If no matches found, return an empty array: []`;
+    }
 
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -161,11 +189,12 @@ If no matches found, return an empty array: []`;
     const validatedResults = results.slice(0, 8).map((r) => ({
       symbol: String(r.symbol || '').toUpperCase().slice(0, 10),
       name: String(r.name || '').slice(0, 100),
-      type: r.type === 'ETF' ? 'ETF' : (r.type === 'Crypto' ? 'Crypto' : 'Stock'),
+      type: r.type === 'ETF' ? 'ETF' : (r.type === 'Crypto' ? 'Crypto' : (r.type === 'Commodity' ? 'Commodity' : 'Stock')),
       exchange: String(r.exchange || '').slice(0, 20),
       price: typeof r.price === 'number' ? r.price : undefined,
       change: typeof r.change === 'number' ? r.change : undefined,
       changePercent: typeof r.changePercent === 'number' ? r.changePercent : undefined,
+      priceUnit: typeof r.priceUnit === 'string' ? r.priceUnit.slice(0, 20) : undefined,
     })).filter((r) => r.symbol && r.name);
 
     console.log('Returning results:', validatedResults);

@@ -1,4 +1,4 @@
-import { Asset, Income, Expense } from './types';
+import { Asset, Income, Expense, CommodityUnit } from './types';
 
 export const mockAssets: Asset[] = [
   // Banking
@@ -17,10 +17,10 @@ export const mockAssets: Asset[] = [
   { id: '9', name: 'Microsoft', category: 'stocks', value: 31200, yield: 0.8, quantity: 75, symbol: 'MSFT' },
   { id: '10', name: 'Dividend ETF (VYM)', category: 'stocks', value: 42000, yield: 3.2, quantity: 340 },
   
-  // Precious Metals
-  { id: '11', name: 'Gold Bullion', category: 'metals', value: 38200, quantity: 15, symbol: 'XAU' },
-  { id: '12', name: 'Silver Coins', category: 'metals', value: 8500, quantity: 280, symbol: 'XAG' },
-  { id: '13', name: 'Platinum', category: 'metals', value: 4800, quantity: 5, symbol: 'XPT' },
+  // Commodities
+  { id: '11', name: 'Gold Bullion', category: 'commodities', value: 38200, quantity: 15, symbol: 'GOLD', unit: 'oz' },
+  { id: '12', name: 'Silver Coins', category: 'commodities', value: 8500, quantity: 280, symbol: 'SILVER', unit: 'oz' },
+  { id: '13', name: 'Platinum', category: 'commodities', value: 4800, quantity: 5, symbol: 'PLATINUM', unit: 'oz' },
 ];
 
 export const mockIncome: Income[] = [

@@ -41,7 +41,7 @@ const categoryLabels: Record<AssetCategory, string> = {
   banking: 'Banking',
   crypto: 'Crypto',
   stocks: 'Stocks',
-  metals: 'Precious Metals',
+  commodities: 'Commodities',
 };
 
 export function ViewAllAssetsDialog({
@@ -104,7 +104,7 @@ export function ViewAllAssetsDialog({
               <SelectItem value="banking">Banking</SelectItem>
               <SelectItem value="crypto">Crypto</SelectItem>
               <SelectItem value="stocks">Stocks</SelectItem>
-              <SelectItem value="metals">Precious Metals</SelectItem>
+              <SelectItem value="commodities">Commodities</SelectItem>
             </SelectContent>
           </Select>
         </div>

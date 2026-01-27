@@ -1,18 +1,18 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useDebounce } from '@/hooks/useDebounce';
 
 export interface TickerResult {
   symbol: string;
   name: string;
-  type: 'Stock' | 'ETF' | 'Crypto';
+  type: string;
   exchange: string;
   price?: number;
   change?: number;
   changePercent?: number;
+  priceUnit?: string; // e.g., "per oz" for commodities
 }
 
-export type AssetSearchType = 'stocks' | 'crypto';
+export type AssetSearchType = 'stocks' | 'crypto' | 'commodities';
 
 export function useTickerSearch() {
   const [results, setResults] = useState<TickerResult[]>([]);

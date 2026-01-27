@@ -1,8 +1,16 @@
-export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'metals';
+export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'commodities';
 
 export type DisplayUnit = 'USD' | 'BTC' | 'GOLD' | 'EUR' | 'GBP';
 
 export type BankingCurrency = 'USD' | 'EUR' | 'GBP' | 'CHF' | 'JPY' | 'CAD' | 'AUD' | 'CNY' | 'INR' | 'SGD' | 'HKD' | 'NZD' | 'SEK' | 'NOK' | 'DKK' | 'ZAR' | 'BRL' | 'MXN' | 'KRW' | 'THB';
+
+export type CommodityUnit = 'oz' | 'g' | 'kg';
+
+export const COMMODITY_UNITS: { value: CommodityUnit; label: string; toTroyOz: number }[] = [
+  { value: 'oz', label: 'Troy Ounce (oz)', toTroyOz: 1 },
+  { value: 'g', label: 'Gram (g)', toTroyOz: 0.0321507 }, // 1 gram = 0.0321507 troy oz
+  { value: 'kg', label: 'Kilogram (kg)', toTroyOz: 32.1507 }, // 1 kg = 32.1507 troy oz
+];
 
 export const BANKING_CURRENCIES: { value: BankingCurrency; label: string; symbol: string }[] = [
   { value: 'USD', label: 'US Dollar', symbol: '$' },
@@ -59,6 +67,19 @@ export interface Asset {
   yield?: number; // annual yield percentage
   quantity?: number; // for banking, this stores the original currency amount
   symbol?: string; // for banking, this stores the currency code (USD, EUR, etc.)
+  unit?: CommodityUnit; // for commodities, the measurement unit
+}
+
+// Helper to convert commodity quantity to troy ounces (for price calculation)
+export function convertToTroyOz(quantity: number, unit: CommodityUnit): number {
+  const unitConfig = COMMODITY_UNITS.find(u => u.value === unit);
+  return quantity * (unitConfig?.toTroyOz ?? 1);
+}
+
+// Helper to get unit label
+export function getUnitLabel(unit: CommodityUnit): string {
+  const unitConfig = COMMODITY_UNITS.find(u => u.value === unit);
+  return unitConfig?.label ?? unit;
 }
 
 export interface Income {

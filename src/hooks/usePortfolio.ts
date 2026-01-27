@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense } from '@/lib/types';
+import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
@@ -15,8 +15,10 @@ function getLiveAssetPriceUSD(asset: Asset, livePrices?: LivePrices): number | n
     case 'LINK':
       return livePrices.link;
     case 'GOLD':
+    case 'XAU':
       return livePrices.gold;
     case 'SILVER':
+    case 'XAG':
       return livePrices.silver;
     default:
       return livePrices.stocks?.[sym]?.price ?? null;
@@ -48,19 +50,28 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const expenses = isDemo ? mockExpenses : userExpenses;
 
   // Compute market-priced asset values from quantity × live price when possible.
-  // This ensures Shares/Amount inputs affect net worth even if the stored value is 0.
+  // For commodities, convert quantity to troy oz first (prices are per oz)
   const assets = useMemo(() => {
     return baseAssets.map((asset) => {
       const price = getLiveAssetPriceUSD(asset, livePrices);
+      const isCommodity = asset.category === 'commodities';
       const canCompute =
-        (asset.category === 'crypto' || asset.category === 'metals' || asset.category === 'stocks') &&
+        (asset.category === 'crypto' || isCommodity || asset.category === 'stocks') &&
         typeof asset.quantity === 'number' &&
         typeof price === 'number';
 
-      return {
-        ...asset,
-        value: canCompute ? asset.quantity! * price : asset.value,
-      };
+      if (canCompute && price !== null) {
+        // For commodities, convert quantity to troy oz for price calculation
+        const effectiveQuantity = isCommodity && asset.unit
+          ? convertToTroyOz(asset.quantity!, asset.unit)
+          : asset.quantity!;
+        return {
+          ...asset,
+          value: effectiveQuantity * price,
+        };
+      }
+
+      return asset;
     });
   }, [baseAssets, livePrices]);
 
