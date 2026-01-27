@@ -22,6 +22,7 @@ export type Database = {
           name: string
           quantity: number | null
           symbol: string | null
+          unit: string | null
           updated_at: string
           user_id: string
           value: number
@@ -34,6 +35,7 @@ export type Database = {
           name: string
           quantity?: number | null
           symbol?: string | null
+          unit?: string | null
           updated_at?: string
           user_id: string
           value?: number
@@ -46,6 +48,7 @@ export type Database = {
           name?: string
           quantity?: number | null
           symbol?: string | null
+          unit?: string | null
           updated_at?: string
           user_id?: string
           value?: number
