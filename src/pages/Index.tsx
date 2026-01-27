@@ -11,6 +11,7 @@ import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
 import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
+import { ViewAllAssetsDialog } from '@/components/ViewAllAssetsDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
@@ -186,7 +187,16 @@ const Index = () => {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Assets by Category</h2>
-            {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
+            <div className="flex items-center gap-2">
+              <ViewAllAssetsDialog
+                assets={Object.values(assetsByCategory).flat()}
+                formatValue={formatValue}
+                onUpdateAsset={isDemo ? undefined : updateAsset}
+                onDeleteAsset={isDemo ? undefined : deleteAsset}
+                livePrices={prices}
+              />
+              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
+            </div>
           </div>
           {categoryTotals.length === 0 ? (
             <div className="glass-card rounded-xl p-8 text-center">
