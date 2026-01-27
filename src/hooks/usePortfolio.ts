@@ -92,6 +92,16 @@ export function usePortfolio() {
     setAssets((prev) => [...prev, newAsset]);
   }, []);
 
+  const updateAsset = useCallback((id: string, assetData: Partial<Omit<Asset, 'id'>>) => {
+    setAssets((prev) => prev.map((asset) => 
+      asset.id === id ? { ...asset, ...assetData } : asset
+    ));
+  }, []);
+
+  const deleteAsset = useCallback((id: string) => {
+    setAssets((prev) => prev.filter((asset) => asset.id !== id));
+  }, []);
+
   const addIncome = useCallback((incomeData: {
     source: string;
     amount: number;
@@ -104,6 +114,16 @@ export function usePortfolio() {
       type: incomeData.type,
     };
     setIncome((prev) => [...prev, newIncome]);
+  }, []);
+
+  const updateIncome = useCallback((id: string, incomeData: Partial<Omit<Income, 'id'>>) => {
+    setIncome((prev) => prev.map((inc) => 
+      inc.id === id ? { ...inc, ...incomeData } : inc
+    ));
+  }, []);
+
+  const deleteIncome = useCallback((id: string) => {
+    setIncome((prev) => prev.filter((inc) => inc.id !== id));
   }, []);
 
   const addExpense = useCallback((expenseData: {
@@ -120,6 +140,16 @@ export function usePortfolio() {
     setExpenses((prev) => [...prev, newExpense]);
   }, []);
 
+  const updateExpense = useCallback((id: string, expenseData: Partial<Omit<Expense, 'id'>>) => {
+    setExpenses((prev) => prev.map((exp) => 
+      exp.id === id ? { ...exp, ...expenseData } : exp
+    ));
+  }, []);
+
+  const deleteExpense = useCallback((id: string) => {
+    setExpenses((prev) => prev.filter((exp) => exp.id !== id));
+  }, []);
+
   return {
     assets,
     income,
@@ -132,7 +162,13 @@ export function usePortfolio() {
     convertValue,
     formatValue,
     addAsset,
+    updateAsset,
+    deleteAsset,
     addIncome,
+    updateIncome,
+    deleteIncome,
     addExpense,
+    updateExpense,
+    deleteExpense,
   };
 }
