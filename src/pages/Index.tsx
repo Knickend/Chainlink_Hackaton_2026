@@ -7,6 +7,9 @@ import { AssetCategoryCard } from '@/components/AssetCategoryCard';
 import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
 import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
+import { AddAssetDialog } from '@/components/AddAssetDialog';
+import { AddIncomeDialog } from '@/components/AddIncomeDialog';
+import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { AssetCategory } from '@/lib/types';
 
 const Index = () => {
@@ -19,6 +22,9 @@ const Index = () => {
     assetsByCategory,
     categoryTotals,
     formatValue,
+    addAsset,
+    addIncome,
+    addExpense,
   } = usePortfolio();
 
   return (
@@ -45,7 +51,10 @@ const Index = () => {
               Track your assets across all markets
             </p>
           </div>
-          <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <AddAssetDialog onAdd={addAsset} />
+            <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+          </div>
         </motion.header>
 
         {/* Key Metrics */}
@@ -115,12 +124,14 @@ const Index = () => {
             items={income}
             total={formatValue(metrics.totalIncome)}
             formatValue={formatValue}
+            actionButton={<AddIncomeDialog onAdd={addIncome} />}
           />
           <IncomeExpenseCard
             type="expense"
             items={expenses}
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
+            actionButton={<AddExpenseDialog onAdd={addExpense} />}
           />
         </div>
 
