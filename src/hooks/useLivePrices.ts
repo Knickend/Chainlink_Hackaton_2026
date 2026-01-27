@@ -24,10 +24,65 @@ const DEFAULT_PRICES: LivePrices = {
 
 export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 min
   const [prices, setPrices] = useState<LivePrices>(DEFAULT_PRICES);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isCached, setIsCached] = useState(false);
   const { toast } = useToast();
+
+  // Load cached prices from database on startup
+  const loadCachedPrices = useCallback(async () => {
+    try {
+      const { data: cachedPrices, error: cacheError } = await supabase
+        .from('price_cache')
+        .select('*');
+
+      if (cacheError) {
+        console.error('Error loading cached prices:', cacheError);
+        return false;
+      }
+
+      if (cachedPrices && cachedPrices.length > 0) {
+        const btcPrice = cachedPrices.find(p => p.symbol === 'BTC');
+        const ethPrice = cachedPrices.find(p => p.symbol === 'ETH');
+        const linkPrice = cachedPrices.find(p => p.symbol === 'LINK');
+        const goldPrice = cachedPrices.find(p => p.symbol === 'GOLD');
+        const silverPrice = cachedPrices.find(p => p.symbol === 'SILVER');
+
+        // Build stocks object from cached stock/commodity prices
+        const stocksMap: Record<string, { price: number; change: number; changePercent: number }> = {};
+        cachedPrices.forEach(p => {
+          if (p.asset_type === 'stock' || p.asset_type === 'commodity') {
+            stocksMap[p.symbol] = {
+              price: Number(p.price),
+              change: Number(p.change) || 0,
+              changePercent: Number(p.change_percent) || 0,
+            };
+          }
+        });
+
+        const oldestUpdate = Math.min(...cachedPrices.map(p => new Date(p.updated_at).getTime()));
+
+        setPrices({
+          btc: btcPrice ? Number(btcPrice.price) : DEFAULT_PRICES.btc,
+          eth: ethPrice ? Number(ethPrice.price) : DEFAULT_PRICES.eth,
+          link: linkPrice ? Number(linkPrice.price) : DEFAULT_PRICES.link,
+          gold: goldPrice ? Number(goldPrice.price) : DEFAULT_PRICES.gold,
+          silver: silverPrice ? Number(silverPrice.price) : DEFAULT_PRICES.silver,
+          timestamp: new Date(oldestUpdate).toISOString(),
+          stocks: stocksMap,
+        });
+        setLastUpdated(new Date(oldestUpdate));
+        setIsCached(true);
+        console.log('Loaded cached prices from database');
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to load cached prices:', err);
+      return false;
+    }
+  }, []);
 
   const fetchPrices = useCallback(async () => {
     setIsLoading(true);
@@ -46,6 +101,7 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
           stocks: prev.stocks, // Preserve stock prices
         }));
         setLastUpdated(new Date(data.data.timestamp));
+        setIsCached(data.cached === true);
       } else if (data?.error) {
         throw new Error(data.error);
       }
@@ -74,10 +130,14 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
     }));
   }, []);
 
-  // Initial fetch
+  // Initial load: first try cache, then fetch live
   useEffect(() => {
-    fetchPrices();
-  }, [fetchPrices]);
+    const init = async () => {
+      await loadCachedPrices();
+      fetchPrices();
+    };
+    init();
+  }, [loadCachedPrices, fetchPrices]);
 
   // Periodic refresh
   useEffect(() => {
@@ -90,6 +150,7 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
     isLoading,
     lastUpdated,
     error,
+    isCached,
     refetch: fetchPrices,
     addStockPrice,
   };
