@@ -27,7 +27,7 @@ import { AssetCategory } from '@/lib/types';
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices, addStockPrice } = useLivePrices();
+  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices();
   
   // Subscription state (mockup)
   const [isPro, setIsPro] = useState(false);
@@ -113,6 +113,7 @@ const Index = () => {
               isLoading={pricesLoading}
               lastUpdated={lastUpdated}
               error={pricesError}
+              isCached={isCached}
               onRefresh={refetchPrices}
             />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
