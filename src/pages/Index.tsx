@@ -195,7 +195,7 @@ const Index = () => {
                 onDeleteAsset={isDemo ? undefined : deleteAsset}
                 livePrices={prices}
               />
-              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} />}
+              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />}
             </div>
           </div>
           {categoryTotals.length === 0 ? (

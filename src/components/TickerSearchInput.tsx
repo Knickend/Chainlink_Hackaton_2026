@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useTickerSearch, TickerResult } from '@/hooks/useTickerSearch';
+import { useTickerSearch, TickerResult, AssetSearchType } from '@/hooks/useTickerSearch';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 
 interface TickerSearchInputProps {
@@ -11,6 +11,7 @@ interface TickerSearchInputProps {
   onSelect: (ticker: TickerResult) => void;
   placeholder?: string;
   className?: string;
+  assetType?: AssetSearchType;
 }
 
 export function TickerSearchInput({
@@ -19,6 +20,7 @@ export function TickerSearchInput({
   onSelect,
   placeholder = 'Search stocks & ETFs...',
   className,
+  assetType = 'stocks',
 }: TickerSearchInputProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -26,7 +28,7 @@ export function TickerSearchInput({
   const { results, isLoading, search, clearResults } = useTickerSearch();
 
   const debouncedSearch = useDebouncedCallback((query: string) => {
-    search(query);
+    search(query, assetType);
   }, 300);
 
   useEffect(() => {
