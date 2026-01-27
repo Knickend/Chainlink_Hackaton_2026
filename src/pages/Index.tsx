@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, Coins, LogOut, Loader2, LogIn } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -15,6 +16,9 @@ import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
 import { DemoBanner } from '@/components/DemoBanner';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SubscriptionBanner } from '@/components/SubscriptionBanner';
+import { SubscriptionDialog } from '@/components/SubscriptionDialog';
+import { ProBadge } from '@/components/ProBadge';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory } from '@/lib/types';
@@ -23,6 +27,10 @@ const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices } = useLivePrices();
+  
+  // Subscription state (mockup)
+  const [isPro, setIsPro] = useState(false);
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
   // Demo mode when user is not logged in
   const isDemo = !user;
@@ -70,6 +78,18 @@ const Index = () => {
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Demo Banner */}
         {isDemo && <DemoBanner />}
+        
+        {/* Subscription Banner (show for logged-in non-pro users) */}
+        {!isDemo && !isPro && (
+          <SubscriptionBanner onUpgrade={() => setShowSubscriptionDialog(true)} />
+        )}
+        
+        {/* Subscription Dialog */}
+        <SubscriptionDialog
+          open={showSubscriptionDialog}
+          onOpenChange={setShowSubscriptionDialog}
+          onSubscribe={() => setIsPro(true)}
+        />
 
         {/* Header */}
         <motion.header
@@ -77,15 +97,16 @@ const Index = () => {
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
         >
-          <div>
+          <div className="flex items-center gap-2">
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
               <span className="gradient-text">Wealth</span>
               <span className="text-foreground">Manager</span>
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Track your assets across all markets
-            </p>
+            {isPro && <ProBadge />}
           </div>
+          <p className="text-muted-foreground mt-1">
+            Track your assets across all markets
+          </p>
           <div className="flex items-center gap-3 flex-wrap">
             <PriceIndicator
               isLoading={pricesLoading}
