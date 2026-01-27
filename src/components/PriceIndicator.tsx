@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw, Wifi, WifiOff, Database, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -8,10 +8,11 @@ interface PriceIndicatorProps {
   isLoading: boolean;
   lastUpdated: Date | null;
   error: string | null;
+  isCached?: boolean;
   onRefresh: () => void;
 }
 
-export function PriceIndicator({ isLoading, lastUpdated, error, onRefresh }: PriceIndicatorProps) {
+export function PriceIndicator({ isLoading, lastUpdated, error, isCached, onRefresh }: PriceIndicatorProps) {
   const formatLastUpdated = () => {
     if (!lastUpdated) return 'Never';
     const now = new Date();
@@ -22,28 +23,57 @@ export function PriceIndicator({ isLoading, lastUpdated, error, onRefresh }: Pri
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
+  const getStatusColor = () => {
+    if (error) return 'bg-destructive/20 text-destructive';
+    if (isCached) return 'bg-warning/20 text-warning';
+    return 'bg-success/20 text-success';
+  };
+
+  const getStatusIcon = () => {
+    if (error) return <WifiOff className="w-3 h-3" />;
+    if (isCached) return <Database className="w-3 h-3" />;
+    return <Radio className="w-3 h-3" />;
+  };
+
+  const getStatusLabel = () => {
+    if (error) return 'Offline';
+    if (isCached) return 'Cached';
+    return 'Live';
+  };
+
   return (
     <TooltipProvider>
       <div className="flex items-center gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
             <div className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs',
-              error ? 'bg-danger/20 text-danger' : 'bg-success/20 text-success'
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+              getStatusColor()
             )}>
-              {error ? (
-                <WifiOff className="w-3 h-3" />
-              ) : (
-                <Wifi className="w-3 h-3" />
-              )}
-              <span className="hidden sm:inline">{formatLastUpdated()}</span>
+              {getStatusIcon()}
+              <span className="hidden sm:inline">{getStatusLabel()}</span>
+              <span className="text-[10px] opacity-75">• {formatLastUpdated()}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Live prices: {error ? 'Offline' : 'Connected'}</p>
-            <p className="text-xs text-muted-foreground">
-              Last updated: {lastUpdated?.toLocaleTimeString() || 'Never'}
-            </p>
+            <div className="space-y-1">
+              <p className="font-medium">
+                {error ? 'Connection Error' : isCached ? 'Using Cached Prices' : 'Live Prices Active'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {error 
+                  ? 'Unable to fetch live prices. Using last known values.'
+                  : isCached 
+                    ? 'Prices loaded from cache. Fetching live data...'
+                    : 'Prices are updating in real-time.'
+                }
+              </p>
+              {lastUpdated && (
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </p>
+              )}
+            </div>
           </TooltipContent>
         </Tooltip>
 
@@ -53,7 +83,7 @@ export function PriceIndicator({ isLoading, lastUpdated, error, onRefresh }: Pri
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={onRefresh}
+              onClick={() => onRefresh()}
               disabled={isLoading}
             >
               <motion.div
