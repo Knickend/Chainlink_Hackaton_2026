@@ -32,16 +32,6 @@ serve(async (req) => {
   }
 
   try {
-    const { query } = await req.json();
-    
-    if (!query || typeof query !== 'string' || query.length < 1) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Query is required (min 1 character)' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const sanitizedQuery = query.trim().slice(0, 50);
 
     const apiKey = Deno.env.get('PERPLEXITY_API_KEY');
     if (!apiKey) {
@@ -52,24 +42,44 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Searching for ticker: "${sanitizedQuery}"`);
+    // Parse optional asset type filter from request body
+    const body = await req.json().catch(() => ({}));
+    const { query: rawQuery, assetType } = body;
+    const query = rawQuery || body.query;
+    
+    if (!query || typeof query !== 'string' || query.length < 1) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Query is required (min 1 character)' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const response = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a financial data assistant. Return ONLY valid JSON arrays with no additional text or markdown formatting.'
-          },
-          {
-            role: 'user',
-            content: `Search for stocks and ETFs matching "${sanitizedQuery}". Return up to 5 results.
+    const sanitizedQuery = query.trim().slice(0, 50);
+    const searchType = assetType === 'crypto' ? 'crypto' : 'stocks';
+    
+    console.log(`Searching for ${searchType}: "${sanitizedQuery}"`);
+
+    const systemPrompt = 'You are a financial data assistant. Return ONLY valid JSON arrays with no additional text or markdown formatting.';
+    
+    const userPrompt = searchType === 'crypto' 
+      ? `Search for cryptocurrencies matching "${sanitizedQuery}". Return up to 8 results.
+
+Return ONLY a JSON array in this exact format with no markdown:
+[{"symbol": "BTC", "name": "Bitcoin", "type": "Crypto", "exchange": "Crypto", "price": 97000.00, "change": 1500.00, "changePercent": 1.57}]
+
+Include popular cryptocurrencies that match the query by name or symbol. Examples: Bitcoin (BTC), Ethereum (ETH), Chainlink (LINK), Solana (SOL), Cardano (ADA), Polkadot (DOT), Avalanche (AVAX), Polygon (MATIC), etc.
+
+Include:
+- symbol: the ticker symbol (uppercase, e.g., BTC, ETH, SOL)
+- name: full cryptocurrency name
+- type: always "Crypto"
+- exchange: always "Crypto"
+- price: current price in USD (number)
+- change: 24h price change in USD (number, can be negative)
+- changePercent: 24h percentage change (number, can be negative)
+
+If no matches found, return an empty array: []`
+      : `Search for stocks and ETFs matching "${sanitizedQuery}". Return up to 5 results.
 
 Return ONLY a JSON array in this exact format with no markdown:
 [{"symbol": "AAPL", "name": "Apple Inc.", "type": "Stock", "exchange": "NASDAQ", "price": 178.50, "change": 2.30, "changePercent": 1.31}]
@@ -83,8 +93,19 @@ Include:
 - change: price change today in USD (number, can be negative)
 - changePercent: percentage change today (number, can be negative)
 
-If no matches found, return an empty array: []`
-          }
+If no matches found, return an empty array: []`;
+
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'sonar',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
         ],
         temperature: 0.1,
         max_tokens: 500,
@@ -137,10 +158,10 @@ If no matches found, return an empty array: []`
     }
 
     // Validate and sanitize results
-    const validatedResults = results.slice(0, 5).map((r) => ({
+    const validatedResults = results.slice(0, 8).map((r) => ({
       symbol: String(r.symbol || '').toUpperCase().slice(0, 10),
       name: String(r.name || '').slice(0, 100),
-      type: r.type === 'ETF' ? 'ETF' : 'Stock',
+      type: r.type === 'ETF' ? 'ETF' : (r.type === 'Crypto' ? 'Crypto' : 'Stock'),
       exchange: String(r.exchange || '').slice(0, 20),
       price: typeof r.price === 'number' ? r.price : undefined,
       change: typeof r.change === 'number' ? r.change : undefined,

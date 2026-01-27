@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Asset, AssetCategory } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
+import { TickerSearchInput } from './TickerSearchInput';
+import { TickerResult } from '@/hooks/useTickerSearch';
 
 const assetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -26,6 +28,7 @@ interface EditAssetDialogProps {
   asset: Asset;
   onUpdate: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
   livePrices?: LivePrices;
+  onCryptoPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
 }
 
 const categories: { value: AssetCategory; label: string }[] = [
@@ -35,26 +38,24 @@ const categories: { value: AssetCategory; label: string }[] = [
   { value: 'metals', label: 'Precious Metals' },
 ];
 
-const cryptoSymbols = ['BTC', 'ETH', 'LINK'];
 const metalSymbols = ['GOLD', 'SILVER'];
 
 function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number | null {
   if (!symbol || !prices) return null;
   const upperSymbol = symbol.toUpperCase();
   switch (upperSymbol) {
-    case 'BTC': return prices.btc;
-    case 'ETH': return prices.eth;
-    case 'LINK': return prices.link;
     case 'GOLD': return prices.gold;
     case 'SILVER': return prices.silver;
     default:
-      // Stock/ETF prices cached in the LivePrices hook
+      // Stock/ETF/Crypto prices cached in the LivePrices hook
       return prices.stocks?.[upperSymbol]?.price ?? null;
   }
 }
 
-export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialogProps) {
+export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpdate }: EditAssetDialogProps) {
   const [open, setOpen] = useState(false);
+  const [selectedTicker, setSelectedTicker] = useState<TickerResult | null>(null);
+  
   const form = useForm<AssetFormData>({
     resolver: zodResolver(assetSchema),
     defaultValues: {
@@ -74,6 +75,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
   const isMarketPricedCategory = selectedCategory === 'crypto' || selectedCategory === 'metals' || selectedCategory === 'stocks';
   const isPriceAvailable = currentPrice !== null && isMarketPricedCategory;
+  const isCryptoTickerPriceAvailable = selectedCategory === 'crypto' && typeof selectedTicker?.price === 'number';
 
   useEffect(() => {
     if (open) {
@@ -85,6 +87,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
         symbol: asset.symbol,
         yield: asset.yield,
       });
+      setSelectedTicker(null);
     }
   }, [open, asset, form]);
 
@@ -95,13 +98,43 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
     }
   }, [quantity, currentPrice, isPriceAvailable, form]);
 
+  // Auto-calculate value for crypto ticker
+  useEffect(() => {
+    if (isCryptoTickerPriceAvailable && typeof quantity === 'number' && typeof selectedTicker?.price === 'number') {
+      form.setValue('value', quantity * selectedTicker.price);
+    }
+  }, [quantity, selectedTicker, isCryptoTickerPriceAvailable, form]);
+
+  const handleTickerSelect = (ticker: TickerResult) => {
+    setSelectedTicker(ticker);
+    form.setValue('symbol', ticker.symbol);
+    form.setValue('name', ticker.name);
+    
+    if (ticker.price && onCryptoPriceUpdate) {
+      onCryptoPriceUpdate(ticker.symbol, ticker.price, ticker.change || 0, ticker.changePercent || 0);
+    }
+    
+    const currentQuantity = form.getValues('quantity');
+    if (typeof ticker.price === 'number' && typeof currentQuantity === 'number') {
+      form.setValue('value', currentQuantity * ticker.price);
+    }
+  };
+
   const onSubmit = (data: AssetFormData) => {
+    // Determine best price source
+    let priceForComputation: number | null = null;
+    if (selectedCategory === 'crypto' && selectedTicker?.price) {
+      priceForComputation = selectedTicker.price;
+    } else {
+      priceForComputation = getSymbolPrice(data.symbol, livePrices);
+    }
+    
     const computedValue = (
       isMarketPricedCategory &&
       typeof data.quantity === 'number' &&
-      typeof getSymbolPrice(data.symbol, livePrices) === 'number'
+      typeof priceForComputation === 'number'
     )
-      ? (data.quantity * (getSymbolPrice(data.symbol, livePrices) as number))
+      ? (data.quantity * priceForComputation)
       : data.value;
 
     onUpdate(asset.id, {
@@ -109,6 +142,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
       value: computedValue,
     });
     setOpen(false);
+    setSelectedTicker(null);
   };
 
   return (
@@ -164,74 +198,114 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
             />
 
             {selectedCategory === 'crypto' && (
-              <FormField
-                control={form.control}
-                name="symbol"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cryptocurrency</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
-                      <FormControl>
-                        <SelectTrigger className="bg-secondary/50">
-                          <SelectValue placeholder="Select crypto" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {cryptoSymbols.map((sym) => (
-                          <SelectItem key={sym} value={sym}>
-                            {sym} {livePrices && `($${getSymbolPrice(sym, livePrices)?.toLocaleString()})`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {selectedCategory === 'metals' && (
-              <FormField
-                control={form.control}
-                name="symbol"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Metal</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
-                      <FormControl>
-                        <SelectTrigger className="bg-secondary/50">
-                          <SelectValue placeholder="Select metal" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {metalSymbols.map((sym) => (
-                          <SelectItem key={sym} value={sym}>
-                            {sym} {livePrices && `($${getSymbolPrice(sym, livePrices)?.toLocaleString()}/oz)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {(selectedCategory === 'crypto' || selectedCategory === 'metals') && (
               <>
+                <FormField
+                  control={form.control}
+                  name="symbol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Search Cryptocurrency</FormLabel>
+                      <FormControl>
+                        <TickerSearchInput
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          onSelect={handleTickerSelect}
+                          placeholder="Search by name or symbol (BTC, ETH...)"
+                          assetType="crypto"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        {selectedCategory === 'crypto' ? 'Amount' : 'Quantity (oz)'}
-                      </FormLabel>
+                      <FormLabel>Amount</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
-                          step={selectedCategory === 'crypto' ? '0.000001' : '0.01'}
-                          placeholder={selectedCategory === 'crypto' ? '0.5' : '10'}
+                          step="0.000001"
+                          placeholder="0.5"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                          className="bg-secondary/50"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {(isCryptoTickerPriceAvailable || isPriceAvailable) && (
+                  <div className="space-y-2 p-3 rounded-lg bg-secondary/30">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Current Price</span>
+                      <span className="font-mono text-success">
+                        ${(selectedTicker?.price ?? currentPrice)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    {selectedTicker?.changePercent !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">24h Change</span>
+                        <span className={`font-mono ${selectedTicker.changePercent >= 0 ? 'text-success' : 'text-destructive'}`}>
+                          {selectedTicker.changePercent >= 0 ? '+' : ''}{selectedTicker.changePercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm border-t border-border/50 pt-2">
+                      <span className="text-muted-foreground">Total Value</span>
+                      <span className="font-mono font-semibold">
+                        ${((quantity || 0) * (selectedTicker?.price ?? currentPrice ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {selectedCategory === 'metals' && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="symbol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Metal</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ''}>
+                        <FormControl>
+                          <SelectTrigger className="bg-secondary/50">
+                            <SelectValue placeholder="Select metal" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {metalSymbols.map((sym) => (
+                            <SelectItem key={sym} value={sym}>
+                              {sym} {livePrices && `($${getSymbolPrice(sym, livePrices)?.toLocaleString()}/oz)`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="quantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Quantity (oz)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="10"
                           {...field}
                           value={field.value ?? ''}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
@@ -248,7 +322,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices }: EditAssetDialog
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Current Price</span>
                       <span className="font-mono text-success">
-                        ${currentPrice?.toLocaleString()}{selectedCategory === 'metals' ? '/oz' : ''}
+                        ${currentPrice?.toLocaleString()}/oz
                       </span>
                     </div>
                     <div className="flex justify-between text-sm border-t border-border/50 pt-2">

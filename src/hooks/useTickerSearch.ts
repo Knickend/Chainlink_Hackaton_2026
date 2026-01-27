@@ -5,19 +5,21 @@ import { useDebounce } from '@/hooks/useDebounce';
 export interface TickerResult {
   symbol: string;
   name: string;
-  type: 'Stock' | 'ETF';
+  type: 'Stock' | 'ETF' | 'Crypto';
   exchange: string;
   price?: number;
   change?: number;
   changePercent?: number;
 }
 
+export type AssetSearchType = 'stocks' | 'crypto';
+
 export function useTickerSearch() {
   const [results, setResults] = useState<TickerResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const search = useCallback(async (query: string) => {
+  const search = useCallback(async (query: string, assetType: AssetSearchType = 'stocks') => {
     if (!query || query.length < 1) {
       setResults([]);
       setError(null);
@@ -29,7 +31,7 @@ export function useTickerSearch() {
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('search-ticker', {
-        body: { query },
+        body: { query, assetType },
       });
 
       if (fnError) {
