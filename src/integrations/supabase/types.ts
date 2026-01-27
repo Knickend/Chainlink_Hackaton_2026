@@ -113,6 +113,42 @@ export type Database = {
         }
         Relationships: []
       }
+      price_cache: {
+        Row: {
+          asset_type: string
+          change: number | null
+          change_percent: number | null
+          created_at: string
+          id: string
+          price: number
+          price_unit: string | null
+          symbol: string
+          updated_at: string
+        }
+        Insert: {
+          asset_type?: string
+          change?: number | null
+          change_percent?: number | null
+          created_at?: string
+          id?: string
+          price: number
+          price_unit?: string | null
+          symbol: string
+          updated_at?: string
+        }
+        Update: {
+          asset_type?: string
+          change?: number | null
+          change_percent?: number | null
+          created_at?: string
+          id?: string
+          price?: number
+          price_unit?: string | null
+          symbol?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

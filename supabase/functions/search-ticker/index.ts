@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  // Allow Supabase client metadata headers used by supabase-js in the browser.
   'Access-Control-Allow-Headers': [
     'authorization',
     'x-client-info',
@@ -27,12 +27,17 @@ interface TickerResult {
   priceUnit?: string;
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const apiKey = Deno.env.get('PERPLEXITY_API_KEY');
     if (!apiKey) {
@@ -43,7 +48,6 @@ serve(async (req) => {
       );
     }
 
-    // Parse optional asset type filter from request body
     const body = await req.json().catch(() => ({}));
     const { query: rawQuery, assetType } = body;
     const query = rawQuery || body.query;
@@ -198,6 +202,30 @@ If no matches found, return an empty array: []`;
     })).filter((r) => r.symbol && r.name);
 
     console.log('Returning results:', validatedResults);
+
+    // Cache the prices in background
+    for (const result of validatedResults) {
+      if (result.price !== undefined) {
+        const assetTypeForCache = result.type === 'Crypto' ? 'crypto' : 
+                                   result.type === 'Commodity' ? 'commodity' : 'stock';
+        await supabase
+          .from('price_cache')
+          .upsert(
+            {
+              symbol: result.symbol,
+              price: result.price,
+              change: result.change,
+              change_percent: result.changePercent,
+              price_unit: result.priceUnit,
+              asset_type: assetTypeForCache,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'symbol' }
+          );
+      }
+    }
+
+    console.log('Cached search results');
 
     return new Response(
       JSON.stringify({ success: true, data: validatedResults }),

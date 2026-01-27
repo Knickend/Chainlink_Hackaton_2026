@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  // Allow Supabase client metadata headers used by supabase-js in the browser.
   'Access-Control-Allow-Headers': [
     'authorization',
     'x-client-info',
@@ -25,12 +25,46 @@ interface PriceData {
   timestamp: string;
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check cache first
+    const symbols = ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER'];
+    const { data: cachedPrices, error: cacheError } = await supabase
+      .from('price_cache')
+      .select('*')
+      .in('symbol', symbols);
+
+    if (!cacheError && cachedPrices && cachedPrices.length === symbols.length) {
+      const oldestUpdate = Math.min(...cachedPrices.map(p => new Date(p.updated_at).getTime()));
+      const isCacheValid = Date.now() - oldestUpdate < CACHE_TTL_MS;
+
+      if (isCacheValid) {
+        console.log('Returning cached prices');
+        const result: PriceData = {
+          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 96000,
+          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 3200,
+          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 22,
+          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 2650,
+          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 30,
+          timestamp: new Date(oldestUpdate).toISOString(),
+        };
+        return new Response(
+          JSON.stringify({ success: true, data: result, cached: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const apiKey = Deno.env.get('PERPLEXITY_API_KEY');
     if (!apiKey) {
       console.error('PERPLEXITY_API_KEY not configured');
@@ -109,7 +143,6 @@ Replace NUMBER with the actual current USD price as a number (no quotes, no curr
       prices = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error('Failed to parse prices JSON:', parseError, 'Content:', jsonStr);
-      // Return fallback prices
       prices = {
         btc: 96000,
         eth: 3200,
@@ -130,8 +163,28 @@ Replace NUMBER with the actual current USD price as a number (no quotes, no curr
 
     console.log('Returning prices:', result);
 
+    // Update cache in background
+    const cacheUpdates = [
+      { symbol: 'BTC', price: result.btc, asset_type: 'crypto' },
+      { symbol: 'ETH', price: result.eth, asset_type: 'crypto' },
+      { symbol: 'LINK', price: result.link, asset_type: 'crypto' },
+      { symbol: 'GOLD', price: result.gold, asset_type: 'commodity' },
+      { symbol: 'SILVER', price: result.silver, asset_type: 'commodity' },
+    ];
+
+    for (const update of cacheUpdates) {
+      await supabase
+        .from('price_cache')
+        .upsert(
+          { ...update, updated_at: new Date().toISOString() },
+          { onConflict: 'symbol' }
+        );
+    }
+
+    console.log('Cache updated');
+
     return new Response(
-      JSON.stringify({ success: true, data: result, citations: data.citations || [] }),
+      JSON.stringify({ success: true, data: result, citations: data.citations || [], cached: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
