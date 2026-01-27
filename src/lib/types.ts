@@ -34,11 +34,11 @@ export interface PortfolioMetrics {
   yearlyYield: number;
 }
 
-// Conversion rates (would be fetched from API in production)
-export const CONVERSION_RATES: Record<DisplayUnit, number> = {
+// Default conversion rates (updated dynamically with live prices)
+export const DEFAULT_CONVERSION_RATES: Record<DisplayUnit, number> = {
   USD: 1,
-  BTC: 0.0000104, // 1 USD = X BTC
-  GOLD: 0.000385, // 1 USD = X oz of gold
+  BTC: 0.0000104, // 1 USD = X BTC (based on ~96k BTC)
+  GOLD: 0.000377, // 1 USD = X oz of gold (based on ~2650/oz)
   EUR: 0.92,
   GBP: 0.79,
 };
@@ -50,3 +50,14 @@ export const UNIT_SYMBOLS: Record<DisplayUnit, string> = {
   EUR: '€',
   GBP: '£',
 };
+
+// Helper to calculate conversion rates from live prices
+export function calculateConversionRates(btcPrice: number, goldPrice: number): Record<DisplayUnit, number> {
+  return {
+    USD: 1,
+    BTC: 1 / btcPrice,
+    GOLD: 1 / goldPrice,
+    EUR: 0.92,
+    GBP: 0.79,
+  };
+}

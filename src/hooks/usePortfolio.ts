@@ -1,12 +1,20 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Asset, Income, Expense, DisplayUnit, PortfolioMetrics, CONVERSION_RATES, UNIT_SYMBOLS } from '@/lib/types';
+import { Asset, Income, Expense, DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates } from '@/lib/types';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
+import { LivePrices } from './useLivePrices';
 
-export function usePortfolio() {
+export function usePortfolio(livePrices?: LivePrices) {
   const [assets, setAssets] = useState<Asset[]>(mockAssets);
   const [income, setIncome] = useState<Income[]>(mockIncome);
   const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
   const [displayUnit, setDisplayUnit] = useState<DisplayUnit>('USD');
+
+  const conversionRates = useMemo(() => {
+    if (livePrices) {
+      return calculateConversionRates(livePrices.btc, livePrices.gold);
+    }
+    return DEFAULT_CONVERSION_RATES;
+  }, [livePrices]);
 
   const metrics: PortfolioMetrics = useMemo(() => {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
@@ -49,7 +57,7 @@ export function usePortfolio() {
   }, [assetsByCategory]);
 
   const convertValue = (valueInUSD: number): number => {
-    return valueInUSD * CONVERSION_RATES[displayUnit];
+    return valueInUSD * conversionRates[displayUnit];
   };
 
   const formatValue = (valueInUSD: number, showDecimals = true): string => {
