@@ -79,18 +79,18 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate }: AddAss
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
   const isPriceAvailable = currentPrice !== null && (selectedCategory === 'crypto' || selectedCategory === 'metals');
-  const isStockPriceAvailable = selectedCategory === 'stocks' && selectedTicker?.price;
+  const isStockPriceAvailable = selectedCategory === 'stocks' && typeof selectedTicker?.price === 'number';
   
   // Auto-calculate value when quantity and price are available
   useEffect(() => {
-    if (isPriceAvailable && quantity && currentPrice) {
+    if (isPriceAvailable && typeof quantity === 'number' && typeof currentPrice === 'number') {
       form.setValue('value', quantity * currentPrice);
     }
   }, [quantity, currentPrice, isPriceAvailable, form]);
 
   // Auto-calculate value for stocks when quantity changes
   useEffect(() => {
-    if (isStockPriceAvailable && quantity && selectedTicker?.price) {
+    if (isStockPriceAvailable && typeof quantity === 'number' && typeof selectedTicker?.price === 'number') {
       form.setValue('value', quantity * selectedTicker.price);
     }
   }, [quantity, selectedTicker, isStockPriceAvailable, form]);
@@ -107,7 +107,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate }: AddAss
     
     // Auto-calculate value if quantity is set
     const currentQuantity = form.getValues('quantity');
-    if (ticker.price && currentQuantity) {
+    if (typeof ticker.price === 'number' && typeof currentQuantity === 'number') {
       form.setValue('value', currentQuantity * ticker.price);
     }
   };
