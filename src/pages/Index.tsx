@@ -114,7 +114,6 @@ const Index = () => {
               error={pricesError}
               onRefresh={refetchPrices}
             />
-            {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
             <ThemeToggle />
             {isDemo ? (
@@ -185,7 +184,10 @@ const Index = () => {
 
         {/* Asset Categories */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Assets by Category</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Assets by Category</h2>
+            {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
+          </div>
           {categoryTotals.length === 0 ? (
             <div className="glass-card rounded-xl p-8 text-center">
               <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
