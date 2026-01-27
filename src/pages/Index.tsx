@@ -68,7 +68,7 @@ const Index = () => {
               error={pricesError}
               onRefresh={refetchPrices}
             />
-            <AddAssetDialog onAdd={addAsset} />
+            <AddAssetDialog onAdd={addAsset} livePrices={prices} />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
           </div>
         </motion.header>
@@ -129,6 +129,7 @@ const Index = () => {
                 formatValue={formatValue}
                 onUpdateAsset={updateAsset}
                 onDeleteAsset={deleteAsset}
+                livePrices={prices}
                 delay={index * 0.1}
               />
             ))}
