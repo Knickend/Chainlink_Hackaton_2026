@@ -27,7 +27,7 @@ import { AssetCategory } from '@/lib/types';
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices } = useLivePrices();
+  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, refetch: refetchPrices, addStockPrice } = useLivePrices();
   
   // Subscription state (mockup)
   const [isPro, setIsPro] = useState(false);
@@ -195,7 +195,7 @@ const Index = () => {
                 onDeleteAsset={isDemo ? undefined : deleteAsset}
                 livePrices={prices}
               />
-              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} />}
+              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} />}
             </div>
           </div>
           {categoryTotals.length === 0 ? (

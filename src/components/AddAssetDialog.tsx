@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AssetCategory } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
+import { TickerSearchInput } from './TickerSearchInput';
+import { TickerResult } from '@/hooks/useTickerSearch';
 
 const assetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -26,6 +28,7 @@ type AssetFormData = z.infer<typeof assetSchema>;
 interface AddAssetDialogProps {
   onAdd: (asset: AssetFormData) => void;
   livePrices?: LivePrices;
+  onStockPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
 }
 
 const categoryOptions: { value: AssetCategory; label: string }[] = [
@@ -47,12 +50,16 @@ function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number
     case 'LINK': return prices.link;
     case 'GOLD': return prices.gold;
     case 'SILVER': return prices.silver;
-    default: return null;
+    default:
+      // Check if it's a stock price
+      return prices.stocks?.[upperSymbol]?.price ?? null;
   }
 }
 
-export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
+export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate }: AddAssetDialogProps) {
   const [open, setOpen] = useState(false);
+  const [selectedTicker, setSelectedTicker] = useState<TickerResult | null>(null);
+  
   const form = useForm<AssetFormData>({
     resolver: zodResolver(assetSchema),
     defaultValues: {
@@ -72,6 +79,7 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
   const isPriceAvailable = currentPrice !== null && (selectedCategory === 'crypto' || selectedCategory === 'metals');
+  const isStockPriceAvailable = selectedCategory === 'stocks' && selectedTicker?.price;
   
   // Auto-calculate value when quantity and price are available
   useEffect(() => {
@@ -80,14 +88,47 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
     }
   }, [quantity, currentPrice, isPriceAvailable, form]);
 
+  // Auto-calculate value for stocks when quantity changes
+  useEffect(() => {
+    if (isStockPriceAvailable && quantity && selectedTicker?.price) {
+      form.setValue('value', quantity * selectedTicker.price);
+    }
+  }, [quantity, selectedTicker, isStockPriceAvailable, form]);
+
+  const handleTickerSelect = (ticker: TickerResult) => {
+    setSelectedTicker(ticker);
+    form.setValue('symbol', ticker.symbol);
+    form.setValue('name', ticker.name);
+    
+    // Store the stock price
+    if (ticker.price && onStockPriceUpdate) {
+      onStockPriceUpdate(ticker.symbol, ticker.price, ticker.change || 0, ticker.changePercent || 0);
+    }
+    
+    // Auto-calculate value if quantity is set
+    const currentQuantity = form.getValues('quantity');
+    if (ticker.price && currentQuantity) {
+      form.setValue('value', currentQuantity * ticker.price);
+    }
+  };
+
   const onSubmit = (data: AssetFormData) => {
     onAdd(data);
     form.reset();
+    setSelectedTicker(null);
     setOpen(false);
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      form.reset();
+      setSelectedTicker(null);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2 glass-card border-primary/30 hover:border-primary/50">
           <Plus className="w-4 h-4" />
@@ -102,25 +143,16 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Asset Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Chase Savings" {...field} className="bg-secondary/50" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="category"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={(value) => {
+                    field.onChange(value);
+                    setSelectedTicker(null);
+                    form.setValue('symbol', '');
+                    form.setValue('name', '');
+                  }} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-secondary/50">
                         <SelectValue placeholder="Select category" />
@@ -134,6 +166,46 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {selectedCategory === 'stocks' && (
+              <FormField
+                control={form.control}
+                name="symbol"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Search Stock/ETF</FormLabel>
+                    <FormControl>
+                      <TickerSearchInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onSelect={handleTickerSelect}
+                        placeholder="Search by name or symbol..."
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Asset Name</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder={selectedCategory === 'stocks' ? 'Auto-filled from search' : 'e.g., Chase Savings'} 
+                      {...field} 
+                      className="bg-secondary/50"
+                      readOnly={selectedCategory === 'stocks' && !!selectedTicker}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -238,7 +310,103 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
               </>
             )}
 
-            {(selectedCategory === 'banking' || selectedCategory === 'stocks') && (
+            {selectedCategory === 'stocks' && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="quantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Shares</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="1"
+                          placeholder="100"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                          className="bg-secondary/50"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {isStockPriceAvailable && selectedTicker && (
+                  <div className="space-y-2 rounded-lg bg-secondary/30 p-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Current Price</span>
+                      <span className="font-mono text-success">
+                        ${selectedTicker.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    {selectedTicker.changePercent !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Today's Change</span>
+                        <span className={`font-mono ${selectedTicker.changePercent >= 0 ? 'text-success' : 'text-destructive'}`}>
+                          {selectedTicker.changePercent >= 0 ? '+' : ''}{selectedTicker.changePercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm border-t border-border/50 pt-2">
+                      <span className="text-muted-foreground">Total Value</span>
+                      <span className="font-mono font-semibold">
+                        ${((quantity || 0) * (selectedTicker.price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {!selectedTicker && (
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Value (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="10000"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="yield"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dividend Yield (%)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="2.5"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                          className="bg-secondary/50"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
+
+            {selectedCategory === 'banking' && (
               <>
                 <FormField
                   control={form.control}
@@ -268,7 +436,29 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
                     <FormItem>
                       <FormLabel>Symbol (optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., AAPL" {...field} className="bg-secondary/50" />
+                        <Input placeholder="e.g., SAVINGS" {...field} className="bg-secondary/50" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="yield"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Interest Rate (%)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="4.5"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                          className="bg-secondary/50"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -289,56 +479,6 @@ export function AddAssetDialog({ onAdd, livePrices }: AddAssetDialogProps) {
                         type="number"
                         step="0.1"
                         placeholder="4.5"
-                        {...field}
-                        value={field.value ?? ''}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                        className="bg-secondary/50"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {(selectedCategory === 'banking' || selectedCategory === 'stocks') && (
-              <FormField
-                control={form.control}
-                name="yield"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {selectedCategory === 'banking' ? 'Interest Rate (%)' : 'Dividend Yield (%)'}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="4.5"
-                        {...field}
-                        value={field.value ?? ''}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                        className="bg-secondary/50"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {selectedCategory === 'stocks' && (
-              <FormField
-                control={form.control}
-                name="quantity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Shares</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="1"
-                        placeholder="100"
                         {...field}
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
