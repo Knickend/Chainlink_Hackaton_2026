@@ -1,1 +1,7 @@
 project_id = "edtudwkmswyjxamkdkbu"
+
+[functions.fetch-prices]
+verify_jwt = false
+
+[functions.search-ticker]
+verify_jwt = false
