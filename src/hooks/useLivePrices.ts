@@ -9,6 +9,7 @@ export interface LivePrices {
   gold: number;
   silver: number;
   timestamp: string;
+  stocks?: Record<string, { price: number; change: number; changePercent: number }>;
 }
 
 const DEFAULT_PRICES: LivePrices = {
@@ -18,6 +19,7 @@ const DEFAULT_PRICES: LivePrices = {
   gold: 2650,
   silver: 30,
   timestamp: new Date().toISOString(),
+  stocks: {},
 };
 
 export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 min
@@ -39,7 +41,10 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
       }
 
       if (data?.success && data?.data) {
-        setPrices(data.data);
+        setPrices((prev) => ({
+          ...data.data,
+          stocks: prev.stocks, // Preserve stock prices
+        }));
         setLastUpdated(new Date(data.data.timestamp));
       } else if (data?.error) {
         throw new Error(data.error);
@@ -58,6 +63,17 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
     }
   }, [toast]);
 
+  // Add or update a stock price
+  const addStockPrice = useCallback((symbol: string, price: number, change: number, changePercent: number) => {
+    setPrices((prev) => ({
+      ...prev,
+      stocks: {
+        ...prev.stocks,
+        [symbol.toUpperCase()]: { price, change, changePercent },
+      },
+    }));
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchPrices();
@@ -75,5 +91,6 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) { // Default 5 mi
     lastUpdated,
     error,
     refetch: fetchPrices,
+    addStockPrice,
   };
 }
