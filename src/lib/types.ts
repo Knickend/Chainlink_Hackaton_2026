@@ -2,14 +2,63 @@ export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'metals';
 
 export type DisplayUnit = 'USD' | 'BTC' | 'GOLD' | 'EUR' | 'GBP';
 
+export type BankingCurrency = 'USD' | 'EUR' | 'GBP' | 'CHF' | 'JPY' | 'CAD' | 'AUD' | 'CNY' | 'INR' | 'SGD' | 'HKD' | 'NZD' | 'SEK' | 'NOK' | 'DKK' | 'ZAR' | 'BRL' | 'MXN' | 'KRW' | 'THB';
+
+export const BANKING_CURRENCIES: { value: BankingCurrency; label: string; symbol: string }[] = [
+  { value: 'USD', label: 'US Dollar', symbol: '$' },
+  { value: 'EUR', label: 'Euro', symbol: '€' },
+  { value: 'GBP', label: 'British Pound', symbol: '£' },
+  { value: 'CHF', label: 'Swiss Franc', symbol: 'CHF' },
+  { value: 'JPY', label: 'Japanese Yen', symbol: '¥' },
+  { value: 'CAD', label: 'Canadian Dollar', symbol: 'C$' },
+  { value: 'AUD', label: 'Australian Dollar', symbol: 'A$' },
+  { value: 'CNY', label: 'Chinese Yuan', symbol: '¥' },
+  { value: 'INR', label: 'Indian Rupee', symbol: '₹' },
+  { value: 'SGD', label: 'Singapore Dollar', symbol: 'S$' },
+  { value: 'HKD', label: 'Hong Kong Dollar', symbol: 'HK$' },
+  { value: 'NZD', label: 'New Zealand Dollar', symbol: 'NZ$' },
+  { value: 'SEK', label: 'Swedish Krona', symbol: 'kr' },
+  { value: 'NOK', label: 'Norwegian Krone', symbol: 'kr' },
+  { value: 'DKK', label: 'Danish Krone', symbol: 'kr' },
+  { value: 'ZAR', label: 'South African Rand', symbol: 'R' },
+  { value: 'BRL', label: 'Brazilian Real', symbol: 'R$' },
+  { value: 'MXN', label: 'Mexican Peso', symbol: '$' },
+  { value: 'KRW', label: 'South Korean Won', symbol: '₩' },
+  { value: 'THB', label: 'Thai Baht', symbol: '฿' },
+];
+
+// Approximate forex rates to USD (updated periodically)
+export const FOREX_RATES_TO_USD: Record<BankingCurrency, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.27,
+  CHF: 1.13,
+  JPY: 0.0064,
+  CAD: 0.74,
+  AUD: 0.65,
+  CNY: 0.14,
+  INR: 0.012,
+  SGD: 0.74,
+  HKD: 0.13,
+  NZD: 0.60,
+  SEK: 0.095,
+  NOK: 0.093,
+  DKK: 0.145,
+  ZAR: 0.055,
+  BRL: 0.20,
+  MXN: 0.058,
+  KRW: 0.00073,
+  THB: 0.029,
+};
+
 export interface Asset {
   id: string;
   name: string;
   category: AssetCategory;
-  value: number; // in USD
+  value: number; // in USD (or original currency amount for banking with forex)
   yield?: number; // annual yield percentage
-  quantity?: number;
-  symbol?: string;
+  quantity?: number; // for banking, this stores the original currency amount
+  symbol?: string; // for banking, this stores the currency code (USD, EUR, etc.)
 }
 
 export interface Income {
@@ -60,4 +109,16 @@ export function calculateConversionRates(btcPrice: number, goldPrice: number): R
     EUR: 0.92,
     GBP: 0.79,
   };
+}
+
+// Helper to convert banking currency to USD
+export function convertToUSD(amount: number, currency: string): number {
+  const rate = FOREX_RATES_TO_USD[currency as BankingCurrency];
+  return rate ? amount * rate : amount;
+}
+
+// Helper to get currency symbol
+export function getCurrencySymbol(currency: string): string {
+  const curr = BANKING_CURRENCIES.find(c => c.value === currency);
+  return curr?.symbol || currency;
 }

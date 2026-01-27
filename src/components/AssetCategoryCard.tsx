@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Landmark, Bitcoin, TrendingUp, Gem, LucideIcon } from 'lucide-react';
-import { AssetCategory, Asset } from '@/lib/types';
+import { AssetCategory, Asset, getCurrencySymbol, BANKING_CURRENCIES } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditAssetDialog } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
@@ -63,32 +63,53 @@ export function AssetCategoryCard({
       </div>
 
       <div className="space-y-2">
-        {assets.slice(0, 3).map((asset) => (
-          <div
-            key={asset.id}
-            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
-          >
-            <div className="flex items-center gap-2">
-              {asset.symbol && (
-                <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
-              )}
-              <span className="text-sm">{asset.name}</span>
+        {assets.slice(0, 3).map((asset) => {
+          // For banking assets, show the original currency amount
+          const isBankingWithForex = category === 'banking' && asset.symbol && 
+            BANKING_CURRENCIES.some(c => c.value === asset.symbol);
+          const originalAmount = isBankingWithForex && asset.quantity 
+            ? `${getCurrencySymbol(asset.symbol!)}${asset.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : null;
+          
+          return (
+            <div
+              key={asset.id}
+              className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
+            >
+              <div className="flex items-center gap-2">
+                {asset.symbol && !isBankingWithForex && (
+                  <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
+                )}
+                {isBankingWithForex && (
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                    {asset.symbol}
+                  </span>
+                )}
+                <span className="text-sm">{asset.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <span className="font-mono text-sm">{formatValue(asset.value)}</span>
+                  {originalAmount && asset.symbol !== 'USD' && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({originalAmount})
+                    </span>
+                  )}
+                </div>
+                {onUpdateAsset && (
+                  <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} livePrices={livePrices} />
+                )}
+                {onDeleteAsset && (
+                  <DeleteConfirmDialog
+                    itemName={asset.name}
+                    itemType="asset"
+                    onConfirm={() => onDeleteAsset(asset.id)}
+                  />
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm">{formatValue(asset.value)}</span>
-              {onUpdateAsset && (
-                <EditAssetDialog asset={asset} onUpdate={onUpdateAsset} livePrices={livePrices} />
-              )}
-              {onDeleteAsset && (
-                <DeleteConfirmDialog
-                  itemName={asset.name}
-                  itemType="asset"
-                  onConfirm={() => onDeleteAsset(asset.id)}
-                />
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {assets.length > 3 && (
           <p className="text-xs text-center text-muted-foreground pt-1">
             +{assets.length - 3} more assets

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Asset, AssetCategory } from '@/lib/types';
+import { Asset, AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
 import { TickerSearchInput } from './TickerSearchInput';
 import { TickerResult } from '@/hooks/useTickerSearch';
@@ -20,6 +20,7 @@ const assetSchema = z.object({
   quantity: z.number().optional(),
   symbol: z.string().optional(),
   yield: z.number().min(0).max(100).optional(),
+  currency: z.string().optional(),
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
@@ -61,16 +62,19 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
     defaultValues: {
       name: asset.name,
       category: asset.category,
-      value: asset.value,
+      value: asset.category === 'banking' && asset.quantity ? asset.quantity : asset.value,
       quantity: asset.quantity,
       symbol: asset.symbol,
       yield: asset.yield,
+      currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
     },
   });
 
   const selectedCategory = form.watch('category');
   const selectedSymbol = form.watch('symbol');
   const quantity = form.watch('quantity');
+  const selectedCurrency = form.watch('currency') || 'USD';
+  const bankingAmount = form.watch('value');
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
   const isMarketPricedCategory = selectedCategory === 'crypto' || selectedCategory === 'metals' || selectedCategory === 'stocks';
@@ -82,10 +86,11 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
       form.reset({
         name: asset.name,
         category: asset.category,
-        value: asset.value,
+        value: asset.category === 'banking' && asset.quantity ? asset.quantity : asset.value,
         quantity: asset.quantity,
         symbol: asset.symbol,
         yield: asset.yield,
+        currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
       });
       setSelectedTicker(null);
     }
@@ -121,7 +126,22 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
   };
 
   const onSubmit = (data: AssetFormData) => {
-    // Determine best price source
+    // For banking, handle forex conversion
+    if (data.category === 'banking' && data.currency) {
+      const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
+      const usdValue = data.value * forexRate;
+      onUpdate(asset.id, {
+        ...data,
+        symbol: data.currency,
+        quantity: data.value,
+        value: usdValue,
+      });
+      setOpen(false);
+      setSelectedTicker(null);
+      return;
+    }
+    
+    // Determine best price source for other categories
     let priceForComputation: number | null = null;
     if (selectedCategory === 'crypto' && selectedTicker?.price) {
       priceForComputation = selectedTicker.price;
@@ -336,7 +356,73 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
               </>
             )}
 
-            {(selectedCategory === 'banking' || selectedCategory === 'stocks') && (
+            {selectedCategory === 'banking' && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || 'USD'}>
+                        <FormControl>
+                          <SelectTrigger className="bg-secondary/50">
+                            <SelectValue placeholder="Select currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="max-h-60 bg-popover">
+                          {BANKING_CURRENCIES.map((curr) => (
+                            <SelectItem key={curr.value} value={curr.value}>
+                              {curr.symbol} {curr.value} - {curr.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="value"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount ({getCurrencySymbol(selectedCurrency)})</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          className="bg-secondary/50"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {selectedCurrency !== 'USD' && bankingAmount > 0 && (
+                  <div className="space-y-2 rounded-lg bg-secondary/30 p-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Exchange Rate</span>
+                      <span className="font-mono">
+                        1 {selectedCurrency} = ${(FOREX_RATES_TO_USD[selectedCurrency as BankingCurrency] || 1).toFixed(4)} USD
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-border/50 pt-2">
+                      <span className="text-muted-foreground">USD Equivalent</span>
+                      <span className="font-mono font-semibold text-success">
+                        ${(bankingAmount * (FOREX_RATES_TO_USD[selectedCurrency as BankingCurrency] || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {selectedCategory === 'stocks' && (
               <>
                 <FormField
                   control={form.control}
@@ -350,7 +436,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
                           step="0.01"
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                          readOnly={selectedCategory === 'stocks' && isPriceAvailable}
+                          readOnly={isPriceAvailable}
                           className="bg-secondary/50"
                         />
                       </FormControl>

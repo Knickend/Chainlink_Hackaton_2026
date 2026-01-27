@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { AssetCategory } from '@/lib/types';
+import { AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
 import { TickerSearchInput } from './TickerSearchInput';
 import { TickerResult } from '@/hooks/useTickerSearch';
@@ -21,6 +21,7 @@ const assetSchema = z.object({
   symbol: z.string().max(10).optional(),
   yield: z.number().min(0).max(100).optional(),
   stakingRate: z.number().min(0).max(100).optional(),
+  currency: z.string().optional(), // For banking forex
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
@@ -67,12 +68,15 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       symbol: '',
       yield: undefined,
       stakingRate: undefined,
+      currency: 'USD',
     },
   });
 
   const selectedCategory = form.watch('category');
   const selectedSymbol = form.watch('symbol');
   const quantity = form.watch('quantity');
+  const selectedCurrency = form.watch('currency') || 'USD';
+  const bankingAmount = form.watch('value');
   
   const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
   const isPriceAvailable = currentPrice !== null && selectedCategory === 'metals';
@@ -115,7 +119,19 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
   };
 
   const onSubmit = (data: AssetFormData) => {
-    onAdd(data);
+    // For banking, store the currency in symbol and original amount in quantity
+    if (data.category === 'banking' && data.currency) {
+      const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
+      const usdValue = data.value * forexRate;
+      onAdd({
+        ...data,
+        symbol: data.currency, // Store currency code in symbol
+        quantity: data.value, // Store original amount in quantity
+        value: usdValue, // Store USD equivalent in value
+      });
+    } else {
+      onAdd(data);
+    }
     form.reset();
     setSelectedTicker(null);
     setOpen(false);
@@ -499,10 +515,35 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
               <>
                 <FormField
                   control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || 'USD'}>
+                        <FormControl>
+                          <SelectTrigger className="bg-secondary/50">
+                            <SelectValue placeholder="Select currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="max-h-60 bg-popover">
+                          {BANKING_CURRENCIES.map((curr) => (
+                            <SelectItem key={curr.value} value={curr.value}>
+                              {curr.symbol} {curr.value} - {curr.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="value"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Value (USD)</FormLabel>
+                      <FormLabel>Amount ({getCurrencySymbol(selectedCurrency)})</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -518,19 +559,22 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="symbol"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Symbol (optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., SAVINGS" {...field} className="bg-secondary/50" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {selectedCurrency !== 'USD' && bankingAmount > 0 && (
+                  <div className="space-y-2 rounded-lg bg-secondary/30 p-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Exchange Rate</span>
+                      <span className="font-mono">
+                        1 {selectedCurrency} = ${(FOREX_RATES_TO_USD[selectedCurrency as BankingCurrency] || 1).toFixed(4)} USD
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-border/50 pt-2">
+                      <span className="text-muted-foreground">USD Equivalent</span>
+                      <span className="font-mono font-semibold text-success">
+                        ${(bankingAmount * (FOREX_RATES_TO_USD[selectedCurrency as BankingCurrency] || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
