@@ -232,6 +232,8 @@ const Index = () => {
             <InvestmentStrategyCard
               freeMonthlyIncome={adjustedMonthlyNet}
               formatValue={formatValue}
+              debts={debts}
+              monthlyPayments={monthlyPayments}
               delay={0.3}
             />
           </div>

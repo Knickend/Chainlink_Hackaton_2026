@@ -1,20 +1,27 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Settings2, AlertTriangle, Plus } from 'lucide-react';
+import { TrendingUp, Settings2, AlertTriangle, Plus, AlertCircle, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 import { useInvestmentPreferences, InvestmentAllocation } from '@/hooks/useInvestmentPreferences';
 import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
+import { Debt } from '@/lib/types';
+import { analyzeDebts, calculateDebtAwareAllocations, DebtAnalysis, DebtAwareAllocation } from '@/lib/debtAnalysis';
 
 interface InvestmentStrategyCardProps {
   freeMonthlyIncome: number;
   formatValue: (value: number) => string;
+  debts?: Debt[];
+  monthlyPayments?: number;
   delay?: number;
 }
 
 export function InvestmentStrategyCard({
   freeMonthlyIncome,
   formatValue,
+  debts = [],
+  monthlyPayments = 0,
   delay = 0,
 }: InvestmentStrategyCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -27,7 +34,13 @@ export function InvestmentStrategyCard({
     hasPreferences,
   } = useInvestmentPreferences(freeMonthlyIncome);
 
-  const allocations = calculateAllocations();
+  const baseAllocations = calculateAllocations();
+  const debtAnalysis = analyzeDebts(debts, freeMonthlyIncome);
+  
+  // Calculate debt-aware allocations if there's priority debt
+  const allocations = debtAnalysis.hasPriorityDebt && hasPreferences
+    ? calculateDebtAwareAllocations(freeMonthlyIncome, debtAnalysis, baseAllocations)
+    : baseAllocations;
 
   if (loading) {
     return (
@@ -137,7 +150,7 @@ export function InvestmentStrategyCard({
     );
   }
 
-  // Show strategy
+  // Show strategy with debt awareness
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -169,7 +182,24 @@ export function InvestmentStrategyCard({
         />
       </div>
 
+      {/* Priority Debt Section */}
+      {debtAnalysis.hasPriorityDebt && (
+        <PriorityDebtSection 
+          debtAnalysis={debtAnalysis} 
+          formatValue={formatValue} 
+        />
+      )}
+
+      {/* Low Interest Debt Note */}
+      {!debtAnalysis.hasPriorityDebt && debts.length > 0 && (
+        <LowInterestDebtNote debts={debts} />
+      )}
+
+      {/* Allocations */}
       <div className="space-y-4">
+        <h4 className="text-sm font-medium text-muted-foreground">
+          {debtAnalysis.hasPriorityDebt ? 'Recommended Allocation' : 'Monthly Investment Allocation'}
+        </h4>
         {allocations.map((allocation, index) => (
           <AllocationRow
             key={allocation.category}
@@ -179,6 +209,11 @@ export function InvestmentStrategyCard({
           />
         ))}
       </div>
+
+      {/* Smart Tips */}
+      {debtAnalysis.tips.length > 0 && (
+        <SmartTipsSection tips={debtAnalysis.tips} />
+      )}
 
       <div className="mt-6 pt-4 border-t border-border">
         <div className="flex justify-between items-center">
@@ -190,15 +225,119 @@ export function InvestmentStrategyCard({
   );
 }
 
+function PriorityDebtSection({
+  debtAnalysis,
+  formatValue,
+}: {
+  debtAnalysis: DebtAnalysis;
+  formatValue: (value: number) => string;
+}) {
+  const topPriorityDebt = debtAnalysis.priorityDebts[0];
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="mb-6 p-4 rounded-lg bg-destructive/5 border border-destructive/20"
+    >
+      <div className="flex items-start gap-3">
+        <div className="p-2 rounded-lg bg-destructive/10">
+          <AlertCircle className="w-5 h-5 text-destructive" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="font-semibold text-sm">Priority: Pay Off High-Interest Debt</h4>
+            <Badge variant="destructive" className="text-xs">
+              {topPriorityDebt.debt.interest_rate}% APR
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mb-2">
+            {topPriorityDebt.debt.name}
+          </p>
+          {topPriorityDebt.potentialSavings > 0 && (
+            <div className="flex flex-wrap gap-3 text-xs">
+              <span className="text-muted-foreground">
+                Extra payments save{' '}
+                <span className="font-medium text-foreground">
+                  {formatValue(topPriorityDebt.potentialSavings)}
+                </span>{' '}
+                in interest
+              </span>
+              {topPriorityDebt.monthsSavedWithExtra > 0 && (
+                <span className="text-muted-foreground">
+                  Debt-free{' '}
+                  <span className="font-medium text-foreground">
+                    {topPriorityDebt.monthsSavedWithExtra} months
+                  </span>{' '}
+                  sooner
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function LowInterestDebtNote({ debts }: { debts: Debt[] }) {
+  const avgRate = debts.reduce((sum, d) => sum + d.interest_rate, 0) / debts.length;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="mb-6 p-3 rounded-lg bg-muted/50"
+    >
+      <p className="text-sm text-muted-foreground">
+        Your {avgRate.toFixed(1)}% average debt rate is below typical market returns — 
+        maintaining while investing makes sense.
+      </p>
+    </motion.div>
+  );
+}
+
+function SmartTipsSection({ tips }: { tips: string[] }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="mt-6 pt-4 border-t border-border"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Lightbulb className="w-4 h-4 text-warning" />
+        <h4 className="text-sm font-medium">Smart Tips</h4>
+      </div>
+      <ul className="space-y-2">
+        {tips.map((tip, index) => (
+          <motion.li
+            key={index}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 * index }}
+            className="text-sm text-muted-foreground flex items-start gap-2"
+          >
+            <span className="text-primary mt-1">•</span>
+            <span>{tip}</span>
+          </motion.li>
+        ))}
+      </ul>
+    </motion.div>
+  );
+}
+
 function AllocationRow({
   allocation,
   formatValue,
   index,
 }: {
-  allocation: InvestmentAllocation;
+  allocation: DebtAwareAllocation | InvestmentAllocation;
   formatValue: (value: number) => string;
   index: number;
 }) {
+  const isPriority = 'isPriority' in allocation && allocation.isPriority;
+  
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -207,7 +346,14 @@ function AllocationRow({
       className="space-y-2"
     >
       <div className="flex justify-between items-center text-sm">
-        <span className="font-medium">{allocation.category}</span>
+        <span className={`font-medium ${isPriority ? 'text-destructive' : ''}`}>
+          {allocation.category}
+          {isPriority && (
+            <Badge variant="destructive" className="ml-2 text-xs">
+              Priority
+            </Badge>
+          )}
+        </span>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">{allocation.percentage}%</span>
           <span className="font-medium">{formatValue(allocation.amount)}</span>
