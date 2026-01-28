@@ -43,15 +43,16 @@ const Index = () => {
   const navigate = useNavigate();
   const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
   
+  // Demo mode when user is not logged in
+  const isDemo = !user;
+  
   // Subscription state (mockup) - 'free' | 'standard' | 'pro'
-  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free');
+  // Demo mode shows Pro features to showcase full capabilities
+  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
   const isPro = subscriptionTier === 'pro';
   const isSubscribed = subscriptionTier !== 'free';
-  
-  // Demo mode when user is not logged in
-  const isDemo = !user;
   
   // First call to usePortfolio with undefined prices to get assets for symbol extraction
   const portfolioInitial = usePortfolio(undefined, isDemo);
