@@ -135,8 +135,8 @@ const Index = () => {
         >
           <div className="flex items-center gap-2">
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              <span className="gradient-text">Wealth</span>
-              <span className="text-foreground">Manager</span>
+              <span className="gradient-text">In</span>
+              <span className="text-foreground">Control</span>
             </h1>
             {isPro && <ProBadge />}
           </div>

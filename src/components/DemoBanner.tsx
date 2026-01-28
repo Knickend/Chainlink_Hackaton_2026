@@ -15,7 +15,7 @@ export function DemoBanner() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="text-center sm:text-left">
           <h3 className="font-semibold text-foreground">
-            👋 Welcome to WealthManager Demo
+            👋 Welcome to InControl Demo
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             You're viewing sample data. Sign in or create an account to track your own portfolio.

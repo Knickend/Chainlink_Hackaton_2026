@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
-import { Wallet, Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -36,7 +36,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      navigate('/');
+      navigate('/app');
     }
   }, [user, navigate]);
 
@@ -94,10 +94,9 @@ const Auth = () => {
       >
         <div className="glass-card p-8 rounded-2xl border border-border/50">
           <div className="flex items-center justify-center gap-2 mb-8">
-            <Wallet className="w-8 h-8 text-primary" />
             <h1 className="text-2xl font-bold">
-              <span className="gradient-text">Wealth</span>
-              <span className="text-foreground">Manager</span>
+              <span className="gradient-text">In</span>
+              <span className="text-foreground">Control</span>
             </h1>
           </div>
 
@@ -185,10 +184,10 @@ const Auth = () => {
             <div className="pt-2 border-t border-border/50">
               <button
                 type="button"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/app')}
                 className="text-sm text-primary hover:text-primary/80 transition-colors"
               >
-                ← Back to demo
+                ← View demo
               </button>
             </div>
           </div>
