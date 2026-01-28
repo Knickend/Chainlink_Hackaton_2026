@@ -118,6 +118,17 @@ export interface Debt {
   monthly_payment?: number;
 }
 
+export interface InvestmentPreferences {
+  id: string;
+  user_id: string;
+  stocks_allocation: number;
+  crypto_allocation: number;
+  commodities_allocation: number;
+  emergency_fund_target: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PortfolioMetrics {
   totalNetWorth: number;
   totalIncome: number;
