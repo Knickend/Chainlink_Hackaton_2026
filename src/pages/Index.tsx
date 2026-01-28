@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
+import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useLivePrices } from '@/hooks/useLivePrices';
 import { useDebts } from '@/hooks/useDebts';
@@ -357,6 +358,9 @@ const Index = () => {
           <p>Prices updated in real-time • Your data is securely stored</p>
         </motion.footer>
       </div>
+
+      {/* AI Financial Advisor Chat */}
+      <FinancialAdvisorChat />
     </div>
   );
 };

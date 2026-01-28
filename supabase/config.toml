@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.fetch-crypto-prices]
 verify_jwt = false
+
+[functions.financial-advisor]
+verify_jwt = false
