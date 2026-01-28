@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { mockDebts } from '@/lib/mockData';
 import { useLivePrices } from '@/hooks/useLivePrices';
 import { useDebts } from '@/hooks/useDebts';
 import { useAuth } from '@/contexts/AuthContext';
@@ -102,10 +103,16 @@ const Index = () => {
     );
   }
 
+  // Use mock debts for demo mode
+  const demoDebts = isDemo ? mockDebts : debts;
+  const demoTotalDebt = isDemo ? mockDebts.reduce((sum, d) => sum + d.principal_amount, 0) : totalDebt;
+  const demoMonthlyPayments = isDemo ? mockDebts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0) : monthlyPayments;
+  const demoMonthlyInterest = isDemo ? mockDebts.reduce((sum, d) => sum + (d.principal_amount * d.interest_rate / 100 / 12), 0) : monthlyInterest;
+
   // Calculate adjusted net worth (assets - debt)
-  const adjustedNetWorth = metrics.totalNetWorth - totalDebt;
+  const adjustedNetWorth = metrics.totalNetWorth - demoTotalDebt;
   // Adjusted monthly net (income - expenses - debt payments)
-  const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - monthlyPayments;
+  const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
 
   return (
     <div className="min-h-screen bg-background">
@@ -194,8 +201,8 @@ const Index = () => {
           />
           <StatCard
             title="Total Debt"
-            value={formatValue(totalDebt, false)}
-            subtitle={monthlyPayments > 0 ? `${formatValue(monthlyPayments)}/mo` : undefined}
+            value={formatValue(demoTotalDebt, false)}
+            subtitle={demoMonthlyPayments > 0 ? `${formatValue(demoMonthlyPayments)}/mo` : undefined}
             icon={CreditCard}
             variant="danger"
             delay={0.05}
@@ -250,14 +257,15 @@ const Index = () => {
           )}
         </div>
 
-        {!isDemo && (
+        {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}
+        {(!isDemo || isPro) && (
           <div className="mb-8">
             {isPro ? (
               <InvestmentStrategyCard
                 freeMonthlyIncome={adjustedMonthlyNet}
                 formatValue={formatValue}
-                debts={debts}
-                monthlyPayments={monthlyPayments}
+                debts={demoDebts}
+                monthlyPayments={demoMonthlyPayments}
                 delay={0.3}
               />
             ) : (
@@ -334,10 +342,10 @@ const Index = () => {
             onDeleteExpense={isDemo ? undefined : deleteExpense}
           />
           <DebtOverviewCard
-            debts={isDemo ? [] : debts}
-            totalDebt={isDemo ? 0 : totalDebt}
-            monthlyPayments={isDemo ? 0 : monthlyPayments}
-            monthlyInterest={isDemo ? 0 : monthlyInterest}
+            debts={demoDebts}
+            totalDebt={demoTotalDebt}
+            monthlyPayments={demoMonthlyPayments}
+            monthlyInterest={demoMonthlyInterest}
             formatValue={formatValue}
             onUpdateDebt={isDemo ? undefined : updateDebt}
             onDeleteDebt={isDemo ? undefined : deleteDebt}
@@ -346,18 +354,18 @@ const Index = () => {
           />
         </div>
 
-        {/* Debt Payoff Calculator - Pro Only */}
-        {!isDemo && debts.length > 0 && (
+        {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
+        {demoDebts.length > 0 && (
           <div className="mt-8">
             {isPro ? (
               <DebtPayoffCalculator
-                debts={debts}
+                debts={demoDebts}
                 formatValue={formatValue}
                 delay={0.3}
               />
             ) : (
               <DebtPayoffTeaser
-                debtCount={debts.length}
+                debtCount={demoDebts.length}
                 onUpgrade={() => setShowSubscriptionDialog(true)}
                 delay={0.3}
               />
