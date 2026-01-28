@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -38,7 +38,6 @@ import { SubscriptionTier } from '@/lib/subscription';
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices();
   const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
   
   // Subscription state (mockup) - 'free' | 'standard' | 'pro'
@@ -51,6 +50,21 @@ const Index = () => {
   // Demo mode when user is not logged in
   const isDemo = !user;
   
+  // First call to usePortfolio with undefined prices to get assets for symbol extraction
+  const portfolioInitial = usePortfolio(undefined, isDemo);
+  
+  // Extract unique crypto symbols from user's assets (excluding hardcoded BTC, ETH, LINK)
+  const additionalCryptoSymbols = useMemo(() => {
+    return portfolioInitial.assets
+      .filter(a => a.category === 'crypto' && a.symbol)
+      .map(a => a.symbol!.toUpperCase())
+      .filter(s => !['BTC', 'ETH', 'LINK'].includes(s))
+      .filter((s, i, arr) => arr.indexOf(s) === i); // unique
+  }, [portfolioInitial.assets]);
+  
+  const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices(15 * 60 * 1000, additionalCryptoSymbols);
+  
+  // Use portfolio with live prices for accurate values
   const {
     assets,
     income,
