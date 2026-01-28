@@ -14,6 +14,8 @@ import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
 import { DebtOverviewCard } from '@/components/DebtOverviewCard';
 import { DebtPayoffCalculator } from '@/components/DebtPayoffCalculator';
 import { DebtPayoffTeaser } from '@/components/DebtPayoffTeaser';
+import { InvestmentStrategyTeaser } from '@/components/InvestmentStrategyTeaser';
+import { PortfolioHistoryTeaser } from '@/components/PortfolioHistoryTeaser';
 import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
@@ -222,7 +224,7 @@ const Index = () => {
         </div>
 
         {/* Charts Row */}
-        <div className={`grid grid-cols-1 ${isPro ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4 mb-8`}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
           <NetWorthChart formatValue={formatValue} />
           <AllocationChart data={categoryTotals} formatValue={formatValue} />
           {isPro && !isDemo && (
@@ -239,18 +241,32 @@ const Index = () => {
               delay={0.2}
             />
           )}
+          {!isPro && !isDemo && (
+            <PortfolioHistoryTeaser 
+              onUpgrade={() => setShowSubscriptionDialog(true)}
+              delay={0.2}
+            />
+          )}
         </div>
 
-        {/* Investment Strategy Card - Pro Only */}
-        {isPro && !isDemo && (
+        {!isDemo && (
           <div className="mb-8">
-            <InvestmentStrategyCard
-              freeMonthlyIncome={adjustedMonthlyNet}
-              formatValue={formatValue}
-              debts={debts}
-              monthlyPayments={monthlyPayments}
-              delay={0.3}
-            />
+            {isPro ? (
+              <InvestmentStrategyCard
+                freeMonthlyIncome={adjustedMonthlyNet}
+                formatValue={formatValue}
+                debts={debts}
+                monthlyPayments={monthlyPayments}
+                delay={0.3}
+              />
+            ) : (
+              <InvestmentStrategyTeaser
+                freeMonthlyIncome={adjustedMonthlyNet}
+                formatValue={formatValue}
+                onUpgrade={() => setShowSubscriptionDialog(true)}
+                delay={0.3}
+              />
+            )}
           </div>
         )}
 
