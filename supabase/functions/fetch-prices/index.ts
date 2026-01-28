@@ -27,6 +27,22 @@ interface PriceData {
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Sanity check bounds for prices (reject obvious outliers)
+// These are generous ranges that should catch AI hallucinations
+const PRICE_BOUNDS = {
+  btc: { min: 20000, max: 500000 },   // Bitcoin: $20k-$500k
+  eth: { min: 500, max: 50000 },      // Ethereum: $500-$50k
+  link: { min: 1, max: 500 },         // Chainlink: $1-$500
+  gold: { min: 1500, max: 4000 },     // Gold: $1500-$4000/oz
+  silver: { min: 15, max: 100 },      // Silver: $15-$100/oz
+};
+
+function isPriceValid(key: keyof typeof PRICE_BOUNDS, value: number | null | undefined): boolean {
+  if (value === null || value === undefined || isNaN(value)) return false;
+  const bounds = PRICE_BOUNDS[key];
+  return value >= bounds.min && value <= bounds.max;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -148,34 +164,58 @@ IMPORTANT: All values must be numbers (not null, not strings). Use the latest av
       prices = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error('Failed to parse prices JSON:', parseError, 'Content:', jsonStr);
-      prices = {
-        btc: 96000,
-        eth: 3200,
-        link: 22,
-        gold: 2650,
-        silver: 30,
-      };
+      prices = {};
     }
 
+    // Get cached prices to use as fallback for invalid values
+    const { data: fallbackPrices } = await supabase
+      .from('price_cache')
+      .select('*')
+      .in('symbol', ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER']);
+
+    const getCachedPrice = (symbol: string, defaultVal: number): number => {
+      const cached = fallbackPrices?.find(p => p.symbol === symbol);
+      return cached ? Number(cached.price) : defaultVal;
+    };
+
+    // Validate each price and use cached/default if invalid
+    const btcRaw = Number(prices.btc);
+    const ethRaw = Number(prices.eth);
+    const linkRaw = Number(prices.link);
+    const goldRaw = Number(prices.gold);
+    const silverRaw = Number(prices.silver);
+
+    const btcValid = isPriceValid('btc', btcRaw);
+    const ethValid = isPriceValid('eth', ethRaw);
+    const linkValid = isPriceValid('link', linkRaw);
+    const goldValid = isPriceValid('gold', goldRaw);
+    const silverValid = isPriceValid('silver', silverRaw);
+
+    // Log any rejected values
+    if (!btcValid) console.warn(`BTC price ${btcRaw} rejected (bounds: ${PRICE_BOUNDS.btc.min}-${PRICE_BOUNDS.btc.max})`);
+    if (!ethValid) console.warn(`ETH price ${ethRaw} rejected (bounds: ${PRICE_BOUNDS.eth.min}-${PRICE_BOUNDS.eth.max})`);
+    if (!linkValid) console.warn(`LINK price ${linkRaw} rejected (bounds: ${PRICE_BOUNDS.link.min}-${PRICE_BOUNDS.link.max})`);
+    if (!goldValid) console.warn(`GOLD price ${goldRaw} rejected (bounds: ${PRICE_BOUNDS.gold.min}-${PRICE_BOUNDS.gold.max})`);
+    if (!silverValid) console.warn(`SILVER price ${silverRaw} rejected (bounds: ${PRICE_BOUNDS.silver.min}-${PRICE_BOUNDS.silver.max})`);
+
     const result: PriceData = {
-      btc: Number(prices.btc) || 96000,
-      eth: Number(prices.eth) || 3200,
-      link: Number(prices.link) || 22,
-      gold: Number(prices.gold) || 2650,
-      silver: Number(prices.silver) || 30,
+      btc: btcValid ? btcRaw : getCachedPrice('BTC', 90000),
+      eth: ethValid ? ethRaw : getCachedPrice('ETH', 3200),
+      link: linkValid ? linkRaw : getCachedPrice('LINK', 22),
+      gold: goldValid ? goldRaw : getCachedPrice('GOLD', 2650),
+      silver: silverValid ? silverRaw : getCachedPrice('SILVER', 30),
       timestamp: new Date().toISOString(),
     };
 
     console.log('Returning prices:', result);
 
-    // Update cache in background
-    const cacheUpdates = [
-      { symbol: 'BTC', price: result.btc, asset_type: 'crypto' },
-      { symbol: 'ETH', price: result.eth, asset_type: 'crypto' },
-      { symbol: 'LINK', price: result.link, asset_type: 'crypto' },
-      { symbol: 'GOLD', price: result.gold, asset_type: 'commodity' },
-      { symbol: 'SILVER', price: result.silver, asset_type: 'commodity' },
-    ];
+    // Only update cache for valid prices
+    const cacheUpdates: Array<{ symbol: string; price: number; asset_type: string }> = [];
+    if (btcValid) cacheUpdates.push({ symbol: 'BTC', price: result.btc, asset_type: 'crypto' });
+    if (ethValid) cacheUpdates.push({ symbol: 'ETH', price: result.eth, asset_type: 'crypto' });
+    if (linkValid) cacheUpdates.push({ symbol: 'LINK', price: result.link, asset_type: 'crypto' });
+    if (goldValid) cacheUpdates.push({ symbol: 'GOLD', price: result.gold, asset_type: 'commodity' });
+    if (silverValid) cacheUpdates.push({ symbol: 'SILVER', price: result.silver, asset_type: 'commodity' });
 
     for (const update of cacheUpdates) {
       await supabase
@@ -186,7 +226,7 @@ IMPORTANT: All values must be numbers (not null, not strings). Use the latest av
         );
     }
 
-    console.log('Cache updated');
+    console.log('Cache updated for valid prices:', cacheUpdates.map(u => u.symbol).join(', ') || 'none');
 
     return new Response(
       JSON.stringify({ success: true, data: result, citations: data.citations || [], cached: false }),
