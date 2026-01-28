@@ -84,17 +84,17 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'sonar-medium-online',
+        model: 'sonar',
         temperature: 0,
-        response_format: { type: 'json_object' },
+        max_tokens: 150,
         messages: [
           {
             role: 'system',
-            content: 'You are a financial data API. Return only valid JSON with current USD prices.'
+            content: 'You are a financial data API. Return ONLY valid JSON with current USD prices. No markdown, no explanation.'
           },
           {
             role: 'user',
-            content: `Return current USD prices as JSON: {"btc": <Bitcoin price>, "eth": <Ethereum price>, "link": <Chainlink price>, "gold": <Gold per troy oz>, "silver": <Silver per troy oz>}`
+            content: 'Return current USD prices as JSON: {"btc": <Bitcoin>, "eth": <Ethereum>, "link": <Chainlink>, "gold": <Gold per troy oz>, "silver": <Silver per troy oz>}'
           }
         ],
       }),
