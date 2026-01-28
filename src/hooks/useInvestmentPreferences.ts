@@ -112,25 +112,25 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
         category: 'Stocks/ETFs',
         percentage: preferences.stocks_allocation,
         amount: investableAmount * (preferences.stocks_allocation / 100),
-        color: 'hsl(var(--chart-1))',
+        color: '#f59e0b',
       },
       {
         category: 'Crypto',
         percentage: preferences.crypto_allocation,
         amount: investableAmount * (preferences.crypto_allocation / 100),
-        color: 'hsl(var(--chart-2))',
+        color: '#8b5cf6',
       },
       {
         category: 'Commodities',
         percentage: preferences.commodities_allocation,
         amount: investableAmount * (preferences.commodities_allocation / 100),
-        color: 'hsl(var(--chart-3))',
+        color: '#10b981',
       },
       {
         category: 'Emergency Fund',
         percentage: preferences.emergency_fund_target,
         amount: freeMonthlyIncome * (preferences.emergency_fund_target / 100),
-        color: 'hsl(var(--chart-4))',
+        color: '#3b82f6',
       },
     ].filter(a => a.percentage > 0);
   }, [preferences, freeMonthlyIncome]);
