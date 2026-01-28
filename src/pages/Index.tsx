@@ -254,7 +254,7 @@ const Index = () => {
             formatValue={formatValue}
             actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true })} />}
             secondaryActionButton={!isDemo && isPro ? (
-              <AddOneTimeExpenseDialog onAdd={(data: { name: string; amount: number; category: string; is_recurring: false }) => addExpense(data)} />
+              <AddOneTimeExpenseDialog onAdd={(data) => addExpense(data)} />
             ) : undefined}
             onUpdateExpense={isDemo ? undefined : updateExpense}
             onDeleteExpense={isDemo ? undefined : deleteExpense}
