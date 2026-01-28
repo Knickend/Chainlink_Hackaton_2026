@@ -95,6 +95,7 @@ export interface Expense {
   amount: number; // in USD
   category: string;
   is_recurring: boolean; // true for monthly recurring, false for one-time
+  expense_date?: string; // ISO date string for one-time expenses
 }
 
 export interface PortfolioMetrics {

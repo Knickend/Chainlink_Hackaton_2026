@@ -58,6 +58,7 @@ export function usePortfolioData() {
         amount: Number(e.amount),
         category: e.category,
         is_recurring: (e as any).is_recurring ?? true,
+        expense_date: (e as any).expense_date || undefined,
       })));
     } catch (error: any) {
       toast({
@@ -255,6 +256,7 @@ export function usePortfolioData() {
     amount: number;
     category: string;
     is_recurring?: boolean;
+    expense_date?: string;
   }) => {
     if (!user) return;
 
@@ -265,6 +267,7 @@ export function usePortfolioData() {
         amount: expenseData.amount,
         category: expenseData.category,
         is_recurring: expenseData.is_recurring ?? true,
+        expense_date: expenseData.expense_date || null,
       } as any).select().single();
 
       if (error) throw error;
@@ -275,6 +278,7 @@ export function usePortfolioData() {
         amount: Number(data.amount),
         category: data.category,
         is_recurring: (data as any).is_recurring ?? true,
+        expense_date: (data as any).expense_date || undefined,
       }, ...prev]);
 
       toast({ title: 'Expense added successfully' });

@@ -61,6 +61,7 @@ export type Database = {
           amount: number
           category: string
           created_at: string
+          expense_date: string | null
           id: string
           is_recurring: boolean
           name: string
@@ -71,6 +72,7 @@ export type Database = {
           amount: number
           category: string
           created_at?: string
+          expense_date?: string | null
           id?: string
           is_recurring?: boolean
           name: string
@@ -81,6 +83,7 @@ export type Database = {
           amount?: number
           category?: string
           created_at?: string
+          expense_date?: string | null
           id?: string
           is_recurring?: boolean
           name?: string
