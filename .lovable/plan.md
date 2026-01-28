@@ -1,129 +1,163 @@
 
-# Enhanced Portfolio Performance Overview (Pro Feature)
+# Debt-Aware Investment Strategy Integration
 
 ## Overview
-Enhance the existing Performance tracking for Pro users by storing actual monthly portfolio snapshots that users can review individually and compare side-by-side to understand how their wealth evolved over time.
+Integrate debt payoff calculator insights into the Investment Strategy Card for Pro users. When a user has debt, the strategy card will provide smart recommendations that balance debt reduction with investing, prioritizing high-interest debt when appropriate.
 
-## User Experience Flow
+## User Experience
 
-1. **Automatic Snapshots**: System captures monthly snapshots of portfolio state (net worth, assets, income, expenses, debts)
-2. **Historical View**: Pro users can browse past months and see detailed breakdowns
-3. **Month Comparison**: Select two months to compare side-by-side with change indicators
-4. **Visual Timeline**: Interactive chart showing net worth progression with clickable data points
+When a Pro user has debt, the Investment Strategy Card will show:
+1. A "Debt Strategy" section before investment allocations
+2. Smart tips based on debt analysis (e.g., "Pay off 18% APR credit card before investing")
+3. Recommended debt payment allocation as part of the overall strategy
+4. Visual indicators showing optimal money flow
 
 ## Technical Implementation
 
-### 1. Database Schema
-Create a `portfolio_snapshots` table to store monthly data:
+### 1. Create Debt Analysis Utility
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| user_id | UUID | User reference |
-| snapshot_month | DATE | First day of the month (e.g., 2026-01-01) |
-| net_worth | NUMERIC | Total net worth at snapshot time |
-| total_assets | NUMERIC | Sum of all assets |
-| total_debt | NUMERIC | Sum of all debts |
-| total_income | NUMERIC | Monthly income |
-| total_expenses | NUMERIC | Monthly expenses |
-| assets_breakdown | JSONB | Category breakdown (banking, crypto, stocks, commodities) |
-| created_at | TIMESTAMP | When snapshot was created |
+Create helper functions to analyze debt and generate recommendations:
 
-RLS policies ensure users can only access their own snapshots.
+| Function | Purpose |
+|----------|---------|
+| `analyzeDebtPriority` | Identifies high-interest debt that should be prioritized |
+| `calculateOptimalAllocation` | Suggests split between debt payoff and investing |
+| `generateDebtTips` | Creates actionable recommendations |
 
-### 2. New Hook: `usePortfolioHistory`
-- Fetch all snapshots for the current user
-- Calculate month-over-month changes
-- Provide comparison utilities between any two months
-- Trigger snapshot creation (manual or automatic)
+**Logic:**
+- High-interest threshold: 7% APR (higher than typical index fund returns)
+- If any debt > 7% APR: recommend prioritizing debt payoff
+- Credit card debt always flagged as high priority
+- Calculate potential interest savings from accelerated payoff
 
-### 3. New Components
+### 2. Modify InvestmentStrategyCard Component
 
-**PortfolioHistoryCard** (Enhanced PerformanceCard replacement)
-- Interactive bar/line chart with clickable months
-- Shows selected month's detailed breakdown
-- Month selector dropdown for quick navigation
+Update the component to accept debt data and display integrated recommendations:
 
-**MonthComparisonDialog**
-- Side-by-side comparison of two selected months
-- Shows absolute and percentage changes for each metric
-- Visual indicators (green/red) for improvements/declines
-- Category-level breakdown comparison
+**New Props:**
+```typescript
+interface InvestmentStrategyCardProps {
+  freeMonthlyIncome: number;
+  formatValue: (value: number) => string;
+  debts?: Debt[];           // NEW: User's debt list
+  monthlyPayments?: number; // NEW: Current monthly debt payments
+  delay?: number;
+}
+```
 
-**SnapshotDetailView**
-- Detailed view of a single month's data
-- Pie chart of asset allocation at that time
-- Key metrics summary
+**New UI Sections:**
+- "Priority Actions" section when high-interest debt exists
+- "Suggested Allocation" combining debt + investment strategy
+- Tips panel with specific recommendations
 
-### 4. Snapshot Creation Strategy
-- **Automatic**: Edge function runs on the 1st of each month to create snapshots for all users
-- **Manual**: "Take Snapshot" button for Pro users to capture current state anytime
-- **Backfill**: On first Pro subscription, offer to create initial snapshot from current data
+### 3. Update Index.tsx Integration
 
-### 5. Dashboard Integration
-- Replace or enhance existing `PerformanceCard` for Pro users
-- Add "View History" button that opens the full comparison interface
-- Keep the simple YTD/12M toggle for quick overview
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `supabase/migrations/..._portfolio_snapshots.sql` | Create | New table with RLS policies |
-| `supabase/functions/create-monthly-snapshot/index.ts` | Create | Edge function for automatic snapshots |
-| `src/hooks/usePortfolioHistory.ts` | Create | Data fetching and comparison logic |
-| `src/components/PortfolioHistoryCard.tsx` | Create | Enhanced performance view with history |
-| `src/components/MonthComparisonDialog.tsx` | Create | Side-by-side month comparison |
-| `src/components/SnapshotDetailView.tsx` | Create | Single month detailed breakdown |
-| `src/lib/types.ts` | Modify | Add `PortfolioSnapshot` interface |
-| `src/pages/Index.tsx` | Modify | Integrate new history component for Pro users |
+Pass debt data to the InvestmentStrategyCard:
+```tsx
+<InvestmentStrategyCard
+  freeMonthlyIncome={adjustedMonthlyNet}
+  formatValue={formatValue}
+  debts={debts}
+  monthlyPayments={monthlyPayments}
+  delay={0.3}
+/>
+```
 
 ## UI Mockup
 
-### Portfolio History Card
+### With High-Interest Debt
 ```
 +--------------------------------------------------+
-|  Portfolio History              [Take Snapshot]   |
-|  Pro Feature                                      |
+|  Investment Strategy          [Edit]              |
+|  Based on $2,340/mo free income                   |
 +--------------------------------------------------+
-|  [Interactive Timeline Chart - 12 months]         |
-|  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━        |
-|  Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep ...  |
+|  PRIORITY: Pay Off High-Interest Debt             |
+|  ┌────────────────────────────────────────────┐  |
+|  │  Credit Card (18% APR)                     │  |
+|  │  Paying $200/mo extra saves $3,400 interest│  |
+|  │  [Debt-free 14 months sooner]              │  |
+|  └────────────────────────────────────────────┘  |
 +--------------------------------------------------+
-|  Selected: January 2026                           |
-|  ┌─────────────┐  ┌─────────────┐                |
-|  │ Net Worth   │  │ Change      │                |
-|  │ $125,450    │  │ +$3,200     │                |
-|  │             │  │ +2.6%       │                |
-|  └─────────────┘  └─────────────┘                |
+|  Recommended Monthly Allocation                   |
 |                                                   |
-|  [Compare with Another Month]  [View Details]    |
+|  Debt Payoff         35%    $820                  |
+|  ━━━━━━━━━━━━━━━━━━━━━━━━━━                      |
+|                                                   |
+|  Stocks/ETFs         30%    $702                  |
+|  ━━━━━━━━━━━━━━━━━━━━━━━━━━                      |
+|                                                   |
+|  Crypto              20%    $468                  |
+|  ━━━━━━━━━━━━━━━━━━━━━━                          |
+|                                                   |
+|  Emergency Fund      15%    $350                  |
+|  ━━━━━━━━━━━━━━━━━━━━                            |
++--------------------------------------------------+
+|  Tips                                             |
+|  - Your credit card APR (18%) exceeds typical    |
+|    market returns (7-10%). Prioritize payoff.    |
+|  - After debt-free: reallocate to investments    |
 +--------------------------------------------------+
 ```
 
-### Month Comparison View
+### Without High-Interest Debt
 ```
 +--------------------------------------------------+
-|  Comparing: Dec 2025 vs Jan 2026                  |
+|  Investment Strategy          [Edit]              |
+|  Based on $2,340/mo free income                   |
 +--------------------------------------------------+
-|           December        January      Change     |
-|  ─────────────────────────────────────────────── |
-|  Net Worth   $122,250     $125,450    +$3,200    |
-|  Assets      $142,250     $147,450    +$5,200    |
-|  Debts       $20,000      $22,000     +$2,000    |
-|  Income      $8,500       $8,500      $0         |
-|  Expenses    $4,200       $4,350      +$150      |
-|  ─────────────────────────────────────────────── |
-|  Asset Breakdown:                                 |
-|  Banking     $45,000      $46,200     +2.7%      |
-|  Crypto      $32,000      $38,500     +20.3%     |
-|  Stocks      $55,250      $52,750     -4.5%      |
-|  Commodities $10,000      $10,000     0%         |
+|  Your low-interest debt (3.5% mortgage) can be   |
+|  maintained while investing for higher returns.   |
++--------------------------------------------------+
+|  Monthly Investment Allocation                    |
+|  [Standard allocation display]                    |
 +--------------------------------------------------+
 ```
 
-## Edge Cases Handled
-- **No snapshots yet**: Prompt to create first snapshot
-- **Only one snapshot**: Disable comparison, show single month view
-- **Missing months**: Indicate gaps in timeline
-- **First-time Pro user**: Offer to create initial snapshot immediately
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/lib/debtAnalysis.ts` | NEW: Debt analysis utilities and tip generation |
+| `src/components/InvestmentStrategyCard.tsx` | Add debt props, priority section, integrated tips |
+| `src/pages/Index.tsx` | Pass debts and monthlyPayments to InvestmentStrategyCard |
+
+## Debt Analysis Logic
+
+```text
+HIGH_INTEREST_THRESHOLD = 7%
+
+For each debt:
+  - If APR > threshold OR debt_type === 'credit_card':
+    - Flag as high priority
+    - Calculate savings from extra payments
+    - Generate specific payoff recommendation
+
+If any high-priority debt exists:
+  - Show "Priority Actions" section
+  - Suggest allocation split (e.g., 40% debt, 60% invest)
+  - Display interest savings potential
+
+If only low-interest debt:
+  - Show reassurance message
+  - Focus on investment allocation
+  - Note that maintaining low-interest debt is acceptable
+```
+
+## Smart Tips Generated
+
+Based on debt analysis, generate contextual tips:
+
+| Scenario | Tip |
+|----------|-----|
+| Credit card debt | "Pay off credit card first - 18% APR far exceeds investment returns" |
+| High-interest loan | "Extra $X/mo toward [loan] saves $Y in interest" |
+| Only mortgage/low-rate | "Your 3.5% mortgage rate is below market returns - investing makes sense" |
+| Multiple high-interest | "Focus on highest APR first (debt avalanche method)" |
+| Insufficient payment | "Increase [debt] payment by $X to cover accruing interest" |
+
+## Edge Cases
+
+- No debt: Show standard investment strategy (current behavior)
+- All payments insufficient: Warn about growing debt before suggesting investments
+- Very high debt-to-income: Suggest focusing entirely on debt reduction
+- Mixed debt: Prioritize high-interest while maintaining minimum on low-interest
