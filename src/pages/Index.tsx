@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, Coins, LogOut, Loader2, LogIn } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useLivePrices } from '@/hooks/useLivePrices';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
+import { YieldBreakdownCard } from '@/components/YieldBreakdownCard';
 import { AssetCategoryCard } from '@/components/AssetCategoryCard';
 import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
 import { NetWorthChart } from '@/components/NetWorthChart';
@@ -37,6 +38,7 @@ const Index = () => {
   const isDemo = !user;
   
   const {
+    assets,
     income,
     expenses,
     metrics,
@@ -168,12 +170,10 @@ const Index = () => {
             trend={{ value: 8.2, isPositive: true }}
             delay={0.2}
           />
-          <StatCard
-            title="Annual Yield"
-            value={formatValue(metrics.yearlyYield)}
-            subtitle="From investments"
-            icon={Coins}
-            variant="warning"
+          <YieldBreakdownCard
+            totalYield={metrics.yearlyYield}
+            assets={assets}
+            formatValue={formatValue}
             delay={0.3}
           />
         </div>
