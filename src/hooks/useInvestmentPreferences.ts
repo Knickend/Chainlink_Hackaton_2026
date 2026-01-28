@@ -10,6 +10,7 @@ export interface InvestmentPreferences {
   crypto_allocation: number;
   commodities_allocation: number;
   emergency_fund_target: number;
+  debt_allocation: number;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +60,7 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
     crypto_allocation: number;
     commodities_allocation: number;
     emergency_fund_target: number;
+    debt_allocation: number;
   }) => {
     if (!user) return;
 
@@ -66,7 +68,8 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
     const total = newPreferences.stocks_allocation + 
                   newPreferences.crypto_allocation + 
                   newPreferences.commodities_allocation + 
-                  newPreferences.emergency_fund_target;
+                  newPreferences.emergency_fund_target +
+                  newPreferences.debt_allocation;
     
     if (Math.abs(total - 100) > 0.01) {
       toast.error('Allocations must sum to 100%');
@@ -105,38 +108,63 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
   const calculateAllocations = useCallback((): InvestmentAllocation[] => {
     if (!preferences || freeMonthlyIncome <= 0) return [];
 
-    const investableAmount = freeMonthlyIncome * (1 - preferences.emergency_fund_target / 100);
+    const allocations: InvestmentAllocation[] = [];
+    
+    // Add debt payoff allocation first if present
+    if (preferences.debt_allocation > 0) {
+      allocations.push({
+        category: 'Debt Payoff',
+        percentage: preferences.debt_allocation,
+        amount: freeMonthlyIncome * (preferences.debt_allocation / 100),
+        color: 'hsl(var(--destructive))',
+      });
+    }
 
-    return [
-      {
+    // Calculate remaining amount after debt allocation
+    const afterDebtAmount = freeMonthlyIncome * (1 - preferences.debt_allocation / 100);
+    const investableAmount = afterDebtAmount * (1 - preferences.emergency_fund_target / 100);
+
+    if (preferences.stocks_allocation > 0) {
+      allocations.push({
         category: 'Stocks/ETFs',
         percentage: preferences.stocks_allocation,
-        amount: investableAmount * (preferences.stocks_allocation / 100),
+        amount: investableAmount * (preferences.stocks_allocation / (100 - preferences.debt_allocation - preferences.emergency_fund_target)) || 0,
         color: '#f59e0b',
-      },
-      {
+      });
+    }
+
+    if (preferences.crypto_allocation > 0) {
+      allocations.push({
         category: 'Crypto',
         percentage: preferences.crypto_allocation,
-        amount: investableAmount * (preferences.crypto_allocation / 100),
+        amount: investableAmount * (preferences.crypto_allocation / (100 - preferences.debt_allocation - preferences.emergency_fund_target)) || 0,
         color: '#8b5cf6',
-      },
-      {
+      });
+    }
+
+    if (preferences.commodities_allocation > 0) {
+      allocations.push({
         category: 'Commodities',
         percentage: preferences.commodities_allocation,
-        amount: investableAmount * (preferences.commodities_allocation / 100),
+        amount: investableAmount * (preferences.commodities_allocation / (100 - preferences.debt_allocation - preferences.emergency_fund_target)) || 0,
         color: '#10b981',
-      },
-      {
+      });
+    }
+
+    if (preferences.emergency_fund_target > 0) {
+      allocations.push({
         category: 'Emergency Fund',
         percentage: preferences.emergency_fund_target,
-        amount: freeMonthlyIncome * (preferences.emergency_fund_target / 100),
+        amount: afterDebtAmount * (preferences.emergency_fund_target / 100),
         color: '#3b82f6',
-      },
-    ].filter(a => a.percentage > 0);
+      });
+    }
+
+    return allocations;
   }, [preferences, freeMonthlyIncome]);
 
   const totalInvestable = freeMonthlyIncome > 0 && preferences
-    ? freeMonthlyIncome * (1 - preferences.emergency_fund_target / 100)
+    ? freeMonthlyIncome * (1 - (preferences.emergency_fund_target + preferences.debt_allocation) / 100)
     : 0;
 
   return {

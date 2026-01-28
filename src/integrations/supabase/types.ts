@@ -262,6 +262,7 @@ export type Database = {
           commodities_allocation: number
           created_at: string
           crypto_allocation: number
+          debt_allocation: number
           emergency_fund_target: number
           id: string
           stocks_allocation: number
@@ -272,6 +273,7 @@ export type Database = {
           commodities_allocation?: number
           created_at?: string
           crypto_allocation?: number
+          debt_allocation?: number
           emergency_fund_target?: number
           id?: string
           stocks_allocation?: number
@@ -282,6 +284,7 @@ export type Database = {
           commodities_allocation?: number
           created_at?: string
           crypto_allocation?: number
+          debt_allocation?: number
           emergency_fund_target?: number
           id?: string
           stocks_allocation?: number
