@@ -1,170 +1,109 @@
 
-# Fetch Prices for All Crypto Assets
+
+# Create InControl Landing Page
 
 ## Overview
-Extend the price fetching system to automatically fetch live prices for ALL cryptocurrency assets the user owns, not just BTC, ETH, and LINK. When a user has Solana, Cardano, or any other crypto, the system will fetch current prices on page load.
+Build a professional marketing landing page for InControl.finance that showcases the product's features, pricing tiers, and drives users to sign up. The landing page will follow the existing premium dark theme with glassmorphism effects and gold accents.
 
-## Current Architecture
-- `fetch-prices` edge function: Only fetches BTC, ETH, LINK (CoinGecko) + GOLD, SILVER (Perplexity)
-- `price_cache` table: Stores all cached prices (crypto, stocks, commodities)
-- `useLivePrices` hook: Loads from cache, has `stocks` map for non-hardcoded symbols
-- Price lookup: Falls back to `livePrices.stocks[symbol]` for unknown crypto
+## Page Structure
 
-## Problem
-When a user owns SOL, ADA, or other crypto, prices aren't actively fetched - they only exist if previously searched. This means portfolio values may show $0 or stale data for these assets.
+### Sections
+1. **Hero Section** - Bold headline, value proposition, CTA buttons
+2. **Features Grid** - Highlight key capabilities (asset tracking, debt management, live prices, investment strategy)
+3. **How It Works** - 3-step visual flow
+4. **Pricing Section** - Display Free, Standard, and Pro tiers
+5. **Testimonials/Social Proof** - Trust indicators
+6. **Footer** - Links, domain branding
 
-## Solution
+### Hero Content
+- **Headline**: "Take Control of Your Financial Future"
+- **Subheadline**: "Track assets, manage debt, and build wealth across crypto, stocks, and precious metals"
+- **CTAs**: "Get Started Free" and "View Demo"
 
-### 1. Create New Edge Function: `fetch-crypto-prices`
+### Features to Highlight
+| Icon | Feature | Description |
+|------|---------|-------------|
+| Wallet | Multi-Asset Tracking | Track crypto, stocks, real estate, and precious metals in one place |
+| TrendingUp | Live Price Updates | Real-time prices for 50+ cryptocurrencies, stocks, gold, and silver |
+| PieChart | Portfolio Allocation | Visual breakdown of your wealth distribution |
+| CreditCard | Debt Management | Track debts and calculate optimal payoff strategies |
+| Target | Investment Strategy | AI-powered allocation recommendations based on your goals |
+| Shield | Secure & Private | Your data is encrypted and never shared |
 
-A dedicated function to fetch prices for any list of crypto symbols using CoinGecko API.
+## Technical Implementation
 
-**Endpoint:** `POST /fetch-crypto-prices`
-**Request Body:**
-```json
-{ "symbols": ["SOL", "ADA", "DOT", "AVAX"] }
-```
+### Route Structure
+- `/` - Landing page (new)
+- `/app` - Dashboard (current Index.tsx moved)
+- `/auth` - Authentication (unchanged)
 
-**Logic:**
-- Map symbols to CoinGecko IDs (e.g., SOL -> solana, ADA -> cardano)
-- Use CoinGecko's batch endpoint: `/simple/price?ids=solana,cardano&vs_currencies=usd`
-- Cache results to `price_cache` table
-- Return prices and 24h change data
+### Files to Create/Modify
 
-**CoinGecko ID Mapping (expandable):**
-| Symbol | CoinGecko ID |
-|--------|--------------|
-| SOL | solana |
-| ADA | cardano |
-| DOT | polkadot |
-| AVAX | avalanche-2 |
-| MATIC | matic-network |
-| ATOM | cosmos |
-| UNI | uniswap |
-| AAVE | aave |
-| ... | (lookup via CoinGecko API) |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/pages/Landing.tsx` | CREATE | New landing page component |
+| `src/components/landing/HeroSection.tsx` | CREATE | Hero section with CTAs |
+| `src/components/landing/FeaturesSection.tsx` | CREATE | Features grid |
+| `src/components/landing/PricingSection.tsx` | CREATE | Pricing tiers |
+| `src/components/landing/Footer.tsx` | CREATE | Footer component |
+| `src/App.tsx` | MODIFY | Add `/app` route for dashboard, `/` for landing |
+| `index.html` | MODIFY | Update branding to InControl |
+| `src/pages/Auth.tsx` | MODIFY | Update branding to InControl |
+| `src/components/DemoBanner.tsx` | MODIFY | Update to InControl |
 
-### 2. Extend `useLivePrices` Hook
+### Design Specifications
 
-Add functionality to fetch prices for additional crypto symbols.
+**Hero Section**
+- Full viewport height with ambient glow effects
+- Animated entrance using framer-motion
+- Gradient text for "InControl" branding
+- Mock dashboard preview image/illustration
 
-**New Parameter:**
-```typescript
-function useLivePrices(
-  refreshInterval = 15 * 60 * 1000,
-  additionalCryptoSymbols?: string[]  // NEW
-)
-```
+**Features Grid**
+- 3x2 responsive grid (stacks on mobile)
+- Glass-card styling for each feature
+- Icon with gold/primary color accent
+- Subtle hover animations
 
-**New Behavior:**
-- On mount: If `additionalCryptoSymbols` provided, call `fetch-crypto-prices`
-- Merge results into `prices.stocks` map
-- Re-fetch on interval along with main prices
+**Pricing Cards**
+- Reuse existing SubscriptionDialog pricing data
+- Highlight recommended tier
+- Gold border/glow for Pro tier
+- Monthly pricing with feature list
 
-### 3. Update Index.tsx Integration
+**Footer**
+- Minimal dark design
+- InControl.finance branding
+- Links: Privacy, Terms, Contact
+- Copyright notice
 
-Pass user's crypto symbols to the `useLivePrices` hook.
-
-```typescript
-// Extract unique crypto symbols from user's assets
-const cryptoSymbols = useMemo(() => {
-  return assets
-    .filter(a => a.category === 'crypto' && a.symbol)
-    .map(a => a.symbol!.toUpperCase())
-    .filter(s => !['BTC', 'ETH', 'LINK'].includes(s)); // Exclude hardcoded ones
-}, [assets]);
-
-const { prices } = useLivePrices(15 * 60 * 1000, cryptoSymbols);
-```
-
-## Technical Details
-
-### CoinGecko API Integration
-- Free tier: 30 calls/minute, no API key needed
-- Batch endpoint supports up to 250 coins per request
-- Response includes: current price, 24h change, 24h change %
-
-**Sample Response:**
-```json
-{
-  "solana": {
-    "usd": 142.50,
-    "usd_24h_change": 3.45
-  },
-  "cardano": {
-    "usd": 0.65,
-    "usd_24h_change": -1.23
-  }
-}
-```
-
-### Fallback Strategy
-1. Check `price_cache` first (same 15-min TTL as other crypto)
-2. If cache valid, return cached prices
-3. If cache stale, fetch from CoinGecko
-4. If CoinGecko fails, return cached values (graceful degradation)
-
-### Symbol Resolution
-For unknown symbols, use CoinGecko's search API to find the correct ID:
-```
-GET /search?query=SOL
-```
-This will be done once per unknown symbol and cached.
-
-## Files to Create/Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-crypto-prices/index.ts` | NEW: Edge function for batch crypto price fetching |
-| `src/hooks/useLivePrices.ts` | Add `additionalCryptoSymbols` parameter and fetch logic |
-| `src/pages/Index.tsx` | Pass crypto symbols to useLivePrices |
-
-## Data Flow
-
+### Navigation Flow
 ```text
-User loads app
-       |
-       v
-usePortfolioData loads assets
-       |
-       v
-Extract crypto symbols [SOL, ADA, DOT]
-       |
-       v
-useLivePrices(symbols)
-       |
-       +---> fetch-prices (BTC, ETH, LINK, GOLD, SILVER)
-       |
-       +---> fetch-crypto-prices([SOL, ADA, DOT])
-                    |
-                    v
-              Check price_cache
-                    |
-          +---------+---------+
-          | Cache valid       | Cache stale
-          v                   v
-      Return cached     CoinGecko API
-                              |
-                              v
-                        Update cache
-                              |
-                              v
-                        Return prices
-       |
-       v
-Merge all prices into livePrices.stocks
-       |
-       v
-usePortfolio calculates asset values
+Landing (/)
+    |
+    +---> "Get Started" --> Auth (/auth?signup=true)
+    |
+    +---> "View Demo" --> Dashboard in demo mode (/app)
+    |
+    +---> "Sign In" --> Auth (/auth)
 ```
 
-## Edge Cases
+### Animation Strategy
+- Staggered fade-in for feature cards
+- Smooth scroll between sections
+- Subtle parallax on hero background
+- Hover effects on CTAs and cards
 
-- **Unknown symbol:** Use CoinGecko search to resolve, cache the mapping
-- **Rate limit:** Batch requests (max 250 coins), respect 30/min limit
-- **API failure:** Use cached prices, show "prices may be stale" indicator
-- **New asset added:** Trigger fetch for new symbol immediately
+## Branding Updates (InControl)
 
-## Cache Strategy
+All instances of "WealthManager" will be replaced:
+- `index.html`: Title, meta tags, OG tags
+- `Auth.tsx`: Logo in form header
+- `DemoBanner.tsx`: Welcome message
+- `Index.tsx` (becoming `/app`): Header logo
 
-Same 15-minute TTL as existing crypto (BTC, ETH, LINK). The `price_cache` table already supports this - we just add more rows for additional symbols.
+## Mobile Responsiveness
+- Hero: Stack CTA buttons vertically
+- Features: Single column grid
+- Pricing: Horizontal scroll or stacked cards
+- Navigation: Hamburger menu if needed
