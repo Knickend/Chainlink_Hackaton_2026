@@ -1,163 +1,170 @@
 
-# Debt-Aware Investment Strategy Integration
+# Fetch Prices for All Crypto Assets
 
 ## Overview
-Integrate debt payoff calculator insights into the Investment Strategy Card for Pro users. When a user has debt, the strategy card will provide smart recommendations that balance debt reduction with investing, prioritizing high-interest debt when appropriate.
+Extend the price fetching system to automatically fetch live prices for ALL cryptocurrency assets the user owns, not just BTC, ETH, and LINK. When a user has Solana, Cardano, or any other crypto, the system will fetch current prices on page load.
 
-## User Experience
+## Current Architecture
+- `fetch-prices` edge function: Only fetches BTC, ETH, LINK (CoinGecko) + GOLD, SILVER (Perplexity)
+- `price_cache` table: Stores all cached prices (crypto, stocks, commodities)
+- `useLivePrices` hook: Loads from cache, has `stocks` map for non-hardcoded symbols
+- Price lookup: Falls back to `livePrices.stocks[symbol]` for unknown crypto
 
-When a Pro user has debt, the Investment Strategy Card will show:
-1. A "Debt Strategy" section before investment allocations
-2. Smart tips based on debt analysis (e.g., "Pay off 18% APR credit card before investing")
-3. Recommended debt payment allocation as part of the overall strategy
-4. Visual indicators showing optimal money flow
+## Problem
+When a user owns SOL, ADA, or other crypto, prices aren't actively fetched - they only exist if previously searched. This means portfolio values may show $0 or stale data for these assets.
 
-## Technical Implementation
+## Solution
 
-### 1. Create Debt Analysis Utility
+### 1. Create New Edge Function: `fetch-crypto-prices`
 
-Create helper functions to analyze debt and generate recommendations:
+A dedicated function to fetch prices for any list of crypto symbols using CoinGecko API.
 
-| Function | Purpose |
-|----------|---------|
-| `analyzeDebtPriority` | Identifies high-interest debt that should be prioritized |
-| `calculateOptimalAllocation` | Suggests split between debt payoff and investing |
-| `generateDebtTips` | Creates actionable recommendations |
-
-**Logic:**
-- High-interest threshold: 7% APR (higher than typical index fund returns)
-- If any debt > 7% APR: recommend prioritizing debt payoff
-- Credit card debt always flagged as high priority
-- Calculate potential interest savings from accelerated payoff
-
-### 2. Modify InvestmentStrategyCard Component
-
-Update the component to accept debt data and display integrated recommendations:
-
-**New Props:**
-```typescript
-interface InvestmentStrategyCardProps {
-  freeMonthlyIncome: number;
-  formatValue: (value: number) => string;
-  debts?: Debt[];           // NEW: User's debt list
-  monthlyPayments?: number; // NEW: Current monthly debt payments
-  delay?: number;
-}
+**Endpoint:** `POST /fetch-crypto-prices`
+**Request Body:**
+```json
+{ "symbols": ["SOL", "ADA", "DOT", "AVAX"] }
 ```
 
-**New UI Sections:**
-- "Priority Actions" section when high-interest debt exists
-- "Suggested Allocation" combining debt + investment strategy
-- Tips panel with specific recommendations
+**Logic:**
+- Map symbols to CoinGecko IDs (e.g., SOL -> solana, ADA -> cardano)
+- Use CoinGecko's batch endpoint: `/simple/price?ids=solana,cardano&vs_currencies=usd`
+- Cache results to `price_cache` table
+- Return prices and 24h change data
+
+**CoinGecko ID Mapping (expandable):**
+| Symbol | CoinGecko ID |
+|--------|--------------|
+| SOL | solana |
+| ADA | cardano |
+| DOT | polkadot |
+| AVAX | avalanche-2 |
+| MATIC | matic-network |
+| ATOM | cosmos |
+| UNI | uniswap |
+| AAVE | aave |
+| ... | (lookup via CoinGecko API) |
+
+### 2. Extend `useLivePrices` Hook
+
+Add functionality to fetch prices for additional crypto symbols.
+
+**New Parameter:**
+```typescript
+function useLivePrices(
+  refreshInterval = 15 * 60 * 1000,
+  additionalCryptoSymbols?: string[]  // NEW
+)
+```
+
+**New Behavior:**
+- On mount: If `additionalCryptoSymbols` provided, call `fetch-crypto-prices`
+- Merge results into `prices.stocks` map
+- Re-fetch on interval along with main prices
 
 ### 3. Update Index.tsx Integration
 
-Pass debt data to the InvestmentStrategyCard:
-```tsx
-<InvestmentStrategyCard
-  freeMonthlyIncome={adjustedMonthlyNet}
-  formatValue={formatValue}
-  debts={debts}
-  monthlyPayments={monthlyPayments}
-  delay={0.3}
-/>
+Pass user's crypto symbols to the `useLivePrices` hook.
+
+```typescript
+// Extract unique crypto symbols from user's assets
+const cryptoSymbols = useMemo(() => {
+  return assets
+    .filter(a => a.category === 'crypto' && a.symbol)
+    .map(a => a.symbol!.toUpperCase())
+    .filter(s => !['BTC', 'ETH', 'LINK'].includes(s)); // Exclude hardcoded ones
+}, [assets]);
+
+const { prices } = useLivePrices(15 * 60 * 1000, cryptoSymbols);
 ```
 
-## UI Mockup
+## Technical Details
 
-### With High-Interest Debt
-```
-+--------------------------------------------------+
-|  Investment Strategy          [Edit]              |
-|  Based on $2,340/mo free income                   |
-+--------------------------------------------------+
-|  PRIORITY: Pay Off High-Interest Debt             |
-|  ┌────────────────────────────────────────────┐  |
-|  │  Credit Card (18% APR)                     │  |
-|  │  Paying $200/mo extra saves $3,400 interest│  |
-|  │  [Debt-free 14 months sooner]              │  |
-|  └────────────────────────────────────────────┘  |
-+--------------------------------------------------+
-|  Recommended Monthly Allocation                   |
-|                                                   |
-|  Debt Payoff         35%    $820                  |
-|  ━━━━━━━━━━━━━━━━━━━━━━━━━━                      |
-|                                                   |
-|  Stocks/ETFs         30%    $702                  |
-|  ━━━━━━━━━━━━━━━━━━━━━━━━━━                      |
-|                                                   |
-|  Crypto              20%    $468                  |
-|  ━━━━━━━━━━━━━━━━━━━━━━                          |
-|                                                   |
-|  Emergency Fund      15%    $350                  |
-|  ━━━━━━━━━━━━━━━━━━━━                            |
-+--------------------------------------------------+
-|  Tips                                             |
-|  - Your credit card APR (18%) exceeds typical    |
-|    market returns (7-10%). Prioritize payoff.    |
-|  - After debt-free: reallocate to investments    |
-+--------------------------------------------------+
+### CoinGecko API Integration
+- Free tier: 30 calls/minute, no API key needed
+- Batch endpoint supports up to 250 coins per request
+- Response includes: current price, 24h change, 24h change %
+
+**Sample Response:**
+```json
+{
+  "solana": {
+    "usd": 142.50,
+    "usd_24h_change": 3.45
+  },
+  "cardano": {
+    "usd": 0.65,
+    "usd_24h_change": -1.23
+  }
+}
 ```
 
-### Without High-Interest Debt
-```
-+--------------------------------------------------+
-|  Investment Strategy          [Edit]              |
-|  Based on $2,340/mo free income                   |
-+--------------------------------------------------+
-|  Your low-interest debt (3.5% mortgage) can be   |
-|  maintained while investing for higher returns.   |
-+--------------------------------------------------+
-|  Monthly Investment Allocation                    |
-|  [Standard allocation display]                    |
-+--------------------------------------------------+
-```
+### Fallback Strategy
+1. Check `price_cache` first (same 15-min TTL as other crypto)
+2. If cache valid, return cached prices
+3. If cache stale, fetch from CoinGecko
+4. If CoinGecko fails, return cached values (graceful degradation)
 
-## Files to Modify
+### Symbol Resolution
+For unknown symbols, use CoinGecko's search API to find the correct ID:
+```
+GET /search?query=SOL
+```
+This will be done once per unknown symbol and cached.
+
+## Files to Create/Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/debtAnalysis.ts` | NEW: Debt analysis utilities and tip generation |
-| `src/components/InvestmentStrategyCard.tsx` | Add debt props, priority section, integrated tips |
-| `src/pages/Index.tsx` | Pass debts and monthlyPayments to InvestmentStrategyCard |
+| `supabase/functions/fetch-crypto-prices/index.ts` | NEW: Edge function for batch crypto price fetching |
+| `src/hooks/useLivePrices.ts` | Add `additionalCryptoSymbols` parameter and fetch logic |
+| `src/pages/Index.tsx` | Pass crypto symbols to useLivePrices |
 
-## Debt Analysis Logic
+## Data Flow
 
 ```text
-HIGH_INTEREST_THRESHOLD = 7%
-
-For each debt:
-  - If APR > threshold OR debt_type === 'credit_card':
-    - Flag as high priority
-    - Calculate savings from extra payments
-    - Generate specific payoff recommendation
-
-If any high-priority debt exists:
-  - Show "Priority Actions" section
-  - Suggest allocation split (e.g., 40% debt, 60% invest)
-  - Display interest savings potential
-
-If only low-interest debt:
-  - Show reassurance message
-  - Focus on investment allocation
-  - Note that maintaining low-interest debt is acceptable
+User loads app
+       |
+       v
+usePortfolioData loads assets
+       |
+       v
+Extract crypto symbols [SOL, ADA, DOT]
+       |
+       v
+useLivePrices(symbols)
+       |
+       +---> fetch-prices (BTC, ETH, LINK, GOLD, SILVER)
+       |
+       +---> fetch-crypto-prices([SOL, ADA, DOT])
+                    |
+                    v
+              Check price_cache
+                    |
+          +---------+---------+
+          | Cache valid       | Cache stale
+          v                   v
+      Return cached     CoinGecko API
+                              |
+                              v
+                        Update cache
+                              |
+                              v
+                        Return prices
+       |
+       v
+Merge all prices into livePrices.stocks
+       |
+       v
+usePortfolio calculates asset values
 ```
-
-## Smart Tips Generated
-
-Based on debt analysis, generate contextual tips:
-
-| Scenario | Tip |
-|----------|-----|
-| Credit card debt | "Pay off credit card first - 18% APR far exceeds investment returns" |
-| High-interest loan | "Extra $X/mo toward [loan] saves $Y in interest" |
-| Only mortgage/low-rate | "Your 3.5% mortgage rate is below market returns - investing makes sense" |
-| Multiple high-interest | "Focus on highest APR first (debt avalanche method)" |
-| Insufficient payment | "Increase [debt] payment by $X to cover accruing interest" |
 
 ## Edge Cases
 
-- No debt: Show standard investment strategy (current behavior)
-- All payments insufficient: Warn about growing debt before suggesting investments
-- Very high debt-to-income: Suggest focusing entirely on debt reduction
-- Mixed debt: Prioritize high-interest while maintaining minimum on low-interest
+- **Unknown symbol:** Use CoinGecko search to resolve, cache the mapping
+- **Rate limit:** Batch requests (max 250 coins), respect 30/min limit
+- **API failure:** Use cached prices, show "prices may be stale" indicator
+- **New asset added:** Trigger fetch for new symbol immediately
+
+## Cache Strategy
+
+Same 15-minute TTL as existing crypto (BTC, ETH, LINK). The `price_cache` table already supports this - we just add more rows for additional symbols.
