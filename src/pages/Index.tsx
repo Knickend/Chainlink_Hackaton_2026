@@ -11,6 +11,7 @@ import { YieldBreakdownCard } from '@/components/YieldBreakdownCard';
 import { AssetCategoryCard } from '@/components/AssetCategoryCard';
 import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
 import { DebtOverviewCard } from '@/components/DebtOverviewCard';
+import { DebtPayoffCalculator } from '@/components/DebtPayoffCalculator';
 import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
@@ -289,6 +290,17 @@ const Index = () => {
             delay={0.2}
           />
         </div>
+
+        {/* Debt Payoff Calculator */}
+        {!isDemo && debts.length > 0 && (
+          <div className="mt-8">
+            <DebtPayoffCalculator
+              debts={debts}
+              formatValue={formatValue}
+              delay={0.3}
+            />
+          </div>
+        )}
 
         {/* Footer */}
         <motion.footer
