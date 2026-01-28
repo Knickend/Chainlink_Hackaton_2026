@@ -48,7 +48,7 @@ export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps)
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       name: '',
-      amount: 0,
+      amount: undefined as unknown as number,
       category: '',
       expense_date: new Date(),
     },
@@ -64,7 +64,7 @@ export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps)
     });
     form.reset({
       name: '',
-      amount: 0,
+      amount: undefined as unknown as number,
       category: '',
       expense_date: new Date(),
     });
@@ -114,8 +114,8 @@ export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps)
                       type="number"
                       step="0.01"
                       placeholder="500.00"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      value={field.value || ''}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       className="bg-secondary/50"
                     />
                   </FormControl>
