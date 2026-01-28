@@ -218,6 +218,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_investment_preferences: {
+        Row: {
+          commodities_allocation: number
+          created_at: string
+          crypto_allocation: number
+          emergency_fund_target: number
+          id: string
+          stocks_allocation: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          commodities_allocation?: number
+          created_at?: string
+          crypto_allocation?: number
+          emergency_fund_target?: number
+          id?: string
+          stocks_allocation?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          commodities_allocation?: number
+          created_at?: string
+          crypto_allocation?: number
+          emergency_fund_target?: number
+          id?: string
+          stocks_allocation?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -27,6 +27,7 @@ import { SubscriptionBanner } from '@/components/SubscriptionBanner';
 import { SubscriptionDialog } from '@/components/SubscriptionDialog';
 import { ProBadge } from '@/components/ProBadge';
 import { PerformanceCard } from '@/components/PerformanceCard';
+import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory } from '@/lib/types';
@@ -215,6 +216,17 @@ const Index = () => {
             />
           )}
         </div>
+
+        {/* Investment Strategy Card - Pro Only */}
+        {isPro && !isDemo && (
+          <div className="mb-8">
+            <InvestmentStrategyCard
+              freeMonthlyIncome={adjustedMonthlyNet}
+              formatValue={formatValue}
+              delay={0.3}
+            />
+          </div>
+        )}
 
         {/* Asset Categories */}
         <div className="mb-8">
