@@ -1,11 +1,12 @@
 import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Repeat, Zap } from 'lucide-react';
 import { Income, Expense } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditIncomeDialog } from './EditIncomeDialog';
 import { EditExpenseDialog } from './EditExpenseDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { Badge } from '@/components/ui/badge';
 
 interface IncomeExpenseCardProps {
   type: 'income' | 'expense';
@@ -13,6 +14,7 @@ interface IncomeExpenseCardProps {
   total: string;
   formatValue: (value: number) => string;
   actionButton?: ReactNode;
+  secondaryActionButton?: ReactNode;
   onUpdateIncome?: (id: string, data: Partial<Omit<Income, 'id'>>) => void;
   onDeleteIncome?: (id: string) => void;
   onUpdateExpense?: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
@@ -25,12 +27,18 @@ export function IncomeExpenseCard({
   total,
   formatValue,
   actionButton,
+  secondaryActionButton,
   onUpdateIncome,
   onDeleteIncome,
   onUpdateExpense,
   onDeleteExpense,
 }: IncomeExpenseCardProps) {
   const isIncome = type === 'income';
+  
+  // Count recurring vs one-time for expenses
+  const expenseItems = !isIncome ? (items as Expense[]) : [];
+  const recurringCount = expenseItems.filter(e => e.is_recurring).length;
+  const oneTimeCount = expenseItems.filter(e => !e.is_recurring).length;
 
   return (
     <motion.div
@@ -54,9 +62,12 @@ export function IncomeExpenseCard({
             )}
           </div>
           <div>
-            <h3 className="font-semibold capitalize">Monthly {type}</h3>
+            <h3 className="font-semibold capitalize">{isIncome ? 'Monthly Income' : 'Expenses'}</h3>
             <p className="text-xs text-muted-foreground">
-              {items.length} {isIncome ? 'sources' : 'categories'}
+              {isIncome 
+                ? `${items.length} sources`
+                : `${recurringCount} monthly${oneTimeCount > 0 ? `, ${oneTimeCount} one-time` : ''}`
+              }
             </p>
           </div>
         </div>
@@ -70,58 +81,80 @@ export function IncomeExpenseCard({
             >
               {isIncome ? '+' : '-'}{total}
             </p>
-            <p className="text-xs text-muted-foreground">per month</p>
+            <p className="text-xs text-muted-foreground">
+              {isIncome ? 'per month' : 'total this period'}
+            </p>
           </div>
-          {actionButton}
+          <div className="flex items-center gap-1">
+            {actionButton}
+            {secondaryActionButton}
+          </div>
         </div>
       </div>
 
       <div className="space-y-2 max-h-[200px] overflow-y-auto">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm">
-                {'source' in item ? item.source : item.name}
-              </span>
-              {'type' in item && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
-                  {item.type}
+        {items.map((item) => {
+          const isExpense = !isIncome && 'is_recurring' in item;
+          const expense = isExpense ? (item as Expense) : null;
+          
+          return (
+            <div
+              key={item.id}
+              className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30 group"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm">
+                  {'source' in item ? item.source : item.name}
                 </span>
-              )}
-              {'category' in item && !('source' in item) && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
-                  {item.category}
-                </span>
-              )}
+                {'type' in item && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                    {item.type}
+                  </span>
+                )}
+                {expense && (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "text-[10px] px-1.5 py-0 h-4",
+                      expense.is_recurring 
+                        ? "border-muted-foreground/30 text-muted-foreground" 
+                        : "border-warning/50 text-warning"
+                    )}
+                  >
+                    {expense.is_recurring ? (
+                      <><Repeat className="w-2.5 h-2.5 mr-0.5" />Monthly</>
+                    ) : (
+                      <><Zap className="w-2.5 h-2.5 mr-0.5" />One-time</>
+                    )}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm">{formatValue(item.amount)}</span>
+                {isIncome && 'source' in item && onUpdateIncome && (
+                  <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} />
+                )}
+                {isIncome && onDeleteIncome && (
+                  <DeleteConfirmDialog
+                    itemName={'source' in item ? item.source : item.name}
+                    itemType="income"
+                    onConfirm={() => onDeleteIncome(item.id)}
+                  />
+                )}
+                {!isIncome && 'name' in item && onUpdateExpense && (
+                  <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} />
+                )}
+                {!isIncome && onDeleteExpense && (
+                  <DeleteConfirmDialog
+                    itemName={'name' in item ? item.name : ''}
+                    itemType="expense"
+                    onConfirm={() => onDeleteExpense(item.id)}
+                  />
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm">{formatValue(item.amount)}</span>
-              {isIncome && 'source' in item && onUpdateIncome && (
-                <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} />
-              )}
-              {isIncome && onDeleteIncome && (
-                <DeleteConfirmDialog
-                  itemName={'source' in item ? item.source : item.name}
-                  itemType="income"
-                  onConfirm={() => onDeleteIncome(item.id)}
-                />
-              )}
-              {!isIncome && 'name' in item && onUpdateExpense && (
-                <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} />
-              )}
-              {!isIncome && onDeleteExpense && (
-                <DeleteConfirmDialog
-                  itemName={'name' in item ? item.name : ''}
-                  itemType="expense"
-                  onConfirm={() => onDeleteExpense(item.id)}
-                />
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </motion.div>
   );

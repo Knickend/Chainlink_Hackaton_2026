@@ -92,8 +92,9 @@ export interface Income {
 export interface Expense {
   id: string;
   name: string;
-  amount: number; // monthly in USD
+  amount: number; // in USD
   category: string;
+  is_recurring: boolean; // true for monthly recurring, false for one-time
 }
 
 export interface PortfolioMetrics {
