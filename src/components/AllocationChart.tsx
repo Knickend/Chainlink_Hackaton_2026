@@ -10,14 +10,14 @@ const COLORS = {
   banking: '#3B82F6',
   crypto: '#F7931A',
   stocks: '#22C55E',
-  metals: '#EAB308',
+  commodities: '#EAB308',
 };
 
 const LABELS = {
   banking: 'Banking',
   crypto: 'Crypto',
   stocks: 'Stocks',
-  metals: 'Metals',
+  commodities: 'Commodities',
 };
 
 export function AllocationChart({ data, formatValue }: AllocationChartProps) {
