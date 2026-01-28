@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Crown, Sparkles } from 'lucide-react';
+import { Crown, Sparkles, BarChart3, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface SubscriptionBannerProps {
@@ -19,15 +19,22 @@ export function SubscriptionBanner({ onUpgrade }: SubscriptionBannerProps) {
             <Sparkles className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Upgrade to Pro</h3>
-            <p className="text-sm text-muted-foreground">
-              Unlock unlimited assets, advanced analytics & more
+            <h3 className="font-semibold text-foreground">Unlock Premium Features</h3>
+            <p className="text-sm text-muted-foreground flex items-center gap-3 flex-wrap">
+              <span className="flex items-center gap-1">
+                <BarChart3 className="w-3 h-3" />
+                Performance tracking
+              </span>
+              <span className="flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                One-time expenses
+              </span>
             </p>
           </div>
         </div>
         <Button onClick={onUpgrade} className="gap-2 bg-primary hover:bg-primary/90">
           <Crown className="w-4 h-4" />
-          Upgrade for $4.99/mo
+          View Plans
         </Button>
       </div>
     </motion.div>

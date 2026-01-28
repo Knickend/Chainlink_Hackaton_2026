@@ -15,24 +15,30 @@ import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { ViewAllAssetsDialog } from '@/components/ViewAllAssetsDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
+import { AddOneTimeExpenseDialog } from '@/components/AddOneTimeExpenseDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
 import { DemoBanner } from '@/components/DemoBanner';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SubscriptionBanner } from '@/components/SubscriptionBanner';
 import { SubscriptionDialog } from '@/components/SubscriptionDialog';
 import { ProBadge } from '@/components/ProBadge';
+import { PerformanceCard } from '@/components/PerformanceCard';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory } from '@/lib/types';
+import { SubscriptionTier } from '@/lib/subscription';
 
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices();
   
-  // Subscription state (mockup)
-  const [isPro, setIsPro] = useState(false);
+  // Subscription state (mockup) - 'free' | 'standard' | 'pro'
+  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free');
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  
+  const isPro = subscriptionTier === 'pro';
+  const isSubscribed = subscriptionTier !== 'free';
   
   // Demo mode when user is not logged in
   const isDemo = !user;
@@ -82,8 +88,8 @@ const Index = () => {
         {/* Demo Banner */}
         {isDemo && <DemoBanner />}
         
-        {/* Subscription Banner (show for logged-in non-pro users) */}
-        {!isDemo && !isPro && (
+        {/* Subscription Banner (show for logged-in non-subscribed users) */}
+        {!isDemo && !isSubscribed && (
           <SubscriptionBanner onUpgrade={() => setShowSubscriptionDialog(true)} />
         )}
         
@@ -91,7 +97,7 @@ const Index = () => {
         <SubscriptionDialog
           open={showSubscriptionDialog}
           onOpenChange={setShowSubscriptionDialog}
-          onSubscribe={() => setIsPro(true)}
+          onSubscribe={(tier) => setSubscriptionTier(tier)}
         />
 
         {/* Header */}
@@ -179,9 +185,16 @@ const Index = () => {
         </div>
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+        <div className={`grid grid-cols-1 ${isPro ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4 mb-8`}>
           <NetWorthChart formatValue={formatValue} />
           <AllocationChart data={categoryTotals} formatValue={formatValue} />
+          {isPro && (
+            <PerformanceCard 
+              currentNetWorth={metrics.totalNetWorth} 
+              formatValue={formatValue} 
+              delay={0.2}
+            />
+          )}
         </div>
 
         {/* Asset Categories */}
@@ -239,7 +252,10 @@ const Index = () => {
             items={expenses}
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={addExpense} />}
+            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true })} />}
+            secondaryActionButton={!isDemo && isPro ? (
+              <AddOneTimeExpenseDialog onAdd={(data: { name: string; amount: number; category: string; is_recurring: false }) => addExpense(data)} />
+            ) : undefined}
             onUpdateExpense={isDemo ? undefined : updateExpense}
             onDeleteExpense={isDemo ? undefined : deleteExpense}
           />

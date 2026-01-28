@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Crown, CreditCard, Shield, Zap, BarChart3, Loader2 } from 'lucide-react';
+import { Check, Crown, CreditCard, Shield, Zap, BarChart3, Loader2, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,26 +11,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { SubscriptionTier, SUBSCRIPTION_PLANS } from '@/lib/subscription';
 
 interface SubscriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubscribe: () => void;
+  onSubscribe: (tier: SubscriptionTier) => void;
 }
 
-const features = [
-  { icon: Zap, text: 'Unlimited asset tracking' },
-  { icon: BarChart3, text: 'Advanced analytics & reports' },
-  { icon: Shield, text: 'Priority support' },
-  { icon: Crown, text: 'Early access to new features' },
-];
+const tierIcons: Record<SubscriptionTier, typeof Crown> = {
+  free: Zap,
+  standard: Shield,
+  pro: Crown,
+};
 
 export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: SubscriptionDialogProps) {
   const [step, setStep] = useState<'pricing' | 'payment' | 'success'>('pricing');
+  const [selectedTier, setSelectedTier] = useState<SubscriptionTier>('standard');
   const [isProcessing, setIsProcessing] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
   const [cvc, setCvc] = useState('');
+
+  const selectedPlan = SUBSCRIPTION_PLANS.find(p => p.tier === selectedTier);
 
   const handlePayment = async () => {
     if (!cardNumber || !expiry || !cvc) {
@@ -50,7 +54,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
     
     // After showing success, close dialog and update state
     setTimeout(() => {
-      onSubscribe();
+      onSubscribe(selectedTier);
       onOpenChange(false);
       setStep('pricing');
       setCardNumber('');
@@ -78,58 +82,123 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
     return v;
   };
 
+  const handleClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      setStep('pricing');
+      setSelectedTier('standard');
+    }
+    onOpenChange(isOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-lg">
         {step === 'pricing' && (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
-                <Crown className="w-5 h-5 text-primary" />
-                Upgrade to Pro
+                <Sparkles className="w-5 h-5 text-primary" />
+                Choose Your Plan
               </DialogTitle>
             </DialogHeader>
             
-            <div className="space-y-6 py-4">
-              {/* Pricing Card */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="relative p-6 rounded-xl border-2 border-primary bg-gradient-to-br from-primary/10 to-transparent"
-              >
-                <div className="absolute -top-3 left-4">
-                  <span className="px-3 py-1 text-xs font-semibold bg-primary text-primary-foreground rounded-full">
-                    MOST POPULAR
-                  </span>
-                </div>
-                
-                <div className="text-center mb-4">
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-4xl font-bold text-foreground">$4.99</span>
-                    <span className="text-muted-foreground">/month</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Cancel anytime
-                  </p>
-                </div>
-
-                <ul className="space-y-3">
-                  {features.map((feature, index) => (
-                    <motion.li
-                      key={index}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
+            <div className="space-y-4 py-4">
+              {/* Plan Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SUBSCRIPTION_PLANS.map((plan, index) => {
+                  const Icon = tierIcons[plan.tier];
+                  const isSelected = selectedTier === plan.tier;
+                  
+                  return (
+                    <motion.button
+                      key={plan.tier}
+                      type="button"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.1 }}
-                      className="flex items-center gap-3"
+                      onClick={() => setSelectedTier(plan.tier)}
+                      className={cn(
+                        "relative p-4 rounded-xl border-2 text-left transition-all",
+                        isSelected 
+                          ? "border-primary bg-primary/10" 
+                          : "border-border hover:border-primary/50",
+                        plan.isPopular && "ring-2 ring-primary/20"
+                      )}
                     >
-                      <div className="p-1 rounded-full bg-primary/20">
-                        <Check className="w-3 h-3 text-primary" />
+                      {plan.isPopular && (
+                        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
+                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full">
+                            POPULAR
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Icon className={cn(
+                          "w-5 h-5",
+                          plan.tier === 'pro' ? "text-primary" : "text-muted-foreground"
+                        )} />
+                        <span className="font-semibold">{plan.name}</span>
                       </div>
-                      <span className="text-sm text-foreground">{feature.text}</span>
-                    </motion.li>
-                  ))}
-                </ul>
-              </motion.div>
+                      
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-2xl font-bold">${plan.price}</span>
+                        <span className="text-sm text-muted-foreground">/mo</span>
+                      </div>
+                      
+                      <ul className="space-y-1.5">
+                        {plan.features.slice(0, 4).map((feature, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs">
+                            <Check className={cn(
+                              "w-3 h-3 mt-0.5 flex-shrink-0",
+                              isSelected ? "text-primary" : "text-muted-foreground"
+                            )} />
+                            <span className="text-muted-foreground">{feature}</span>
+                          </li>
+                        ))}
+                        {plan.features.length > 4 && (
+                          <li className="text-xs text-muted-foreground pl-5">
+                            +{plan.features.length - 4} more
+                          </li>
+                        )}
+                      </ul>
+                      
+                      {isSelected && (
+                        <motion.div
+                          layoutId="selected-indicator"
+                          className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center"
+                        >
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </motion.div>
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Pro Features Highlight */}
+              {selectedTier === 'pro' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="p-3 rounded-lg bg-primary/5 border border-primary/20"
+                >
+                  <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+                    <Crown className="w-4 h-4 text-primary" />
+                    Pro Exclusive Features
+                  </h4>
+                  <ul className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <li className="flex items-center gap-1.5">
+                      <BarChart3 className="w-3 h-3 text-primary" />
+                      Performance tracking
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Zap className="w-3 h-3 text-primary" />
+                      One-time expenses
+                    </li>
+                  </ul>
+                </motion.div>
+              )}
 
               <Button
                 onClick={() => setStep('payment')}
@@ -137,11 +206,11 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                 size="lg"
               >
                 <CreditCard className="w-4 h-4" />
-                Continue to Payment
+                Continue with {selectedPlan?.name} - ${selectedPlan?.price}/mo
               </Button>
               
               <p className="text-xs text-center text-muted-foreground">
-                Secure payment powered by Stripe
+                Secure payment • Cancel anytime
               </p>
             </div>
           </>
@@ -158,8 +227,15 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
 
             <div className="space-y-4 py-4">
               <div className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Pro Monthly</span>
-                <span className="font-semibold">$4.99/mo</span>
+                <div className="flex items-center gap-2">
+                  {selectedTier === 'pro' ? (
+                    <Crown className="w-4 h-4 text-primary" />
+                  ) : (
+                    <Shield className="w-4 h-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm">{selectedPlan?.name} Monthly</span>
+                </div>
+                <span className="font-semibold">${selectedPlan?.price}/mo</span>
               </div>
 
               <div className="space-y-3">
@@ -244,7 +320,9 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
               <Check className="w-8 h-8 text-primary" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-foreground">Welcome to Pro!</h3>
+              <h3 className="text-xl font-semibold text-foreground">
+                Welcome to {selectedPlan?.name}!
+              </h3>
               <p className="text-muted-foreground mt-1">
                 Your subscription is now active
               </p>

@@ -32,14 +32,15 @@ export const mockIncome: Income[] = [
 ];
 
 export const mockExpenses: Expense[] = [
-  { id: '1', name: 'Rent/Mortgage', amount: 2800, category: 'Housing' },
-  { id: '2', name: 'Groceries', amount: 600, category: 'Food' },
-  { id: '3', name: 'Utilities', amount: 250, category: 'Housing' },
-  { id: '4', name: 'Car Payment', amount: 450, category: 'Transportation' },
-  { id: '5', name: 'Insurance', amount: 380, category: 'Insurance' },
-  { id: '6', name: 'Entertainment', amount: 300, category: 'Lifestyle' },
-  { id: '7', name: 'Subscriptions', amount: 120, category: 'Lifestyle' },
-  { id: '8', name: 'Dining Out', amount: 400, category: 'Food' },
+  { id: '1', name: 'Rent/Mortgage', amount: 2800, category: 'Housing', is_recurring: true },
+  { id: '2', name: 'Groceries', amount: 600, category: 'Food', is_recurring: true },
+  { id: '3', name: 'Utilities', amount: 250, category: 'Housing', is_recurring: true },
+  { id: '4', name: 'Car Payment', amount: 450, category: 'Transportation', is_recurring: true },
+  { id: '5', name: 'Insurance', amount: 380, category: 'Insurance', is_recurring: true },
+  { id: '6', name: 'Entertainment', amount: 300, category: 'Lifestyle', is_recurring: true },
+  { id: '7', name: 'Subscriptions', amount: 120, category: 'Lifestyle', is_recurring: true },
+  { id: '8', name: 'Dining Out', amount: 400, category: 'Food', is_recurring: true },
+  { id: '9', name: 'Car Repair', amount: 850, category: 'Emergency', is_recurring: false },
 ];
 
 export const mockHistoricalData = [
