@@ -40,9 +40,29 @@ const categories: { value: AssetCategory; label: string }[] = [
   { value: 'commodities', label: 'Commodities' },
 ];
 
-function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number | null {
+function getSymbolPrice(symbol: string | undefined, category: string | undefined, prices?: LivePrices): number | null {
   if (!symbol || !prices) return null;
   const upperSymbol = symbol.toUpperCase();
+  
+  // Check crypto prices (dedicated fields)
+  if (category === 'crypto') {
+    switch (upperSymbol) {
+      case 'BTC':
+      case 'BITCOIN':
+        return prices.btc;
+      case 'ETH':
+      case 'ETHEREUM':
+        return prices.eth;
+      case 'LINK':
+      case 'CHAINLINK':
+        return prices.link;
+      default:
+        // Check if it's cached as a stock/generic ticker
+        return prices.stocks?.[upperSymbol]?.price ?? null;
+    }
+  }
+  
+  // Check commodity prices
   switch (upperSymbol) {
     case 'GOLD':
     case 'XAU':
@@ -51,6 +71,7 @@ function getSymbolPrice(symbol: string | undefined, prices?: LivePrices): number
     case 'XAG':
       return prices.silver;
     default:
+      // Check stocks
       return prices.stocks?.[upperSymbol]?.price ?? null;
   }
 }
@@ -80,7 +101,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
   const selectedUnit = (form.watch('unit') || 'oz') as CommodityUnit;
   const bankingAmount = form.watch('value');
   
-  const currentPrice = getSymbolPrice(selectedSymbol, livePrices);
+  const currentPrice = getSymbolPrice(selectedSymbol, selectedCategory, livePrices);
   const isMarketPricedCategory = selectedCategory === 'crypto' || selectedCategory === 'commodities' || selectedCategory === 'stocks';
   const isPriceAvailable = currentPrice !== null && isMarketPricedCategory;
   const isCryptoTickerPriceAvailable = selectedCategory === 'crypto' && typeof selectedTicker?.price === 'number';
@@ -169,7 +190,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
     if ((selectedCategory === 'crypto' || selectedCategory === 'commodities') && selectedTicker?.price) {
       priceForComputation = selectedTicker.price;
     } else {
-      priceForComputation = getSymbolPrice(data.symbol, livePrices);
+      priceForComputation = getSymbolPrice(data.symbol, data.category, livePrices);
     }
     
     let computedValue = data.value;
