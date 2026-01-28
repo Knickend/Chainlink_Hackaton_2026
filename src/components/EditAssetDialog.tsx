@@ -295,7 +295,7 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
                   )}
                 />
 
-                {(isCryptoTickerPriceAvailable || isPriceAvailable) && (
+              {(isCryptoTickerPriceAvailable || isPriceAvailable) && (
                   <div className="space-y-2 p-3 rounded-lg bg-secondary/30">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Current Price</span>
@@ -319,6 +319,28 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
                     </div>
                   </div>
                 )}
+
+                <FormField
+                  control={form.control}
+                  name="yield"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Staking Yield (%)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="4.5"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                          className="bg-secondary/50"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </>
             )}
 
