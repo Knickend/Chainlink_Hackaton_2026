@@ -89,7 +89,13 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
     const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const monthlyNetIncome = totalIncome - totalExpenses;
+    
+    // Debt metrics will be passed from useDebts hook when integrated
+    const totalDebt = 0;
+    const monthlyDebtPayments = 0;
+    const monthlyInterestExpense = 0;
+    
+    const monthlyNetIncome = totalIncome - totalExpenses - monthlyDebtPayments;
     
     const yearlyYield = assets.reduce((sum, asset) => {
       if (asset.yield) {
@@ -102,6 +108,9 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
       totalNetWorth,
       totalIncome,
       totalExpenses,
+      totalDebt,
+      monthlyDebtPayments,
+      monthlyInterestExpense,
       monthlyNetIncome,
       yearlyYield,
     };

@@ -11,7 +11,7 @@ interface StatCardProps {
     value: number;
     isPositive: boolean;
   };
-  variant?: 'default' | 'primary' | 'success' | 'warning';
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger';
   delay?: number;
 }
 
@@ -20,6 +20,7 @@ const variantStyles = {
   primary: 'border-primary/30 gold-glow',
   success: 'border-success/30',
   warning: 'border-bitcoin/30',
+  danger: 'border-destructive/30',
 };
 
 const iconVariantStyles = {
@@ -27,6 +28,7 @@ const iconVariantStyles = {
   primary: 'bg-primary/20 text-primary',
   success: 'bg-success/20 text-success',
   warning: 'bg-bitcoin/20 text-bitcoin',
+  danger: 'bg-destructive/20 text-destructive',
 };
 
 export function StatCard({

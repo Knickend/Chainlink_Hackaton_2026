@@ -98,10 +98,33 @@ export interface Expense {
   expense_date?: string; // ISO date string for one-time expenses
 }
 
+export type DebtType = 'mortgage' | 'credit_card' | 'personal_loan' | 'auto_loan' | 'student_loan' | 'other';
+
+export const DEBT_TYPES: { value: DebtType; label: string }[] = [
+  { value: 'mortgage', label: 'Mortgage' },
+  { value: 'credit_card', label: 'Credit Card' },
+  { value: 'personal_loan', label: 'Personal Loan' },
+  { value: 'auto_loan', label: 'Auto Loan' },
+  { value: 'student_loan', label: 'Student Loan' },
+  { value: 'other', label: 'Other' },
+];
+
+export interface Debt {
+  id: string;
+  name: string;
+  debt_type: DebtType;
+  principal_amount: number;
+  interest_rate: number; // annual percentage
+  monthly_payment?: number;
+}
+
 export interface PortfolioMetrics {
   totalNetWorth: number;
   totalIncome: number;
   totalExpenses: number;
+  totalDebt: number;
+  monthlyDebtPayments: number;
+  monthlyInterestExpense: number;
   monthlyNetIncome: number;
   yearlyYield: number;
 }

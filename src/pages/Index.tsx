@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useLivePrices } from '@/hooks/useLivePrices';
+import { useDebts } from '@/hooks/useDebts';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
 import { YieldBreakdownCard } from '@/components/YieldBreakdownCard';
 import { AssetCategoryCard } from '@/components/AssetCategoryCard';
 import { IncomeExpenseCard } from '@/components/IncomeExpenseCard';
+import { DebtOverviewCard } from '@/components/DebtOverviewCard';
 import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
@@ -16,6 +18,7 @@ import { ViewAllAssetsDialog } from '@/components/ViewAllAssetsDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
 import { AddOneTimeExpenseDialog } from '@/components/AddOneTimeExpenseDialog';
+import { AddDebtDialog } from '@/components/AddDebtDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
 import { DemoBanner } from '@/components/DemoBanner';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -32,6 +35,7 @@ const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices();
+  const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
   
   // Subscription state (mockup) - 'free' | 'standard' | 'pro'
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free');
@@ -65,7 +69,7 @@ const Index = () => {
     deleteExpense,
   } = usePortfolio(prices, isDemo);
 
-  if (authLoading || (!isDemo && dataLoading)) {
+  if (authLoading || (!isDemo && (dataLoading || debtsLoading))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -75,6 +79,11 @@ const Index = () => {
       </div>
     );
   }
+
+  // Calculate adjusted net worth (assets - debt)
+  const adjustedNetWorth = metrics.totalNetWorth - totalDebt;
+  // Adjusted monthly net (income - expenses - debt payments)
+  const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - monthlyPayments;
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,14 +160,23 @@ const Index = () => {
         </motion.header>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <StatCard
             title="Net Worth"
-            value={formatValue(metrics.totalNetWorth, false)}
+            value={formatValue(adjustedNetWorth, false)}
+            subtitle={totalDebt > 0 ? `Assets: ${formatValue(metrics.totalNetWorth, false)}` : undefined}
             icon={Wallet}
             trend={{ value: 14.5, isPositive: true }}
             variant="primary"
             delay={0}
+          />
+          <StatCard
+            title="Total Debt"
+            value={formatValue(totalDebt, false)}
+            subtitle={monthlyPayments > 0 ? `${formatValue(monthlyPayments)}/mo` : undefined}
+            icon={CreditCard}
+            variant="danger"
+            delay={0.05}
           />
           <StatCard
             title="Monthly Income"
@@ -170,10 +188,10 @@ const Index = () => {
           />
           <StatCard
             title="Monthly Net"
-            value={formatValue(metrics.monthlyNetIncome)}
-            subtitle="After expenses"
+            value={formatValue(adjustedMonthlyNet)}
+            subtitle="After all expenses"
             icon={PiggyBank}
-            trend={{ value: 8.2, isPositive: true }}
+            trend={{ value: 8.2, isPositive: adjustedMonthlyNet >= 0 }}
             delay={0.2}
           />
           <YieldBreakdownCard
@@ -236,8 +254,8 @@ const Index = () => {
           )}
         </div>
 
-        {/* Income & Expenses */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Income, Expenses & Debt */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <IncomeExpenseCard
             type="income"
             items={income}
@@ -258,6 +276,17 @@ const Index = () => {
             ) : undefined}
             onUpdateExpense={isDemo ? undefined : updateExpense}
             onDeleteExpense={isDemo ? undefined : deleteExpense}
+          />
+          <DebtOverviewCard
+            debts={isDemo ? [] : debts}
+            totalDebt={isDemo ? 0 : totalDebt}
+            monthlyPayments={isDemo ? 0 : monthlyPayments}
+            monthlyInterest={isDemo ? 0 : monthlyInterest}
+            formatValue={formatValue}
+            onUpdateDebt={isDemo ? undefined : updateDebt}
+            onDeleteDebt={isDemo ? undefined : deleteDebt}
+            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={addDebt} />}
+            delay={0.2}
           />
         </div>
 
