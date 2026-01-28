@@ -34,10 +34,10 @@ interface InvestmentPreferencesDialogProps {
 }
 
 const COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
+  '#f59e0b', // amber/gold for stocks
+  '#8b5cf6', // purple for crypto
+  '#10b981', // green for commodities
+  '#3b82f6', // blue for emergency fund
 ];
 
 export function InvestmentPreferencesDialog({
