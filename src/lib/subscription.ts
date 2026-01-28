@@ -32,6 +32,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
       'Monthly performance tracking',
       'YTD overview & analytics',
       'One-time expense tracking',
+      'Debt payoff calculator',
       'Investment strategy advisor',
       'Priority support',
       'Early access to features',
