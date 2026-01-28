@@ -158,6 +158,45 @@ export type Database = {
         }
         Relationships: []
       }
+      portfolio_snapshots: {
+        Row: {
+          assets_breakdown: Json | null
+          created_at: string
+          id: string
+          net_worth: number
+          snapshot_month: string
+          total_assets: number
+          total_debt: number
+          total_expenses: number
+          total_income: number
+          user_id: string
+        }
+        Insert: {
+          assets_breakdown?: Json | null
+          created_at?: string
+          id?: string
+          net_worth?: number
+          snapshot_month: string
+          total_assets?: number
+          total_debt?: number
+          total_expenses?: number
+          total_income?: number
+          user_id: string
+        }
+        Update: {
+          assets_breakdown?: Json | null
+          created_at?: string
+          id?: string
+          net_worth?: number
+          snapshot_month?: string
+          total_assets?: number
+          total_debt?: number
+          total_expenses?: number
+          total_income?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       price_cache: {
         Row: {
           asset_type: string

@@ -27,6 +27,7 @@ import { SubscriptionBanner } from '@/components/SubscriptionBanner';
 import { SubscriptionDialog } from '@/components/SubscriptionDialog';
 import { ProBadge } from '@/components/ProBadge';
 import { PerformanceCard } from '@/components/PerformanceCard';
+import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -208,7 +209,14 @@ const Index = () => {
         <div className={`grid grid-cols-1 ${isPro ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4 mb-8`}>
           <NetWorthChart formatValue={formatValue} />
           <AllocationChart data={categoryTotals} formatValue={formatValue} />
-          {isPro && (
+          {isPro && !isDemo && (
+            <PortfolioHistoryCard 
+              currentNetWorth={adjustedNetWorth} 
+              formatValue={formatValue} 
+              delay={0.2}
+            />
+          )}
+          {isPro && isDemo && (
             <PerformanceCard 
               currentNetWorth={metrics.totalNetWorth} 
               formatValue={formatValue} 
