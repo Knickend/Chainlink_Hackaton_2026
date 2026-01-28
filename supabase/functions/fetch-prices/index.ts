@@ -87,20 +87,25 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a financial data assistant. Return ONLY valid JSON with no additional text. All prices should be in USD.'
+            content: 'You are a financial data API. You MUST return ONLY a valid JSON object with numeric values. Never return null. If you cannot find an exact price, use the most recent known price. No explanations, no markdown, just JSON.'
           },
           {
             role: 'user',
-            content: `Get the current prices for: Bitcoin (BTC), Ethereum (ETH), Chainlink (LINK), Gold (per troy ounce), and Silver (per troy ounce).
-            
-Return ONLY a JSON object in this exact format with no markdown or explanation:
-{"btc": NUMBER, "eth": NUMBER, "link": NUMBER, "gold": NUMBER, "silver": NUMBER}
+            content: `What are the current market prices in USD for these assets right now?
+1. Bitcoin (BTC) - cryptocurrency
+2. Ethereum (ETH) - cryptocurrency  
+3. Chainlink (LINK) - cryptocurrency
+4. Gold - spot price per troy ounce
+5. Silver - spot price per troy ounce
 
-Replace NUMBER with the actual current USD price as a number (no quotes, no currency symbols).`
+Respond with ONLY this JSON format, replacing X with actual numeric prices:
+{"btc":X,"eth":X,"link":X,"gold":X,"silver":X}
+
+IMPORTANT: All values must be numbers (not null, not strings). Use the latest available price for each asset.`
           }
         ],
-        temperature: 0.1,
-        max_tokens: 200,
+        temperature: 0,
+        max_tokens: 150,
       }),
     });
 
