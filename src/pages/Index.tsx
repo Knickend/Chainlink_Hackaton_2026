@@ -311,8 +311,8 @@ const Index = () => {
           />
         </div>
 
-        {/* Debt Payoff Calculator */}
-        {!isDemo && debts.length > 0 && (
+        {/* Debt Payoff Calculator - Pro Only */}
+        {!isDemo && isPro && debts.length > 0 && (
           <div className="mt-8">
             <DebtPayoffCalculator
               debts={debts}
