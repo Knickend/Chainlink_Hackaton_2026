@@ -24,7 +24,7 @@ const DEFAULT_PRICES: LivePrices = {
   stocks: {},
 };
 
-export function useLivePrices(refreshInterval = 5 * 60 * 1000) {
+export function useLivePrices(refreshInterval = 15 * 60 * 1000) {
   const [prices, setPrices] = useState<LivePrices>(DEFAULT_PRICES);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
