@@ -12,6 +12,8 @@ export interface LivePrices {
   stocks?: Record<string, { price: number; change: number; changePercent: number }>;
 }
 
+const RESERVED_SPOT_SYMBOLS = new Set(['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER', 'XAU', 'XAG']);
+
 const DEFAULT_PRICES: LivePrices = {
   btc: 96000,
   eth: 3200,
@@ -105,7 +107,9 @@ export function useLivePrices(refreshInterval = 5 * 60 * 1000) {
 
           const stocksMap: Record<string, { price: number; change: number; changePercent: number }> = {};
           cachedPrices.forEach(p => {
-            if (p.asset_type === 'stock' || p.asset_type === 'commodity') {
+            // Keep our canonical spot symbols (BTC/ETH/LINK/GOLD/SILVER) out of the per-ticker map
+            // so they don't override the dedicated livePrices fields.
+            if ((p.asset_type === 'stock' || p.asset_type === 'commodity') && !RESERVED_SPOT_SYMBOLS.has(p.symbol)) {
               stocksMap[p.symbol] = {
                 price: Number(p.price),
                 change: Number(p.change) || 0,

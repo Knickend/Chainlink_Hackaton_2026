@@ -27,6 +27,10 @@ interface TickerResult {
   priceUnit?: string;
 }
 
+// These symbols are treated as canonical "spot" feeds elsewhere (e.g. live price function).
+// Do NOT let ticker-search overwrite them in the shared price_cache.
+const RESERVED_SPOT_SYMBOLS = new Set(['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER', 'XAU', 'XAG']);
+
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 serve(async (req) => {
@@ -206,6 +210,9 @@ If no matches found, return an empty array: []`;
     // Cache the prices in background
     for (const result of validatedResults) {
       if (result.price !== undefined) {
+        // Avoid poisoning spot-cache symbols with potentially inconsistent Perplexity search results.
+        if (RESERVED_SPOT_SYMBOLS.has(result.symbol)) continue;
+
         const assetTypeForCache = result.type === 'Crypto' ? 'crypto' : 
                                    result.type === 'Commodity' ? 'commodity' : 'stock';
         await supabase
