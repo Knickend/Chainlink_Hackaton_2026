@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.search-ticker]
 verify_jwt = false
+
+[functions.create-monthly-snapshot]
+verify_jwt = false
