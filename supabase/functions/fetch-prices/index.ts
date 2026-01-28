@@ -26,7 +26,16 @@ interface PriceData {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const SYMBOLS = ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER'];
+const CRYPTO_SYMBOLS = ['BTC', 'ETH', 'LINK'];
+const COMMODITY_SYMBOLS = ['GOLD', 'SILVER'];
+const ALL_SYMBOLS = [...CRYPTO_SYMBOLS, ...COMMODITY_SYMBOLS];
+
+// CoinGecko ID mapping
+const COINGECKO_IDS: Record<string, string> = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  LINK: 'chainlink',
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -42,9 +51,9 @@ serve(async (req) => {
     const { data: cachedPrices, error: cacheError } = await supabase
       .from('price_cache')
       .select('*')
-      .in('symbol', SYMBOLS);
+      .in('symbol', ALL_SYMBOLS);
 
-    if (!cacheError && cachedPrices && cachedPrices.length === SYMBOLS.length) {
+    if (!cacheError && cachedPrices && cachedPrices.length === ALL_SYMBOLS.length) {
       const oldestUpdate = Math.min(...cachedPrices.map(p => new Date(p.updated_at).getTime()));
       const isCacheValid = Date.now() - oldestUpdate < CACHE_TTL_MS;
 
@@ -65,130 +74,6 @@ serve(async (req) => {
       }
     }
 
-    const apiKey = Deno.env.get('PERPLEXITY_API_KEY');
-    if (!apiKey) {
-      console.error('PERPLEXITY_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Perplexity connector not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Fetching live prices from Perplexity...');
-
-    // BATCH JSON prompt for all prices
-    const response = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        temperature: 0,
-        max_tokens: 150,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a financial data API. Return ONLY valid JSON with current USD prices. No markdown, no explanation.'
-          },
-          {
-            role: 'user',
-            content: 'Return current USD prices as JSON: {"btc": <Bitcoin>, "eth": <Ethereum>, "link": <Chainlink>, "gold": <Gold per troy oz>, "silver": <Silver per troy oz>}'
-          }
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Perplexity API error:', response.status, errorText);
-      
-      // Fallback to cached prices on API failure
-      if (cachedPrices && cachedPrices.length > 0) {
-        console.log('API failed, returning cached prices as fallback');
-        const result: PriceData = {
-          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
-          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
-          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
-          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
-          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
-          timestamp: new Date().toISOString(),
-        };
-        return new Response(
-          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ success: false, error: `API request failed: ${response.status}` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    // Log raw Perplexity response for debugging
-    console.log('Raw Perplexity response:', content);
-
-    if (!content) {
-      console.error('No content in Perplexity response');
-      
-      // Fallback to cached prices
-      if (cachedPrices && cachedPrices.length > 0) {
-        const result: PriceData = {
-          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
-          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
-          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
-          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
-          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
-          timestamp: new Date().toISOString(),
-        };
-        return new Response(
-          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ success: false, error: 'No response from AI' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse JSON response
-    let prices: Record<string, number>;
-    try {
-      // Handle if content is already parsed or is a string
-      prices = typeof content === 'string' ? JSON.parse(content) : content;
-    } catch (parseError) {
-      console.error('Failed to parse prices JSON:', parseError, 'Content:', content);
-      
-      // Fallback to cached prices on parse failure
-      if (cachedPrices && cachedPrices.length > 0) {
-        console.log('Parse failed, returning cached prices as fallback');
-        const result: PriceData = {
-          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
-          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
-          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
-          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
-          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
-          timestamp: new Date().toISOString(),
-        };
-        return new Response(
-          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to parse price data' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Helper to get cached price
     const getCachedPrice = (symbol: string): number => {
       return cachedPrices?.find(p => p.symbol === symbol)?.price || 0;
@@ -204,14 +89,109 @@ serve(async (req) => {
       return getCachedPrice(symbol);
     };
 
+    // ============ FETCH CRYPTO FROM COINGECKO ============
+    console.log('Fetching crypto prices from CoinGecko...');
+    
+    let cryptoPrices: Record<string, number> = {
+      btc: getCachedPrice('BTC'),
+      eth: getCachedPrice('ETH'),
+      link: getCachedPrice('LINK'),
+    };
+
+    try {
+      const coinIds = Object.values(COINGECKO_IDS).join(',');
+      const cgResponse = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds}&vs_currencies=usd`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+
+      if (cgResponse.ok) {
+        const cgData = await cgResponse.json();
+        console.log('CoinGecko response:', JSON.stringify(cgData));
+        
+        cryptoPrices = {
+          btc: validatePrice(cgData.bitcoin?.usd, 'BTC'),
+          eth: validatePrice(cgData.ethereum?.usd, 'ETH'),
+          link: validatePrice(cgData.chainlink?.usd, 'LINK'),
+        };
+      } else {
+        console.error('CoinGecko API error:', cgResponse.status, await cgResponse.text());
+      }
+    } catch (cgError) {
+      console.error('CoinGecko fetch error:', cgError);
+    }
+
+    // ============ FETCH COMMODITIES FROM PERPLEXITY ============
+    let commodityPrices: Record<string, number> = {
+      gold: getCachedPrice('GOLD'),
+      silver: getCachedPrice('SILVER'),
+    };
+
+    const apiKey = Deno.env.get('PERPLEXITY_API_KEY');
+    if (apiKey) {
+      console.log('Fetching commodity prices from Perplexity...');
+      
+      try {
+        const pResponse = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar',
+            temperature: 0,
+            max_tokens: 100,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a financial data API. Return ONLY valid JSON. No markdown, no explanation.'
+              },
+              {
+                role: 'user',
+                content: 'Return current USD prices as JSON: {"gold": <Gold per troy oz>, "silver": <Silver per troy oz>}'
+              }
+            ],
+          }),
+        });
+
+        if (pResponse.ok) {
+          const pData = await pResponse.json();
+          const content = pData.choices?.[0]?.message?.content;
+          console.log('Perplexity response:', content);
+
+          if (content) {
+            try {
+              const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+              commodityPrices = {
+                gold: validatePrice(parsed.gold, 'GOLD'),
+                silver: validatePrice(parsed.silver, 'SILVER'),
+              };
+            } catch (parseErr) {
+              console.error('Failed to parse Perplexity response:', parseErr);
+            }
+          }
+        } else {
+          console.error('Perplexity API error:', pResponse.status, await pResponse.text());
+        }
+      } catch (pError) {
+        console.error('Perplexity fetch error:', pError);
+      }
+    } else {
+      console.log('PERPLEXITY_API_KEY not configured, using cached commodity prices');
+    }
+
+    // ============ COMBINE RESULTS ============
     const result: PriceData = {
-      btc: validatePrice(prices.btc, 'BTC'),
-      eth: validatePrice(prices.eth, 'ETH'),
-      link: validatePrice(prices.link, 'LINK'),
-      gold: validatePrice(prices.gold, 'GOLD'),
-      silver: validatePrice(prices.silver, 'SILVER'),
+      btc: cryptoPrices.btc,
+      eth: cryptoPrices.eth,
+      link: cryptoPrices.link,
+      gold: commodityPrices.gold,
+      silver: commodityPrices.silver,
       timestamp: new Date().toISOString(),
     };
+
+    console.log('Final prices:', result);
 
     console.log('Validated prices:', result);
 
@@ -235,7 +215,7 @@ serve(async (req) => {
     console.log('Cache updated for:', cacheUpdates.map(u => u.symbol).join(', ') || 'none');
 
     return new Response(
-      JSON.stringify({ success: true, data: result, citations: data.citations || [], cached: false }),
+      JSON.stringify({ success: true, data: result, cached: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
