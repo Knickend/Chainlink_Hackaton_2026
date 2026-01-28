@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Crown, CreditCard, Shield, Zap, BarChart3, Loader2, Sparkles } from 'lucide-react';
+import { Check, Crown, CreditCard, Shield, Zap, BarChart3, Loader2, Sparkles, Calculator, Target } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -189,12 +189,12 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                   </h4>
                   <ul className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                     <li className="flex items-center gap-1.5">
-                      <BarChart3 className="w-3 h-3 text-primary" />
-                      Performance tracking
+                      <Calculator className="w-3 h-3 text-primary" />
+                      Debt payoff calculator
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-primary" />
-                      One-time expenses
+                      <Target className="w-3 h-3 text-primary" />
+                      Investment strategy
                     </li>
                   </ul>
                 </motion.div>
