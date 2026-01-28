@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Settings2 } from 'lucide-react';
 import {
   Dialog,
@@ -23,21 +22,24 @@ interface InvestmentPreferencesDialogProps {
     crypto_allocation: number;
     commodities_allocation: number;
     emergency_fund_target: number;
+    debt_allocation?: number;
   } | null;
   onSave: (preferences: {
     stocks_allocation: number;
     crypto_allocation: number;
     commodities_allocation: number;
     emergency_fund_target: number;
+    debt_allocation: number;
   }) => Promise<boolean>;
   trigger?: React.ReactNode;
 }
 
 const COLORS = [
-  '#f59e0b', // amber/gold for stocks
-  '#8b5cf6', // purple for crypto
-  '#10b981', // green for commodities
-  '#3b82f6', // blue for emergency fund
+  'hsl(0, 84%, 60%)',     // red for debt payoff
+  '#f59e0b',              // amber/gold for stocks
+  '#8b5cf6',              // purple for crypto
+  '#10b981',              // green for commodities
+  '#3b82f6',              // blue for emergency fund
 ];
 
 export function InvestmentPreferencesDialog({
@@ -47,6 +49,7 @@ export function InvestmentPreferencesDialog({
   onSave,
   trigger,
 }: InvestmentPreferencesDialogProps) {
+  const [debtPayoff, setDebtPayoff] = useState(0);
   const [stocks, setStocks] = useState(40);
   const [crypto, setCrypto] = useState(30);
   const [commodities, setCommodities] = useState(20);
@@ -55,6 +58,7 @@ export function InvestmentPreferencesDialog({
 
   useEffect(() => {
     if (currentPreferences) {
+      setDebtPayoff(currentPreferences.debt_allocation || 0);
       setStocks(currentPreferences.stocks_allocation);
       setCrypto(currentPreferences.crypto_allocation);
       setCommodities(currentPreferences.commodities_allocation);
@@ -62,10 +66,11 @@ export function InvestmentPreferencesDialog({
     }
   }, [currentPreferences, open]);
 
-  const total = stocks + crypto + commodities + emergency;
+  const total = debtPayoff + stocks + crypto + commodities + emergency;
   const isValid = Math.abs(total - 100) < 0.01;
 
   const chartData = [
+    { name: 'Debt Payoff', value: debtPayoff },
     { name: 'Stocks/ETFs', value: stocks },
     { name: 'Crypto', value: crypto },
     { name: 'Commodities', value: commodities },
@@ -75,6 +80,7 @@ export function InvestmentPreferencesDialog({
   const handleSave = async () => {
     setSaving(true);
     const success = await onSave({
+      debt_allocation: debtPayoff,
       stocks_allocation: stocks,
       crypto_allocation: crypto,
       commodities_allocation: commodities,
@@ -86,11 +92,9 @@ export function InvestmentPreferencesDialog({
     }
   };
 
-  // Balance remaining allocation when one slider changes
   const handleSliderChange = (
     setter: React.Dispatch<React.SetStateAction<number>>,
-    newValue: number,
-    otherSetters: { setter: React.Dispatch<React.SetStateAction<number>>; current: number }[]
+    newValue: number
   ) => {
     setter(newValue);
   };
@@ -112,6 +116,21 @@ export function InvestmentPreferencesDialog({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
           {/* Sliders */}
           <div className="space-y-6">
+            {/* Debt Payoff Slider */}
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <Label className="text-destructive">Debt Payoff</Label>
+                <span className="text-sm font-medium text-destructive">{debtPayoff}%</span>
+              </div>
+              <Slider
+                value={[debtPayoff]}
+                onValueChange={([v]) => handleSliderChange(setDebtPayoff, v)}
+                max={100}
+                step={5}
+                className="[&_[role=slider]]:bg-destructive [&_.bg-primary]:bg-destructive"
+              />
+            </div>
+
             <div className="space-y-3">
               <div className="flex justify-between">
                 <Label>Stocks/ETFs</Label>
@@ -119,7 +138,7 @@ export function InvestmentPreferencesDialog({
               </div>
               <Slider
                 value={[stocks]}
-                onValueChange={([v]) => handleSliderChange(setStocks, v, [])}
+                onValueChange={([v]) => handleSliderChange(setStocks, v)}
                 max={100}
                 step={5}
               />
@@ -132,7 +151,7 @@ export function InvestmentPreferencesDialog({
               </div>
               <Slider
                 value={[crypto]}
-                onValueChange={([v]) => handleSliderChange(setCrypto, v, [])}
+                onValueChange={([v]) => handleSliderChange(setCrypto, v)}
                 max={100}
                 step={5}
               />
@@ -145,7 +164,7 @@ export function InvestmentPreferencesDialog({
               </div>
               <Slider
                 value={[commodities]}
-                onValueChange={([v]) => handleSliderChange(setCommodities, v, [])}
+                onValueChange={([v]) => handleSliderChange(setCommodities, v)}
                 max={100}
                 step={5}
               />
@@ -158,7 +177,7 @@ export function InvestmentPreferencesDialog({
               </div>
               <Slider
                 value={[emergency]}
-                onValueChange={([v]) => handleSliderChange(setEmergency, v, [])}
+                onValueChange={([v]) => handleSliderChange(setEmergency, v)}
                 max={100}
                 step={5}
               />
@@ -180,7 +199,7 @@ export function InvestmentPreferencesDialog({
 
           {/* Pie Chart Preview */}
           <div className="flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
                   data={chartData}
@@ -191,9 +210,11 @@ export function InvestmentPreferencesDialog({
                   paddingAngle={2}
                   dataKey="value"
                 >
-                  {chartData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                  {chartData.map((entry, index) => {
+                    // Find the correct color based on category name
+                    const colorIndex = ['Debt Payoff', 'Stocks/ETFs', 'Crypto', 'Commodities', 'Emergency Fund'].indexOf(entry.name);
+                    return <Cell key={`cell-${index}`} fill={COLORS[colorIndex >= 0 ? colorIndex : index]} />;
+                  })}
                 </Pie>
                 <Tooltip
                   formatter={(value: number) => `${value}%`}
