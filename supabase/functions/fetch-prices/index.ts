@@ -26,22 +26,7 @@ interface PriceData {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// Sanity check bounds for prices (reject obvious outliers)
-// These are generous ranges that should catch AI hallucinations
-const PRICE_BOUNDS = {
-  btc: { min: 20000, max: 500000 },   // Bitcoin: $20k-$500k
-  eth: { min: 500, max: 50000 },      // Ethereum: $500-$50k
-  link: { min: 1, max: 500 },         // Chainlink: $1-$500
-  gold: { min: 1500, max: 4000 },     // Gold: $1500-$4000/oz
-  silver: { min: 15, max: 100 },      // Silver: $15-$100/oz
-};
-
-function isPriceValid(key: keyof typeof PRICE_BOUNDS, value: number | null | undefined): boolean {
-  if (value === null || value === undefined || isNaN(value)) return false;
-  const bounds = PRICE_BOUNDS[key];
-  return value >= bounds.min && value <= bounds.max;
-}
+const SYMBOLS = ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -54,24 +39,23 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Check cache first
-    const symbols = ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER'];
     const { data: cachedPrices, error: cacheError } = await supabase
       .from('price_cache')
       .select('*')
-      .in('symbol', symbols);
+      .in('symbol', SYMBOLS);
 
-    if (!cacheError && cachedPrices && cachedPrices.length === symbols.length) {
+    if (!cacheError && cachedPrices && cachedPrices.length === SYMBOLS.length) {
       const oldestUpdate = Math.min(...cachedPrices.map(p => new Date(p.updated_at).getTime()));
       const isCacheValid = Date.now() - oldestUpdate < CACHE_TTL_MS;
 
       if (isCacheValid) {
         console.log('Returning cached prices');
         const result: PriceData = {
-          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 96000,
-          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 3200,
-          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 22,
-          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 2650,
-          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 30,
+          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
+          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
+          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
+          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
+          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
           timestamp: new Date(oldestUpdate).toISOString(),
         };
         return new Response(
@@ -92,6 +76,7 @@ serve(async (req) => {
 
     console.log('Fetching live prices from Perplexity...');
 
+    // BATCH JSON prompt for all prices
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -99,35 +84,43 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'sonar',
+        model: 'sonar-medium-online',
+        temperature: 0,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content: 'You are a financial data API. You MUST return ONLY a valid JSON object with numeric values. Never return null. If you cannot find an exact price, use the most recent known price. No explanations, no markdown, just JSON.'
+            content: 'You are a financial data API. Return only valid JSON with current USD prices.'
           },
           {
             role: 'user',
-            content: `What are the current market prices in USD for these assets right now?
-1. Bitcoin (BTC) - cryptocurrency
-2. Ethereum (ETH) - cryptocurrency  
-3. Chainlink (LINK) - cryptocurrency
-4. Gold - spot price per troy ounce
-5. Silver - spot price per troy ounce
-
-Respond with ONLY this JSON format, replacing X with actual numeric prices:
-{"btc":X,"eth":X,"link":X,"gold":X,"silver":X}
-
-IMPORTANT: All values must be numbers (not null, not strings). Use the latest available price for each asset.`
+            content: `Return current USD prices as JSON: {"btc": <Bitcoin price>, "eth": <Ethereum price>, "link": <Chainlink price>, "gold": <Gold per troy oz>, "silver": <Silver per troy oz>}`
           }
         ],
-        temperature: 0,
-        max_tokens: 150,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Perplexity API error:', response.status, errorText);
+      
+      // Fallback to cached prices on API failure
+      if (cachedPrices && cachedPrices.length > 0) {
+        console.log('API failed, returning cached prices as fallback');
+        const result: PriceData = {
+          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
+          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
+          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
+          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
+          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
+          timestamp: new Date().toISOString(),
+        };
+        return new Response(
+          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       return new Response(
         JSON.stringify({ success: false, error: `API request failed: ${response.status}` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -137,85 +130,98 @@ IMPORTANT: All values must be numbers (not null, not strings). Use the latest av
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
+    // Log raw Perplexity response for debugging
+    console.log('Raw Perplexity response:', content);
+
     if (!content) {
       console.error('No content in Perplexity response');
+      
+      // Fallback to cached prices
+      if (cachedPrices && cachedPrices.length > 0) {
+        const result: PriceData = {
+          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
+          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
+          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
+          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
+          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
+          timestamp: new Date().toISOString(),
+        };
+        return new Response(
+          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       return new Response(
         JSON.stringify({ success: false, error: 'No response from AI' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Raw Perplexity response:', content);
-
-    // Extract JSON from the response (handle markdown code blocks if present)
-    let jsonStr = content.trim();
-    if (jsonStr.startsWith('```json')) {
-      jsonStr = jsonStr.slice(7);
-    } else if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith('```')) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
-    jsonStr = jsonStr.trim();
-
-    let prices: Partial<PriceData>;
+    // Parse JSON response
+    let prices: Record<string, number>;
     try {
-      prices = JSON.parse(jsonStr);
+      // Handle if content is already parsed or is a string
+      prices = typeof content === 'string' ? JSON.parse(content) : content;
     } catch (parseError) {
-      console.error('Failed to parse prices JSON:', parseError, 'Content:', jsonStr);
-      prices = {};
+      console.error('Failed to parse prices JSON:', parseError, 'Content:', content);
+      
+      // Fallback to cached prices on parse failure
+      if (cachedPrices && cachedPrices.length > 0) {
+        console.log('Parse failed, returning cached prices as fallback');
+        const result: PriceData = {
+          btc: cachedPrices.find(p => p.symbol === 'BTC')?.price || 0,
+          eth: cachedPrices.find(p => p.symbol === 'ETH')?.price || 0,
+          link: cachedPrices.find(p => p.symbol === 'LINK')?.price || 0,
+          gold: cachedPrices.find(p => p.symbol === 'GOLD')?.price || 0,
+          silver: cachedPrices.find(p => p.symbol === 'SILVER')?.price || 0,
+          timestamp: new Date().toISOString(),
+        };
+        return new Response(
+          JSON.stringify({ success: true, data: result, cached: true, fallback: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to parse price data' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Get cached prices to use as fallback for invalid values
-    const { data: fallbackPrices } = await supabase
-      .from('price_cache')
-      .select('*')
-      .in('symbol', ['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER']);
-
-    const getCachedPrice = (symbol: string, defaultVal: number): number => {
-      const cached = fallbackPrices?.find(p => p.symbol === symbol);
-      return cached ? Number(cached.price) : defaultVal;
+    // Helper to get cached price
+    const getCachedPrice = (symbol: string): number => {
+      return cachedPrices?.find(p => p.symbol === symbol)?.price || 0;
     };
 
-    // Validate each price and use cached/default if invalid
-    const btcRaw = Number(prices.btc);
-    const ethRaw = Number(prices.eth);
-    const linkRaw = Number(prices.link);
-    const goldRaw = Number(prices.gold);
-    const silverRaw = Number(prices.silver);
-
-    const btcValid = isPriceValid('btc', btcRaw);
-    const ethValid = isPriceValid('eth', ethRaw);
-    const linkValid = isPriceValid('link', linkRaw);
-    const goldValid = isPriceValid('gold', goldRaw);
-    const silverValid = isPriceValid('silver', silverRaw);
-
-    // Log any rejected values
-    if (!btcValid) console.warn(`BTC price ${btcRaw} rejected (bounds: ${PRICE_BOUNDS.btc.min}-${PRICE_BOUNDS.btc.max})`);
-    if (!ethValid) console.warn(`ETH price ${ethRaw} rejected (bounds: ${PRICE_BOUNDS.eth.min}-${PRICE_BOUNDS.eth.max})`);
-    if (!linkValid) console.warn(`LINK price ${linkRaw} rejected (bounds: ${PRICE_BOUNDS.link.min}-${PRICE_BOUNDS.link.max})`);
-    if (!goldValid) console.warn(`GOLD price ${goldRaw} rejected (bounds: ${PRICE_BOUNDS.gold.min}-${PRICE_BOUNDS.gold.max})`);
-    if (!silverValid) console.warn(`SILVER price ${silverRaw} rejected (bounds: ${PRICE_BOUNDS.silver.min}-${PRICE_BOUNDS.silver.max})`);
+    // Validate price > 0 before using, fallback to cached
+    const validatePrice = (value: unknown, symbol: string): number => {
+      const num = Number(value);
+      if (num > 0 && isFinite(num)) {
+        return num;
+      }
+      console.warn(`Invalid price for ${symbol}: ${value}, using cached`);
+      return getCachedPrice(symbol);
+    };
 
     const result: PriceData = {
-      btc: btcValid ? btcRaw : getCachedPrice('BTC', 90000),
-      eth: ethValid ? ethRaw : getCachedPrice('ETH', 3200),
-      link: linkValid ? linkRaw : getCachedPrice('LINK', 22),
-      gold: goldValid ? goldRaw : getCachedPrice('GOLD', 2650),
-      silver: silverValid ? silverRaw : getCachedPrice('SILVER', 30),
+      btc: validatePrice(prices.btc, 'BTC'),
+      eth: validatePrice(prices.eth, 'ETH'),
+      link: validatePrice(prices.link, 'LINK'),
+      gold: validatePrice(prices.gold, 'GOLD'),
+      silver: validatePrice(prices.silver, 'SILVER'),
       timestamp: new Date().toISOString(),
     };
 
-    console.log('Returning prices:', result);
+    console.log('Validated prices:', result);
 
-    // Only update cache for valid prices
+    // Update cache only for valid prices (> 0)
     const cacheUpdates: Array<{ symbol: string; price: number; asset_type: string }> = [];
-    if (btcValid) cacheUpdates.push({ symbol: 'BTC', price: result.btc, asset_type: 'crypto' });
-    if (ethValid) cacheUpdates.push({ symbol: 'ETH', price: result.eth, asset_type: 'crypto' });
-    if (linkValid) cacheUpdates.push({ symbol: 'LINK', price: result.link, asset_type: 'crypto' });
-    if (goldValid) cacheUpdates.push({ symbol: 'GOLD', price: result.gold, asset_type: 'commodity' });
-    if (silverValid) cacheUpdates.push({ symbol: 'SILVER', price: result.silver, asset_type: 'commodity' });
+    if (result.btc > 0) cacheUpdates.push({ symbol: 'BTC', price: result.btc, asset_type: 'crypto' });
+    if (result.eth > 0) cacheUpdates.push({ symbol: 'ETH', price: result.eth, asset_type: 'crypto' });
+    if (result.link > 0) cacheUpdates.push({ symbol: 'LINK', price: result.link, asset_type: 'crypto' });
+    if (result.gold > 0) cacheUpdates.push({ symbol: 'GOLD', price: result.gold, asset_type: 'commodity' });
+    if (result.silver > 0) cacheUpdates.push({ symbol: 'SILVER', price: result.silver, asset_type: 'commodity' });
 
     for (const update of cacheUpdates) {
       await supabase
@@ -226,7 +232,7 @@ IMPORTANT: All values must be numbers (not null, not strings). Use the latest av
         );
     }
 
-    console.log('Cache updated for valid prices:', cacheUpdates.map(u => u.symbol).join(', ') || 'none');
+    console.log('Cache updated for:', cacheUpdates.map(u => u.symbol).join(', ') || 'none');
 
     return new Response(
       JSON.stringify({ success: true, data: result, citations: data.citations || [], cached: false }),
