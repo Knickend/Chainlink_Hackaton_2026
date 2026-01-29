@@ -160,15 +160,15 @@ const IndexContent = () => {
           className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
         >
           {/* Left section: Logo + Description */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
                 <span className="gradient-text">In</span>
                 <span className="text-foreground">Control</span>
               </h1>
               {isPro && <ProBadge />}
             </div>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground whitespace-nowrap hidden md:block">
               Track your assets across all markets
             </p>
           </div>
