@@ -1,176 +1,160 @@
 
-# Fix Currency Display Unit Across All Components
+
+# Fix Currency Conversion Bug for Debts, Income, and Expenses
 
 ## Problem
 
-When switching the display unit from USD to another currency (GBP, EUR, BTC, Gold) using the currency selector, multiple components continue showing hardcoded `$` or `USD` text in their form labels instead of reflecting the selected currency symbol.
+When you enter €400,000 for a debt while EUR is selected as the display currency, switching between EUR and USD causes the value to change incorrectly (€400,000 becomes €368,000).
 
----
+**Why this happens:**
+- The debt form shows the currency symbol (€) matching your selected display unit
+- But when you enter 400,000, it stores this raw number in the database
+- The system then treats 400,000 as USD when displaying
+- Converting "400,000 USD" to EUR (×0.92) shows €368,000
 
-## Components Affected
-
-I've identified **8 components** with hardcoded currency references:
-
-### Form Dialogs (Labels need dynamic currency symbol)
-
-| Component | Hardcoded Labels | Lines |
-|-----------|------------------|-------|
-| `AddDebtDialog.tsx` | "Outstanding Balance ($)" and "Monthly Payment ($ - optional)" | 130, 172 |
-| `EditDebtDialog.tsx` | "Outstanding Balance ($)" and "Monthly Payment ($ - optional)" | 135, 177 |
-| `AddIncomeDialog.tsx` | "Monthly Amount (USD)" | 80 |
-| `EditIncomeDialog.tsx` | "Monthly Amount (USD)" | 90 |
-| `AddExpenseDialog.tsx` | "Monthly Amount (USD)" | 88 |
-| `EditExpenseDialog.tsx` | "Monthly Amount (USD)" | 98 |
-| `AddOneTimeExpenseDialog.tsx` | "Amount (USD)" | 111 |
-
-### Chart Component (Y-axis labels need dynamic symbol)
-
-| Component | Issue | Line |
-|-----------|-------|------|
-| `NetWorthChart.tsx` | Y-axis tickFormatter uses hardcoded `$` | 47 |
+The same issue exists for Income and Expenses - they don't store the currency they were entered in.
 
 ---
 
 ## Solution Overview
 
-### Approach: Pass `displayUnit` as a prop to all affected components
+There are two possible approaches:
 
-Since the `displayUnit` state lives in the `Index.tsx` page (via `usePortfolio`), we need to pass it down to each component that displays currency labels. The components will then use the `UNIT_SYMBOLS` map from `lib/types.ts` to get the correct symbol.
+### Option A: Store Currency with Each Record (Recommended)
+
+Add a `currency` field to debts, income, and expenses tables (similar to how banking assets work). This allows accurate multi-currency tracking but requires database changes.
+
+### Option B: Always Store as USD (Simpler)
+
+Convert values to USD when saving, then convert to display currency when showing. The label would always show the selected display symbol, and the value would be converted on save.
+
+**Recommended: Option A** - This matches the existing pattern for banking assets and provides better accuracy for users tracking finances in multiple currencies.
 
 ---
 
 ## Technical Implementation
 
-### 1. Update Types (No changes needed)
+### 1. Database Changes
 
-The `UNIT_SYMBOLS` map already exists in `src/lib/types.ts`:
+Add `currency` column to three tables:
 
-```tsx
-export const UNIT_SYMBOLS: Record<DisplayUnit, string> = {
-  USD: '$',
-  BTC: '₿',
-  GOLD: 'oz',
-  EUR: '€',
-  GBP: '£',
+```sql
+-- Add currency column to debts table
+ALTER TABLE debts ADD COLUMN currency text DEFAULT 'USD';
+
+-- Add currency column to income table  
+ALTER TABLE income ADD COLUMN currency text DEFAULT 'USD';
+
+-- Add currency column to expenses table
+ALTER TABLE expenses ADD COLUMN currency text DEFAULT 'USD';
+```
+
+### 2. Type Updates (`src/lib/types.ts`)
+
+Update the `Debt`, `Income`, and `Expense` interfaces:
+
+```typescript
+export interface Debt {
+  id: string;
+  name: string;
+  debt_type: DebtType;
+  principal_amount: number;
+  interest_rate: number;
+  monthly_payment?: number;
+  currency: string;  // NEW: 'USD', 'EUR', 'GBP', etc.
+}
+
+export interface Income {
+  id: string;
+  source: string;
+  amount: number;
+  type: 'work' | 'passive' | 'investment';
+  currency: string;  // NEW
+}
+
+export interface Expense {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  is_recurring: boolean;
+  expense_date?: string;
+  currency: string;  // NEW
+}
+```
+
+### 3. Hook Updates
+
+**useDebts.ts:**
+- Save the `displayUnit` as `currency` when adding/updating
+- When displaying, check if the debt's currency matches the display unit
+- If match: show amount directly without conversion
+- If different: convert from debt's currency → USD → display currency
+
+**Similar updates for usePortfolioData.ts** for income and expenses.
+
+### 4. Dialog Updates
+
+**AddDebtDialog.tsx / EditDebtDialog.tsx:**
+- Accept `displayUnit` prop (already done)
+- Pass the current `displayUnit` as `currency` when saving
+
+**Similar for Income and Expense dialogs.**
+
+### 5. Display Logic
+
+When formatting values in DebtOverviewCard, IncomeExpenseCard, etc.:
+
+```typescript
+const displayDebtValue = (debt: Debt, displayUnit: DisplayUnit): number => {
+  // If the debt's currency matches display unit, show original amount
+  if (debt.currency === displayUnit) {
+    return debt.principal_amount;
+  }
+  
+  // Otherwise, convert: debt currency → USD → display unit
+  const amountInUSD = debt.principal_amount * FOREX_RATES_TO_USD[debt.currency];
+  return amountInUSD * conversionRates[displayUnit];
 };
 ```
-
-### 2. Update Form Dialog Components
-
-For each form dialog, add `displayUnit` prop and use it in labels:
-
-**AddDebtDialog.tsx** (and EditDebtDialog.tsx):
-```tsx
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
-
-interface AddDebtDialogProps {
-  onAdd: (data: DebtFormData) => void;
-  displayUnit: DisplayUnit;  // Add prop
-}
-
-// In FormLabel:
-<FormLabel>Outstanding Balance ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
-<FormLabel>Monthly Payment ({UNIT_SYMBOLS[displayUnit]} - optional)</FormLabel>
-```
-
-**AddIncomeDialog.tsx** (and EditIncomeDialog.tsx):
-```tsx
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
-
-interface AddIncomeDialogProps {
-  onAdd: (income: IncomeFormData) => void;
-  displayUnit: DisplayUnit;
-}
-
-// In FormLabel:
-<FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
-```
-
-**AddExpenseDialog.tsx** (and EditExpenseDialog.tsx):
-```tsx
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
-
-interface AddExpenseDialogProps {
-  onAdd: (expense: ExpenseFormData) => void;
-  displayUnit: DisplayUnit;
-}
-
-// In FormLabel:
-<FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
-```
-
-**AddOneTimeExpenseDialog.tsx**:
-```tsx
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
-
-interface AddOneTimeExpenseDialogProps {
-  onAdd: (...) => void;
-  displayUnit: DisplayUnit;
-}
-
-// In FormLabel:
-<FormLabel>Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
-```
-
-### 3. Update NetWorthChart.tsx
-
-```tsx
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
-
-interface NetWorthChartProps {
-  formatValue: (value: number, showDecimals?: boolean) => string;
-  displayUnit: DisplayUnit;
-}
-
-// Update YAxis tickFormatter:
-tickFormatter={(value) => {
-  const symbol = UNIT_SYMBOLS[displayUnit];
-  if (displayUnit === 'GOLD') {
-    return `${(value / 1000).toFixed(2)} ${symbol}`;
-  }
-  if (displayUnit === 'BTC') {
-    return `${symbol}${value.toFixed(4)}`;
-  }
-  return `${symbol}${(value / 1000).toFixed(0)}k`;
-}}
-```
-
-### 4. Update Index.tsx to Pass displayUnit
-
-Pass `displayUnit` to all the affected components:
-
-```tsx
-<AddDebtDialog onAdd={addDebt} displayUnit={displayUnit} />
-<AddIncomeDialog onAdd={addIncome} displayUnit={displayUnit} />
-<AddExpenseDialog onAdd={...} displayUnit={displayUnit} />
-<AddOneTimeExpenseDialog onAdd={...} displayUnit={displayUnit} />
-<NetWorthChart formatValue={formatValue} displayUnit={displayUnit} />
-```
-
-### 5. Update Child Components (Edit Dialogs)
-
-The Edit dialogs are rendered inside `DebtOverviewCard` and `IncomeExpenseCard`, so we also need to pass `displayUnit` through these parent components.
-
-**DebtOverviewCard.tsx**: Add `displayUnit` prop and pass to `EditDebtDialog`
-**IncomeExpenseCard.tsx**: Add `displayUnit` prop and pass to `EditIncomeDialog` and `EditExpenseDialog`
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/AddDebtDialog.tsx` | Add displayUnit prop, update 2 FormLabels |
-| `src/components/EditDebtDialog.tsx` | Add displayUnit prop, update 2 FormLabels |
-| `src/components/AddIncomeDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
-| `src/components/EditIncomeDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
-| `src/components/AddExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
-| `src/components/EditExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
-| `src/components/AddOneTimeExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
-| `src/components/NetWorthChart.tsx` | Add displayUnit prop, update YAxis tickFormatter |
-| `src/components/DebtOverviewCard.tsx` | Add displayUnit prop, pass to EditDebtDialog |
-| `src/components/IncomeExpenseCard.tsx` | Add displayUnit prop, pass to Edit dialogs |
-| `src/pages/Index.tsx` | Pass displayUnit to all affected components |
+| Category | File | Changes |
+|----------|------|---------|
+| Database | Migration | Add `currency` column to debts, income, expenses |
+| Types | `src/lib/types.ts` | Add `currency` field to interfaces |
+| Hooks | `src/hooks/useDebts.ts` | Save/load currency, add conversion logic |
+| Hooks | `src/hooks/usePortfolioData.ts` | Save/load currency for income/expenses |
+| Dialogs | `src/components/AddDebtDialog.tsx` | Pass currency when adding |
+| Dialogs | `src/components/EditDebtDialog.tsx` | Handle currency in edit |
+| Dialogs | `src/components/AddIncomeDialog.tsx` | Pass currency when adding |
+| Dialogs | `src/components/EditIncomeDialog.tsx` | Handle currency in edit |
+| Dialogs | `src/components/AddExpenseDialog.tsx` | Pass currency when adding |
+| Dialogs | `src/components/EditExpenseDialog.tsx` | Handle currency in edit |
+| Dialogs | `src/components/AddOneTimeExpenseDialog.tsx` | Pass currency when adding |
+| Cards | `src/components/DebtOverviewCard.tsx` | Use currency-aware display |
+| Cards | `src/components/IncomeExpenseCard.tsx` | Use currency-aware display |
+| Page | `src/pages/Index.tsx` | Update totals calculation |
+
+---
+
+## Special Considerations
+
+### Existing Data Migration
+- Existing debts/income/expenses will default to USD (matching current behavior)
+- No data loss - users can edit existing items to set correct currency if needed
+
+### Display Unit vs Entry Currency
+- The form label shows the currently selected display unit symbol (€, £, $)
+- When saved, the `currency` field stores which currency was active
+- This ensures values display correctly regardless of display unit changes
+
+### BTC and Gold Units
+- For BTC and GOLD display units, values would still be stored in USD
+- These are display-only conversions since debts/expenses are in fiat currencies
 
 ---
 
@@ -178,13 +162,10 @@ The Edit dialogs are rendered inside `DebtOverviewCard` and `IncomeExpenseCard`,
 
 After implementation:
 
-1. Select USD - all labels show `$` and chart Y-axis shows `$150k`
-2. Select EUR - all labels show `€` and chart Y-axis shows `€150k`
-3. Select GBP - all labels show `£` and chart Y-axis shows `£150k`
-4. Select BTC - all labels show `₿` and chart Y-axis shows `₿0.0015`
-5. Select Gold - all labels show `oz` and chart Y-axis shows `45.00 oz`
-6. Open Add Debt dialog - verify labels update
-7. Open Add Income dialog - verify labels update
-8. Open Add Expense dialog - verify labels update
-9. Click edit on existing items - verify labels update
+1. Add a debt of €400,000 while EUR is selected
+2. Switch to USD - debt should show ~$435,000 (400k × 1.08)
+3. Switch back to EUR - debt should show exactly €400,000
+4. Add an income in GBP, verify it displays correctly across currencies
+5. Verify existing debts/income/expenses still work (default to USD)
+6. Test editing a debt - verify currency is preserved
 
