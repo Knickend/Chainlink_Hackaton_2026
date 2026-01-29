@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DebtType, DEBT_TYPES } from '@/lib/types';
+import { DebtType, DEBT_TYPES, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 
 const debtSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -41,9 +41,10 @@ type DebtFormData = z.infer<typeof debtSchema>;
 
 interface AddDebtDialogProps {
   onAdd: (data: DebtFormData) => void;
+  displayUnit: DisplayUnit;
 }
 
-export function AddDebtDialog({ onAdd }: AddDebtDialogProps) {
+export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
   const [open, setOpen] = useState(false);
 
   const form = useForm<DebtFormData>({
@@ -127,7 +128,7 @@ export function AddDebtDialog({ onAdd }: AddDebtDialogProps) {
               name="principal_amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Outstanding Balance ($)</FormLabel>
+                  <FormLabel>Outstanding Balance ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -169,7 +170,7 @@ export function AddDebtDialog({ onAdd }: AddDebtDialogProps) {
               name="monthly_payment"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Payment ($ - optional)</FormLabel>
+                  <FormLabel>Monthly Payment ({UNIT_SYMBOLS[displayUnit]} - optional)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

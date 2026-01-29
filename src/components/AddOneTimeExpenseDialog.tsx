@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { ProBadge } from './ProBadge';
 import { cn } from '@/lib/utils';
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 
 const expenseSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -27,6 +28,7 @@ type ExpenseFormData = z.infer<typeof expenseSchema>;
 
 interface AddOneTimeExpenseDialogProps {
   onAdd: (expense: { name: string; amount: number; category: string; is_recurring: false; expense_date: string }) => void;
+  displayUnit: DisplayUnit;
 }
 
 const expenseCategories = [
@@ -42,7 +44,7 @@ const expenseCategories = [
   'Other',
 ];
 
-export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps) {
+export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpenseDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -108,7 +110,7 @@ export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps)
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount (USD)</FormLabel>
+                  <FormLabel>Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { CreditCard, Trash2, Home, Car, GraduationCap, Wallet } from 'lucide-react';
-import { Debt, DebtType, DEBT_TYPES } from '@/lib/types';
+import { Debt, DebtType, DEBT_TYPES, DisplayUnit } from '@/lib/types';
 import { EditDebtDialog } from './EditDebtDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ interface DebtOverviewCardProps {
   onDeleteDebt?: (id: string) => void;
   actionButton?: React.ReactNode;
   delay?: number;
+  displayUnit: DisplayUnit;
 }
 
 const getDebtIcon = (type: DebtType) => {
@@ -46,6 +47,7 @@ export function DebtOverviewCard({
   onDeleteDebt,
   actionButton,
   delay = 0,
+  displayUnit,
 }: DebtOverviewCardProps) {
   return (
     <motion.div
@@ -129,7 +131,7 @@ export function DebtOverviewCard({
                   {(onUpdateDebt || onDeleteDebt) && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {onUpdateDebt && (
-                        <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} />
+                        <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} displayUnit={displayUnit} />
                       )}
                       {onDeleteDebt && (
                         <DeleteConfirmDialog

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Expense } from '@/lib/types';
+import { Expense, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 
 const expenseSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -21,6 +21,7 @@ type ExpenseFormData = z.infer<typeof expenseSchema>;
 interface EditExpenseDialogProps {
   expense: Expense;
   onUpdate: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
+  displayUnit: DisplayUnit;
 }
 
 const expenseCategories = [
@@ -37,7 +38,7 @@ const expenseCategories = [
   'Other',
 ];
 
-export function EditExpenseDialog({ expense, onUpdate }: EditExpenseDialogProps) {
+export function EditExpenseDialog({ expense, onUpdate, displayUnit }: EditExpenseDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -95,7 +96,7 @@ export function EditExpenseDialog({ expense, onUpdate }: EditExpenseDialogProps)
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Amount (USD)</FormLabel>
+                  <FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
