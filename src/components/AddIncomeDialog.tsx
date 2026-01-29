@@ -35,7 +35,7 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
     resolver: zodResolver(incomeSchema),
     defaultValues: {
       source: '',
-      amount: 0,
+      amount: undefined,
       type: 'work',
     },
   });
