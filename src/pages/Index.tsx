@@ -156,18 +156,23 @@ const IndexContent = () => {
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+          className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
         >
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              <span className="gradient-text">In</span>
-              <span className="text-foreground">Control</span>
-            </h1>
-            {isPro && <ProBadge />}
+          {/* Left section: Logo + Description */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                <span className="gradient-text">In</span>
+                <span className="text-foreground">Control</span>
+              </h1>
+              {isPro && <ProBadge />}
+            </div>
+            <p className="text-muted-foreground">
+              Track your assets across all markets
+            </p>
           </div>
-          <p className="text-muted-foreground mt-1">
-            Track your assets across all markets
-          </p>
+          
+          {/* Right section: Controls - all aligned in a row */}
           <div className="flex items-center gap-3 flex-wrap">
             <PriceIndicator
               isLoading={pricesLoading}
