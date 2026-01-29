@@ -1,127 +1,63 @@
 
-# Add Password Reset via Email
 
-## Overview
+# Fix Header Text Alignment
 
-Implement password reset functionality that allows users to request a password reset link via email and set a new password when they click the link. This uses the built-in Supabase Auth password reset feature.
+## The Issue
 
-## User Flow
+The description text "Track your assets across all markets" is breaking vertically (each word on its own line) instead of staying horizontally aligned with the logo. This happens because the flex container doesn't properly constrain the text wrapping.
 
-1. User clicks "Forgot password?" on the login screen
-2. User enters their email address
-3. System sends a password reset email with a secure link
-4. User clicks the link and is redirected to the app
-5. User enters and confirms their new password
-6. Password is updated and user can sign in
+## Solution
 
-## Files to Create
+Update the header's left section to properly align the description text and prevent awkward word-by-word breaking.
 
-| File | Purpose |
-|------|---------|
-| `src/components/auth/ForgotPasswordForm.tsx` | Email input form for requesting password reset |
-| `src/components/auth/ResetPasswordForm.tsx` | New password input form after clicking reset link |
-
-## Files to Modify
+## File to Modify
 
 | File | Change |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Add `resetPassword` and `updatePassword` functions |
-| `src/pages/Auth.tsx` | Add "Forgot password?" link and handle reset flow states |
+| `src/pages/Index.tsx` | Fix header layout to keep description text aligned horizontally |
 
 ## Implementation Details
 
-### 1. Update AuthContext (AuthContext.tsx)
-
-Add two new functions to the auth context:
-
-```typescript
-interface AuthContextType {
-  // Existing...
-  resetPassword: (email: string) => Promise<{ error: Error | null }>;
-  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
-}
-```
-
-**Reset Password Function:**
-- Uses `supabase.auth.resetPasswordForEmail()` with redirect URL pointing to `/auth?mode=reset`
-- Sends an email with a secure reset link
-
-**Update Password Function:**
-- Uses `supabase.auth.updateUser({ password })` to set the new password
-- Works when user has clicked the reset link (session is established)
-
-### 2. Forgot Password Form Component
-
-A simple form that:
-- Accepts email address input with validation
-- Shows loading state while sending
-- Displays success message after email is sent
-- Includes "Back to sign in" link
-
-### 3. Reset Password Form Component
-
-Form displayed when user clicks the email link:
-- Two password fields (new password + confirmation)
-- Password strength requirements (minimum 6 characters)
-- Validation that passwords match
-- Success state redirects to app
-
-### 4. Update Auth Page (Auth.tsx)
-
-Add state management for the password reset flow:
-
-```text
-Normal login/signup form
-         ↓
-  Click "Forgot password?"
-         ↓
-  Show ForgotPasswordForm
-         ↓
-  Email sent → Show success message
-         
----
-
-User clicks email link (arrives at /auth?mode=reset)
-         ↓
-  Detect PASSWORD_RECOVERY event
-         ↓
-  Show ResetPasswordForm
-         ↓
-  Password updated → Redirect to /app
-```
-
-**URL Parameters:**
-- `?mode=reset` - Detected when user arrives from reset email link
-- Supabase automatically establishes a session from the link token
-
-**Auth State Detection:**
-- Listen for `PASSWORD_RECOVERY` event in `onAuthStateChange`
-- When detected, show the reset password form
-
-### 5. UI Integration on Auth Page
-
-Add a "Forgot password?" link below the password field:
-
+**Current code (lines 162-174):**
 ```tsx
-<button
-  type="button"
-  onClick={() => setShowForgotPassword(true)}
-  className="text-sm text-primary hover:text-primary/80"
->
-  Forgot password?
-</button>
+{/* Left section: Logo + Description */}
+<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+  <div className="flex items-center gap-2">
+    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+      <span className="gradient-text">In</span>
+      <span className="text-foreground">Control</span>
+    </h1>
+    {isPro && <ProBadge />}
+  </div>
+  <p className="text-muted-foreground">
+    Track your assets across all markets
+  </p>
+</div>
 ```
 
-## Technical Notes
+**Updated code:**
+```tsx
+{/* Left section: Logo + Description */}
+<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+  <div className="flex items-center gap-2 flex-shrink-0">
+    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+      <span className="gradient-text">In</span>
+      <span className="text-foreground">Control</span>
+    </h1>
+    {isPro && <ProBadge />}
+  </div>
+  <p className="text-muted-foreground whitespace-nowrap hidden md:block">
+    Track your assets across all markets
+  </p>
+</div>
+```
 
-- Supabase handles email delivery and secure token generation
-- Reset links expire after a configurable time (default: 1 hour)
-- The redirect URL must be configured in the backend auth settings (already set up for this project)
-- No additional edge functions or email services required - Supabase Auth handles everything
+## Changes Explained
 
-## Security Considerations
+1. **Add `min-w-0`** to the parent container - prevents flex children from overflowing
+2. **Add `flex-shrink-0`** to the logo container - ensures the logo never shrinks
+3. **Add `whitespace-nowrap`** to the description - prevents the text from breaking mid-sentence
+4. **Add `hidden md:block`** to the description - hides it on smaller screens where there isn't enough horizontal space, showing it only on medium screens and up
 
-- Password validation using Zod (minimum 6 characters)
-- Confirmation field ensures user enters password correctly
-- Reset tokens are single-use and time-limited
-- No sensitive information exposed in success/error messages
+This ensures the header stays cleanly aligned with the logo and controls on opposite sides, and the description only appears when there's adequate screen width to display it properly.
+
