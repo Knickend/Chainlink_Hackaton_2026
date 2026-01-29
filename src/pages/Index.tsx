@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -39,9 +39,11 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory, DebtType } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
-import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal } from '@/components/Tutorial';
+import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal, useTutorialContext } from '@/components/Tutorial';
 
-const Index = () => {
+// Inner component that has access to tutorial context
+const IndexContent = () => {
+  const { startTutorial, hasCompletedTutorial } = useTutorialContext();
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
@@ -119,7 +121,7 @@ const Index = () => {
   const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
 
   return (
-    <TutorialProvider>
+    <>
       {/* Tutorial Components */}
       <WelcomeModal />
       <CompletionModal />
@@ -174,6 +176,18 @@ const Index = () => {
             />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
             <ThemeToggle />
+            {hasCompletedTutorial && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={startTutorial}
+                className="gap-2"
+                title="Restart tutorial"
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">Tour</span>
+              </Button>
+            )}
             {isDemo ? (
               <Button 
                 variant="default" 
@@ -413,6 +427,14 @@ const Index = () => {
         {/* Feedback Button */}
         <FeedbackButton />
       </div>
+    </>
+  );
+};
+
+const Index = () => {
+  return (
+    <TutorialProvider>
+      <IndexContent />
     </TutorialProvider>
   );
 };
