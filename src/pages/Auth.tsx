@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { TwoFactorVerify } from '@/components/security/TwoFactorVerify';
 
 const authSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -22,7 +23,7 @@ const Auth = () => {
   const [searchParams] = useSearchParams();
   const [isSignUp, setIsSignUp] = useState(searchParams.get('signup') === 'true');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { user, signUp, signIn } = useAuth();
+  const { user, signUp, signIn, requiresMFA } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -35,10 +36,10 @@ const Auth = () => {
   });
 
   useEffect(() => {
-    if (user) {
+    if (user && !requiresMFA) {
       navigate('/app');
     }
-  }, [user, navigate]);
+  }, [user, requiresMFA, navigate]);
 
   const onSubmit = async (data: AuthFormData) => {
     setIsSubmitting(true);
@@ -78,6 +79,16 @@ const Auth = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Show MFA verification screen if required
+  if (requiresMFA) {
+    return (
+      <TwoFactorVerify
+        onSuccess={() => navigate('/app')}
+        onCancel={() => navigate('/auth')}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
