@@ -1,99 +1,60 @@
 
-# Fix Tutorial Step 6 Chart Highlight Alignment
 
-## Problem
+# Show Pro Version During Tutorial
 
-The tutorial step 6 ("Visualize Your Wealth") is highlighting the entire charts row grid, which spans 3 columns and extends too far to the right. This creates a very large spotlight that doesn't feel focused.
+## Overview
 
-Looking at the screenshot:
-- The highlight box extends from the Net Worth chart all the way to the Portfolio History section
-- The third column (Portfolio History) is a Pro feature that may not be relevant to the "charts" explanation
-- The spotlight should focus only on the two main visualization charts
+When the tutorial is active, temporarily display the Pro version of the app so new users can see all features during onboarding. Once the tutorial ends, revert to the user's actual subscription tier.
 
----
+## Current Behavior
 
-## Solution
+- Logged-in users start with `subscriptionTier = 'free'`
+- Pro features are hidden during the tutorial
+- Users don't see the full app capabilities during onboarding
 
-Wrap only the **NetWorthChart** and **AllocationChart** in a container with the `data-tutorial="charts-section"` attribute, rather than the entire 3-column grid.
+## Proposed Solution
 
-### Layout Change
+Modify the subscription tier logic in `Index.tsx` to use `'pro'` when the tutorial is active:
 
-| Current | Proposed |
-|---------|----------|
-| 1 grid with 3 columns, entire grid tagged | Split into 2 columns tagged + 1 column separate |
+```typescript
+// Current
+const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
 
-### Updated Structure
+// New logic
+const { isActive: isTutorialActive, ... } = useTutorialContext();
 
-```text
-Before:
-+------------------------------------------+
-| [data-tutorial="charts-section"]         |
-| +----------+ +----------+ +------------+ |
-| | NetWorth | | Allocat. | | Portfolio  | |
-| | Chart    | | Chart    | | History    | |
-| +----------+ +----------+ +------------+ |
-+------------------------------------------+
-
-After:
-+----------------------------+ +------------+
-| [data-tutorial="charts-   | | Portfolio  |
-|       section"]           | | History    |
-| +----------+ +----------+ | | (no tag)   |
-| | NetWorth | | Allocat. | | +------------+
-| | Chart    | | Chart    | |
-| +----------+ +----------+ |
-+----------------------------+
+// Show Pro during tutorial OR in demo mode
+const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
+const isPro = effectiveSubscriptionTier === 'pro';
+const isSubscribed = effectiveSubscriptionTier !== 'free';
 ```
 
----
+## What Users Will See During Tutorial
+
+With this change, the tutorial will showcase:
+- Portfolio History Card (instead of teaser)
+- Investment Strategy Card with full recommendations
+- Non-recurring expense tracking button
+- Debt Payoff Calculator (instead of teaser)
+- Pro badge in the header
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Restructure the charts grid to wrap only the first 2 charts with the tutorial attribute |
+| `src/pages/Index.tsx` | Use `isTutorialActive` from context to set effective subscription tier to `'pro'` during tutorial |
 
----
+## Implementation Details
 
-## Technical Details
-
-### Current Code (line ~261):
-```tsx
-<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8" data-tutorial="charts-section">
-  <NetWorthChart ... />
-  <AllocationChart ... />
-  {/* Portfolio History / Performance cards */}
-</div>
-```
-
-### Proposed Code:
-```tsx
-<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-  {/* Wrap the two main charts in a subgrid with the tutorial attribute */}
-  <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
-    <NetWorthChart ... />
-    <AllocationChart ... />
-  </div>
-  {/* Third column remains outside the tutorial target */}
-  {isPro && !isDemo && (
-    <PortfolioHistoryCard ... />
-  )}
-  {/* ... other conditionals */}
-</div>
-```
-
-This approach:
-1. Uses `lg:col-span-2` to make the inner container span 2 columns
-2. Creates a nested grid (`grid-cols-2`) for the two charts
-3. Places `data-tutorial="charts-section"` only on this inner container
-4. Keeps the Portfolio History section separate from the spotlight
-
----
+1. Extract `isActive` from `useTutorialContext()` (already accessing this context)
+2. Create a computed `effectiveSubscriptionTier` variable that returns `'pro'` when tutorial is active
+3. Update `isPro` and `isSubscribed` to use the effective tier
+4. No changes needed to actual `subscriptionTier` state - it preserves user's real tier for after tutorial ends
 
 ## Expected Outcome
 
-After this fix:
-- Step 6 will highlight only the Net Worth Trend and Asset Allocation charts
-- The spotlight will be visually tighter and more focused
-- The Portfolio History section won't be included in the highlight
-- The layout will remain identical visually - only the tutorial targeting changes
+- First-time users see the full Pro experience during the tutorial walkthrough
+- All Pro features are visible and explained in context
+- After tutorial completion, app reverts to user's actual subscription tier
+- Encourages upgrades by showing users what they could have
+
