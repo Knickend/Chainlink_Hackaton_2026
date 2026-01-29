@@ -234,7 +234,7 @@ const Index = () => {
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <NetWorthChart formatValue={formatValue} />
+          <NetWorthChart formatValue={formatValue} displayUnit={displayUnit} />
           <AllocationChart data={categoryTotals} formatValue={formatValue} />
           {isPro && !isDemo && (
             <PortfolioHistoryCard 
@@ -326,7 +326,8 @@ const Index = () => {
             items={income}
             total={formatValue(metrics.totalIncome)}
             formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={addIncome} />}
+            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={addIncome} displayUnit={displayUnit} />}
+            displayUnit={displayUnit}
             onUpdateIncome={isDemo ? undefined : updateIncome}
             onDeleteIncome={isDemo ? undefined : deleteIncome}
           />
@@ -335,12 +336,13 @@ const Index = () => {
             items={expenses}
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true })} />}
+            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true })} displayUnit={displayUnit} />}
             secondaryActionButton={!isDemo && isPro ? (
-              <AddOneTimeExpenseDialog onAdd={(data) => addExpense(data)} />
+              <AddOneTimeExpenseDialog onAdd={(data) => addExpense(data)} displayUnit={displayUnit} />
             ) : undefined}
             onUpdateExpense={isDemo ? undefined : updateExpense}
             onDeleteExpense={isDemo ? undefined : deleteExpense}
+            displayUnit={displayUnit}
           />
           <DebtOverviewCard
             debts={demoDebts}
@@ -350,8 +352,9 @@ const Index = () => {
             formatValue={formatValue}
             onUpdateDebt={isDemo ? undefined : updateDebt}
             onDeleteDebt={isDemo ? undefined : deleteDebt}
-            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={addDebt} />}
+            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={addDebt} displayUnit={displayUnit} />}
             delay={0.2}
+            displayUnit={displayUnit}
           />
         </div>
 

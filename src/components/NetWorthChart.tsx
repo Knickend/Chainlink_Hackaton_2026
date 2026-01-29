@@ -1,12 +1,14 @@
 import { motion } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { mockHistoricalData } from '@/lib/mockData';
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 
 interface NetWorthChartProps {
   formatValue: (value: number, showDecimals?: boolean) => string;
+  displayUnit: DisplayUnit;
 }
 
-export function NetWorthChart({ formatValue }: NetWorthChartProps) {
+export function NetWorthChart({ formatValue, displayUnit }: NetWorthChartProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -44,7 +46,16 @@ export function NetWorthChart({ formatValue }: NetWorthChartProps) {
               axisLine={false}
               tickLine={false}
               tick={{ fill: 'hsl(220, 10%, 55%)', fontSize: 12 }}
-              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+              tickFormatter={(value) => {
+                const symbol = UNIT_SYMBOLS[displayUnit];
+                if (displayUnit === 'GOLD') {
+                  return `${(value / 1000).toFixed(1)} ${symbol}`;
+                }
+                if (displayUnit === 'BTC') {
+                  return `${symbol}${value.toFixed(2)}`;
+                }
+                return `${symbol}${(value / 1000).toFixed(0)}k`;
+              }}
             />
             <Tooltip
               contentStyle={{

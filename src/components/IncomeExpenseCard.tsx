@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight, Repeat, Zap } from 'lucide-react';
-import { Income, Expense } from '@/lib/types';
+import { Income, Expense, DisplayUnit } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditIncomeDialog } from './EditIncomeDialog';
 import { EditExpenseDialog } from './EditExpenseDialog';
@@ -19,6 +19,7 @@ interface IncomeExpenseCardProps {
   onDeleteIncome?: (id: string) => void;
   onUpdateExpense?: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
   onDeleteExpense?: (id: string) => void;
+  displayUnit: DisplayUnit;
 }
 
 export function IncomeExpenseCard({
@@ -32,6 +33,7 @@ export function IncomeExpenseCard({
   onDeleteIncome,
   onUpdateExpense,
   onDeleteExpense,
+  displayUnit,
 }: IncomeExpenseCardProps) {
   const isIncome = type === 'income';
   
@@ -132,7 +134,7 @@ export function IncomeExpenseCard({
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm">{formatValue(item.amount)}</span>
                 {isIncome && 'source' in item && onUpdateIncome && (
-                  <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} />
+                  <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} displayUnit={displayUnit} />
                 )}
                 {isIncome && onDeleteIncome && (
                   <DeleteConfirmDialog
@@ -142,7 +144,7 @@ export function IncomeExpenseCard({
                   />
                 )}
                 {!isIncome && 'name' in item && onUpdateExpense && (
-                  <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} />
+                  <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} displayUnit={displayUnit} />
                 )}
                 {!isIncome && onDeleteExpense && (
                   <DeleteConfirmDialog

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 
 const incomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
@@ -19,6 +20,7 @@ type IncomeFormData = z.infer<typeof incomeSchema>;
 
 interface AddIncomeDialogProps {
   onAdd: (income: IncomeFormData) => void;
+  displayUnit: DisplayUnit;
 }
 
 const incomeTypes = [
@@ -27,7 +29,7 @@ const incomeTypes = [
   { value: 'investment', label: 'Investment Income' },
 ];
 
-export function AddIncomeDialog({ onAdd }: AddIncomeDialogProps) {
+export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<IncomeFormData>({
     resolver: zodResolver(incomeSchema),
@@ -77,7 +79,7 @@ export function AddIncomeDialog({ onAdd }: AddIncomeDialogProps) {
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Amount (USD)</FormLabel>
+                  <FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
