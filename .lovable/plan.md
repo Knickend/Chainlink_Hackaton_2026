@@ -1,109 +1,202 @@
 
 
-# Create InControl Landing Page
+# Bug Reports & Feature Suggestions with Admin Dashboard
 
 ## Overview
-Build a professional marketing landing page for InControl.finance that showcases the product's features, pricing tiers, and drives users to sign up. The landing page will follow the existing premium dark theme with glassmorphism effects and gold accents.
 
-## Page Structure
+I'll implement a complete feedback system that allows users to report bugs and suggest features, with a secure admin dashboard for tracking and managing all submissions.
 
-### Sections
-1. **Hero Section** - Bold headline, value proposition, CTA buttons
-2. **Features Grid** - Highlight key capabilities (asset tracking, debt management, live prices, investment strategy)
-3. **How It Works** - 3-step visual flow
-4. **Pricing Section** - Display Free, Standard, and Pro tiers
-5. **Testimonials/Social Proof** - Trust indicators
-6. **Footer** - Links, domain branding
+---
 
-### Hero Content
-- **Headline**: "Take Control of Your Financial Future"
-- **Subheadline**: "Track assets, manage debt, and build wealth across crypto, stocks, and precious metals"
-- **CTAs**: "Get Started Free" and "View Demo"
+## Architecture Summary
 
-### Features to Highlight
-| Icon | Feature | Description |
-|------|---------|-------------|
-| Wallet | Multi-Asset Tracking | Track crypto, stocks, real estate, and precious metals in one place |
-| TrendingUp | Live Price Updates | Real-time prices for 50+ cryptocurrencies, stocks, gold, and silver |
-| PieChart | Portfolio Allocation | Visual breakdown of your wealth distribution |
-| CreditCard | Debt Management | Track debts and calculate optimal payoff strategies |
-| Target | Investment Strategy | AI-powered allocation recommendations based on your goals |
-| Shield | Secure & Private | Your data is encrypted and never shared |
-
-## Technical Implementation
-
-### Route Structure
-- `/` - Landing page (new)
-- `/app` - Dashboard (current Index.tsx moved)
-- `/auth` - Authentication (unchanged)
-
-### Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/Landing.tsx` | CREATE | New landing page component |
-| `src/components/landing/HeroSection.tsx` | CREATE | Hero section with CTAs |
-| `src/components/landing/FeaturesSection.tsx` | CREATE | Features grid |
-| `src/components/landing/PricingSection.tsx` | CREATE | Pricing tiers |
-| `src/components/landing/Footer.tsx` | CREATE | Footer component |
-| `src/App.tsx` | MODIFY | Add `/app` route for dashboard, `/` for landing |
-| `index.html` | MODIFY | Update branding to InControl |
-| `src/pages/Auth.tsx` | MODIFY | Update branding to InControl |
-| `src/components/DemoBanner.tsx` | MODIFY | Update to InControl |
-
-### Design Specifications
-
-**Hero Section**
-- Full viewport height with ambient glow effects
-- Animated entrance using framer-motion
-- Gradient text for "InControl" branding
-- Mock dashboard preview image/illustration
-
-**Features Grid**
-- 3x2 responsive grid (stacks on mobile)
-- Glass-card styling for each feature
-- Icon with gold/primary color accent
-- Subtle hover animations
-
-**Pricing Cards**
-- Reuse existing SubscriptionDialog pricing data
-- Highlight recommended tier
-- Gold border/glow for Pro tier
-- Monthly pricing with feature list
-
-**Footer**
-- Minimal dark design
-- InControl.finance branding
-- Links: Privacy, Terms, Contact
-- Copyright notice
-
-### Navigation Flow
 ```text
-Landing (/)
-    |
-    +---> "Get Started" --> Auth (/auth?signup=true)
-    |
-    +---> "View Demo" --> Dashboard in demo mode (/app)
-    |
-    +---> "Sign In" --> Auth (/auth)
++-------------------+     +------------------+     +------------------+
+|   User Dashboard  | --> |  Feedback Table  | <-- |  Admin Dashboard |
+|  (Report/Suggest) |     |   (Supabase DB)  |     |   (View/Manage)  |
++-------------------+     +------------------+     +------------------+
+                                   ^
+                                   |
+                          +------------------+
+                          |   User Roles     |
+                          |  (Admin Check)   |
+                          +------------------+
 ```
 
-### Animation Strategy
-- Staggered fade-in for feature cards
-- Smooth scroll between sections
-- Subtle parallax on hero background
-- Hover effects on CTAs and cards
+---
 
-## Branding Updates (InControl)
+## Features
 
-All instances of "WealthManager" will be replaced:
-- `index.html`: Title, meta tags, OG tags
-- `Auth.tsx`: Logo in form header
-- `DemoBanner.tsx`: Welcome message
-- `Index.tsx` (becoming `/app`): Header logo
+### For Users
+- Floating feedback button (similar to the AI chat button)
+- Form to submit bug reports or feature suggestions
+- Category selection (bug/feature)
+- Priority level for bugs
+- Screenshot upload capability (optional, can add later)
+- View submission history
 
-## Mobile Responsiveness
-- Hero: Stack CTA buttons vertically
-- Features: Single column grid
-- Pricing: Horizontal scroll or stacked cards
-- Navigation: Hamburger menu if needed
+### For Admins
+- Dedicated admin dashboard at `/admin`
+- View all submissions in a filterable table
+- Filter by type (bug/feature), status, date, user
+- Update status (new, in-progress, resolved, declined)
+- Add internal notes
+- Mark items as read/unread
+- Analytics overview (total submissions, trends)
+
+---
+
+## Database Schema
+
+### 1. Feedback Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | Reference to the user who submitted |
+| type | text | 'bug' or 'feature' |
+| title | text | Brief summary |
+| description | text | Detailed description |
+| priority | text | 'low', 'medium', 'high', 'critical' (for bugs) |
+| status | text | 'new', 'in_progress', 'resolved', 'declined' |
+| admin_notes | text | Internal notes for admins |
+| created_at | timestamp | When submitted |
+| updated_at | timestamp | Last update time |
+
+### 2. User Roles Table (following Supabase best practices)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | Reference to auth.users |
+| role | app_role enum | 'admin', 'moderator', 'user' |
+
+---
+
+## Technical Details
+
+### Security
+
+1. **Role-based access control** using a dedicated `user_roles` table (not storing roles on profiles)
+2. **Security definer function** (`has_role`) to prevent RLS recursion
+3. **RLS policies**:
+   - Users can only view/create their own feedback
+   - Admins can view/update all feedback
+   - Only admins can access the admin dashboard
+
+### Database Functions
+
+```sql
+-- Enum for roles
+create type public.app_role as enum ('admin', 'moderator', 'user');
+
+-- User roles table
+create table public.user_roles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  role app_role not null,
+  unique (user_id, role)
+);
+
+-- Feedback table
+create table public.feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  type text not null check (type in ('bug', 'feature')),
+  title text not null,
+  description text not null,
+  priority text default 'medium',
+  status text default 'new',
+  admin_notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Security definer function for role checking
+create or replace function public.has_role(_user_id uuid, _role app_role)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where user_id = _user_id and role = _role
+  )
+$$;
+```
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/components/FeedbackButton.tsx` | Floating button + dialog for submitting feedback |
+| `src/pages/Admin.tsx` | Admin dashboard page |
+| `src/components/admin/FeedbackTable.tsx` | Table displaying all submissions |
+| `src/components/admin/FeedbackFilters.tsx` | Filter controls |
+| `src/components/admin/FeedbackDetailDialog.tsx` | View/edit individual feedback |
+| `src/components/admin/AdminStats.tsx` | Overview statistics cards |
+| `src/hooks/useFeedback.ts` | Hook for feedback CRUD operations |
+| `src/hooks/useUserRole.ts` | Hook to check user's admin status |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `src/App.tsx` | Add `/admin` route |
+| `src/pages/Index.tsx` | Add FeedbackButton component |
+
+---
+
+## Implementation Steps
+
+1. **Database Setup**
+   - Create `app_role` enum
+   - Create `user_roles` table with RLS
+   - Create `feedback` table with RLS
+   - Create `has_role` security definer function
+   - Set up appropriate RLS policies
+
+2. **User Feedback Submission**
+   - Create FeedbackButton component with floating action button
+   - Create feedback submission dialog/form
+   - Create useFeedback hook for database operations
+   - Add button to main dashboard
+
+3. **Admin Role Management**
+   - Create useUserRole hook
+   - Create protected route wrapper for admin pages
+
+4. **Admin Dashboard**
+   - Create Admin page with layout
+   - Create FeedbackTable with sorting/filtering
+   - Create detail view dialog for managing individual items
+   - Create stats overview component
+
+5. **Polish & UX**
+   - Toast notifications for actions
+   - Loading states
+   - Empty states
+   - Responsive design
+
+---
+
+## Assigning Admin Role
+
+After implementation, you can assign admin role to specific users via the database:
+
+```sql
+-- Replace with actual user_id
+INSERT INTO user_roles (user_id, role) 
+VALUES ('user-uuid-here', 'admin');
+```
+
+---
+
+## Estimated Components
+
+- ~8 new files
+- ~2 modified files
+- 1 database migration (tables, functions, RLS policies)
+
