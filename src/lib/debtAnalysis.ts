@@ -246,6 +246,58 @@ function generateDebtTips(analyzedDebts: DebtPriority[], freeMonthlyIncome: numb
 }
 
 /**
+ * Generate tips specifically for users with negative income
+ */
+export function generateNegativeIncomeTips(
+  debts: Debt[],
+  monthlyShortfall: number,
+  formatValue: (value: number) => string
+): string[] {
+  const tips: string[] = [];
+
+  // Primary tip: break-even requirement
+  tips.push(
+    `You need to free up at least ${formatValue(monthlyShortfall)}/month to break even.`
+  );
+
+  // Find highest interest debt for refinancing suggestion
+  const sortedDebts = [...debts].sort((a, b) => b.interest_rate - a.interest_rate);
+  const highestInterestDebt = sortedDebts[0];
+  
+  if (highestInterestDebt && highestInterestDebt.interest_rate > 10) {
+    tips.push(
+      `Consider refinancing ${highestInterestDebt.name} (${highestInterestDebt.interest_rate}% APR) for a lower rate.`
+    );
+  }
+
+  // Check for debts where payment doesn't cover interest
+  const underPayingDebts = debts.filter(d => {
+    const monthlyInterest = d.principal_amount * (d.interest_rate / 100 / 12);
+    return (d.monthly_payment || 0) < monthlyInterest;
+  });
+
+  if (underPayingDebts.length > 0) {
+    tips.push(
+      `Warning: ${underPayingDebts.length} debt(s) have payments below the accruing interest.`
+    );
+  }
+
+  // Expense reduction suggestion
+  tips.push(
+    `Review discretionary spending to find potential savings.`
+  );
+
+  // Income supplementation if shortfall is significant
+  if (monthlyShortfall > 500) {
+    tips.push(
+      `With a ${formatValue(monthlyShortfall)} gap, consider additional income sources.`
+    );
+  }
+
+  return tips.slice(0, 4); // Max 4 tips for negative income
+}
+
+/**
  * Calculate debt-aware investment allocations
  */
 export function calculateDebtAwareAllocations(
