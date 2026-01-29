@@ -3,7 +3,7 @@ import { Coins, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Asset } from '@/lib/types';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface YieldBreakdownCardProps {
   totalYield: number;
@@ -69,12 +69,12 @@ export function YieldBreakdownCard({
       transition={{ duration: 0.5, delay }}
       className="glass-card p-6 border-bitcoin/30"
     >
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="flex items-start justify-between mb-4">
-          <div className="p-2.5 rounded-xl bg-bitcoin/20 text-bitcoin">
-            <Coins className="w-5 h-5" />
-          </div>
-          <CollapsibleTrigger asChild>
+      <div className="flex items-start justify-between mb-4">
+        <div className="p-2.5 rounded-xl bg-bitcoin/20 text-bitcoin">
+          <Coins className="w-5 h-5" />
+        </div>
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
             <button
               className={cn(
                 'flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors',
@@ -85,16 +85,13 @@ export function YieldBreakdownCard({
               <span>{yieldingAssets.length} source{yieldingAssets.length !== 1 ? 's' : ''}</span>
               {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
-          </CollapsibleTrigger>
-        </div>
-        
-        <p className="stat-label mb-1">Annual Yield</p>
-        <p className="stat-value gradient-text">{formatValue(totalYield)}</p>
-        <p className="text-xs text-muted-foreground mt-2">From investments</p>
-
-        <CollapsibleContent>
-          <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          </PopoverTrigger>
+          <PopoverContent 
+            className="w-72 p-4" 
+            align="end"
+            sideOffset={8}
+          >
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
               Breakdown
             </p>
             {yieldBreakdown.length === 0 ? (
@@ -108,14 +105,12 @@ export function YieldBreakdownCard({
                     key={`${item.symbol || item.name}-${idx}`}
                     className="py-2 px-3 rounded-lg bg-secondary/30"
                   >
-                    {/* Top row: Asset name and yield amount */}
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{item.name}</span>
                       <span className="font-mono text-sm text-success">
                         +{formatValue(item.yieldAmount)}
                       </span>
                     </div>
-                    {/* Bottom row: Category and percentage */}
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className={cn(
                         'text-xs px-1.5 py-0.5 rounded',
@@ -131,9 +126,13 @@ export function YieldBreakdownCard({
                 ))}
               </div>
             )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+          </PopoverContent>
+        </Popover>
+      </div>
+      
+      <p className="stat-label mb-1">Annual Yield</p>
+      <p className="stat-value gradient-text">{formatValue(totalYield)}</p>
+      <p className="text-xs text-muted-foreground mt-2">From investments</p>
     </motion.div>
   );
 }
