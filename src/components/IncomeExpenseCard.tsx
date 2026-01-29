@@ -1,7 +1,7 @@
-import { ReactNode } from 'react';
+import { ReactNode, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight, Repeat, Zap } from 'lucide-react';
-import { Income, Expense, DisplayUnit } from '@/lib/types';
+import { Income, Expense, DisplayUnit, convertCurrency, UNIT_SYMBOLS, FOREX_RATES_TO_USD, BankingCurrency, DEFAULT_CONVERSION_RATES } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditIncomeDialog } from './EditIncomeDialog';
 import { EditExpenseDialog } from './EditExpenseDialog';
@@ -41,6 +41,31 @@ export function IncomeExpenseCard({
   const expenseItems = !isIncome ? (items as Expense[]) : [];
   const recurringCount = expenseItems.filter(e => e.is_recurring).length;
   const oneTimeCount = expenseItems.filter(e => !e.is_recurring).length;
+  
+  // Helper to format a value with its stored currency
+  const formatItemValue = useCallback((amount: number, itemCurrency: string): string => {
+    // For BTC and GOLD display units, convert via USD
+    if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
+      const amountInUSD = amount * (FOREX_RATES_TO_USD[itemCurrency as BankingCurrency] || 1);
+      const converted = amountInUSD * DEFAULT_CONVERSION_RATES[displayUnit];
+      const symbol = UNIT_SYMBOLS[displayUnit];
+      if (displayUnit === 'GOLD') {
+        return `${converted.toFixed(4)} ${symbol}`;
+      }
+      return `${symbol}${converted.toFixed(6)}`;
+    }
+    
+    // For fiat display units - if same currency, show original amount
+    if (itemCurrency === displayUnit) {
+      const symbol = UNIT_SYMBOLS[displayUnit];
+      return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    
+    // Otherwise, convert from stored currency to display currency
+    const converted = convertCurrency(amount, itemCurrency, displayUnit);
+    const symbol = UNIT_SYMBOLS[displayUnit];
+    return `${symbol}${converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, [displayUnit]);
 
   return (
     <motion.div
@@ -132,7 +157,7 @@ export function IncomeExpenseCard({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{formatValue(item.amount)}</span>
+                <span className="font-mono text-sm">{formatItemValue(item.amount, (item as any).currency || 'USD')}</span>
                 {isIncome && 'source' in item && onUpdateIncome && (
                   <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} displayUnit={displayUnit} />
                 )}

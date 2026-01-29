@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit } from '@/lib/types';
+import { useMemo, useState, useCallback } from 'react';
+import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit, convertCurrency, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
@@ -87,8 +87,19 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
 
   const metrics: PortfolioMetrics = useMemo(() => {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
-    const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    
+    // Convert income/expenses to USD for totals (they may have different currencies)
+    const totalIncome = income.reduce((sum, inc) => {
+      const currency = inc.currency || 'USD';
+      const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+      return sum + (inc.amount * rate);
+    }, 0);
+    
+    const totalExpenses = expenses.reduce((sum, exp) => {
+      const currency = exp.currency || 'USD';
+      const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+      return sum + (exp.amount * rate);
+    }, 0);
     
     // Debt metrics will be passed from useDebts hook when integrated
     const totalDebt = 0;
@@ -138,6 +149,25 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return valueInUSD * conversionRates[displayUnit];
   };
 
+  // Convert a value from its stored currency to the current display unit
+  const convertFromCurrency = useCallback((amount: number, fromCurrency: string): number => {
+    // For BTC and GOLD display units, we need to convert via USD
+    if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
+      // First convert to USD, then to display unit
+      const amountInUSD = amount * (FOREX_RATES_TO_USD[fromCurrency as BankingCurrency] || 1);
+      return amountInUSD * conversionRates[displayUnit];
+    }
+    
+    // For fiat display units (USD, EUR, GBP)
+    // If same currency, return original amount
+    if (fromCurrency === displayUnit) {
+      return amount;
+    }
+    
+    // Otherwise, convert from stored currency to display currency
+    return convertCurrency(amount, fromCurrency, displayUnit);
+  }, [displayUnit, conversionRates]);
+
   const formatValue = (valueInUSD: number, showDecimals = true): string => {
     const converted = convertValue(valueInUSD);
     const symbol = UNIT_SYMBOLS[displayUnit];
@@ -157,6 +187,26 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return `${symbol}${formatted}`;
   };
 
+  // Format a value that is stored in a specific currency (not USD)
+  const formatCurrencyValue = useCallback((amount: number, fromCurrency: string, showDecimals = true): string => {
+    const converted = convertFromCurrency(amount, fromCurrency);
+    const symbol = UNIT_SYMBOLS[displayUnit];
+    
+    if (displayUnit === 'GOLD') {
+      return `${converted.toFixed(4)} ${symbol}`;
+    }
+    
+    if (displayUnit === 'BTC') {
+      return `${symbol}${converted.toFixed(6)}`;
+    }
+    
+    const formatted = showDecimals 
+      ? converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : converted.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    
+    return `${symbol}${formatted}`;
+  }, [convertFromCurrency, displayUnit]);
+
   return {
     assets,
     income,
@@ -167,7 +217,9 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     assetsByCategory,
     categoryTotals,
     convertValue,
+    convertFromCurrency,
     formatValue,
+    formatCurrencyValue,
     loading: isDemo ? false : loading,
     addAsset,
     updateAsset,

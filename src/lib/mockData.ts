@@ -28,32 +28,32 @@ export const mockAssets: Asset[] = [
 ];
 
 export const mockIncome: Income[] = [
-  { id: '1', source: 'Software Engineering Salary', amount: 12500, type: 'work' },
-  { id: '2', source: 'Freelance Consulting', amount: 2500, type: 'work' },
-  { id: '3', source: 'Dividend Income', amount: 480, type: 'investment' },
-  { id: '4', source: 'Rental Property', amount: 1800, type: 'passive' },
-  { id: '5', source: 'Interest Income', amount: 285, type: 'passive' },
-  { id: '6', source: 'Staking Rewards', amount: 120, type: 'investment' },
+  { id: '1', source: 'Software Engineering Salary', amount: 12500, type: 'work', currency: 'USD' },
+  { id: '2', source: 'Freelance Consulting', amount: 2500, type: 'work', currency: 'USD' },
+  { id: '3', source: 'Dividend Income', amount: 480, type: 'investment', currency: 'USD' },
+  { id: '4', source: 'Rental Property', amount: 1800, type: 'passive', currency: 'USD' },
+  { id: '5', source: 'Interest Income', amount: 285, type: 'passive', currency: 'USD' },
+  { id: '6', source: 'Staking Rewards', amount: 120, type: 'investment', currency: 'USD' },
 ];
 
 export const mockExpenses: Expense[] = [
-  { id: '1', name: 'Rent/Mortgage', amount: 2800, category: 'Housing', is_recurring: true },
-  { id: '2', name: 'Groceries', amount: 600, category: 'Food', is_recurring: true },
-  { id: '3', name: 'Utilities', amount: 250, category: 'Housing', is_recurring: true },
-  { id: '4', name: 'Car Payment', amount: 450, category: 'Transportation', is_recurring: true },
-  { id: '5', name: 'Insurance', amount: 380, category: 'Insurance', is_recurring: true },
-  { id: '6', name: 'Entertainment', amount: 300, category: 'Lifestyle', is_recurring: true },
-  { id: '7', name: 'Subscriptions', amount: 120, category: 'Lifestyle', is_recurring: true },
-  { id: '8', name: 'Dining Out', amount: 400, category: 'Food', is_recurring: true },
-  { id: '9', name: 'Car Repair', amount: 850, category: 'Emergency', is_recurring: false, expense_date: '2026-01-15' },
-  { id: '10', name: 'New Laptop', amount: 1200, category: 'Electronics', is_recurring: false, expense_date: '2026-01-22' },
+  { id: '1', name: 'Rent/Mortgage', amount: 2800, category: 'Housing', is_recurring: true, currency: 'USD' },
+  { id: '2', name: 'Groceries', amount: 600, category: 'Food', is_recurring: true, currency: 'USD' },
+  { id: '3', name: 'Utilities', amount: 250, category: 'Housing', is_recurring: true, currency: 'USD' },
+  { id: '4', name: 'Car Payment', amount: 450, category: 'Transportation', is_recurring: true, currency: 'USD' },
+  { id: '5', name: 'Insurance', amount: 380, category: 'Insurance', is_recurring: true, currency: 'USD' },
+  { id: '6', name: 'Entertainment', amount: 300, category: 'Lifestyle', is_recurring: true, currency: 'USD' },
+  { id: '7', name: 'Subscriptions', amount: 120, category: 'Lifestyle', is_recurring: true, currency: 'USD' },
+  { id: '8', name: 'Dining Out', amount: 400, category: 'Food', is_recurring: true, currency: 'USD' },
+  { id: '9', name: 'Car Repair', amount: 850, category: 'Emergency', is_recurring: false, expense_date: '2026-01-15', currency: 'USD' },
+  { id: '10', name: 'New Laptop', amount: 1200, category: 'Electronics', is_recurring: false, expense_date: '2026-01-22', currency: 'USD' },
 ];
 
 export const mockDebts: Debt[] = [
-  { id: '1', name: 'Primary Mortgage', debt_type: 'mortgage', principal_amount: 285000, interest_rate: 6.5, monthly_payment: 2200 },
-  { id: '2', name: 'Chase Sapphire', debt_type: 'credit_card', principal_amount: 4500, interest_rate: 19.99, monthly_payment: 250 },
-  { id: '3', name: 'Auto Loan - Tesla', debt_type: 'auto_loan', principal_amount: 28000, interest_rate: 5.9, monthly_payment: 520 },
-  { id: '4', name: 'Student Loans', debt_type: 'student_loan', principal_amount: 35000, interest_rate: 4.5, monthly_payment: 380 },
+  { id: '1', name: 'Primary Mortgage', debt_type: 'mortgage', principal_amount: 285000, interest_rate: 6.5, monthly_payment: 2200, currency: 'USD' },
+  { id: '2', name: 'Chase Sapphire', debt_type: 'credit_card', principal_amount: 4500, interest_rate: 19.99, monthly_payment: 250, currency: 'USD' },
+  { id: '3', name: 'Auto Loan - Tesla', debt_type: 'auto_loan', principal_amount: 28000, interest_rate: 5.9, monthly_payment: 520, currency: 'USD' },
+  { id: '4', name: 'Student Loans', debt_type: 'student_loan', principal_amount: 35000, interest_rate: 4.5, monthly_payment: 380, currency: 'USD' },
 ];
 
 export const mockHistoricalData = [

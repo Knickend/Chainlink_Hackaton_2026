@@ -59,6 +59,7 @@ export type Database = {
       debts: {
         Row: {
           created_at: string
+          currency: string | null
           debt_type: string
           id: string
           interest_rate: number
@@ -70,6 +71,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          currency?: string | null
           debt_type?: string
           id?: string
           interest_rate?: number
@@ -81,6 +83,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          currency?: string | null
           debt_type?: string
           id?: string
           interest_rate?: number
@@ -97,6 +100,7 @@ export type Database = {
           amount: number
           category: string
           created_at: string
+          currency: string | null
           expense_date: string | null
           id: string
           is_recurring: boolean
@@ -108,6 +112,7 @@ export type Database = {
           amount: number
           category: string
           created_at?: string
+          currency?: string | null
           expense_date?: string | null
           id?: string
           is_recurring?: boolean
@@ -119,6 +124,7 @@ export type Database = {
           amount?: number
           category?: string
           created_at?: string
+          currency?: string | null
           expense_date?: string | null
           id?: string
           is_recurring?: boolean
@@ -171,6 +177,7 @@ export type Database = {
         Row: {
           amount: number
           created_at: string
+          currency: string | null
           id: string
           source: string
           type: string
@@ -180,6 +187,7 @@ export type Database = {
         Insert: {
           amount: number
           created_at?: string
+          currency?: string | null
           id?: string
           source: string
           type: string
@@ -189,6 +197,7 @@ export type Database = {
         Update: {
           amount?: number
           created_at?: string
+          currency?: string | null
           id?: string
           source?: string
           type?: string

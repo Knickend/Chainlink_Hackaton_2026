@@ -50,6 +50,7 @@ export function usePortfolioData() {
         source: i.source,
         amount: Number(i.amount),
         type: i.type as Income['type'],
+        currency: (i as any).currency || 'USD',
       })));
 
       setExpenses(expensesRes.data.map(e => ({
@@ -59,6 +60,7 @@ export function usePortfolioData() {
         category: e.category,
         is_recurring: (e as any).is_recurring ?? true,
         expense_date: (e as any).expense_date || undefined,
+        currency: (e as any).currency || 'USD',
       })));
     } catch (error: any) {
       toast({
@@ -176,6 +178,7 @@ export function usePortfolioData() {
     source: string;
     amount: number;
     type: Income['type'];
+    currency?: string;
   }) => {
     if (!user) return;
 
@@ -185,7 +188,8 @@ export function usePortfolioData() {
         source: incomeData.source,
         amount: incomeData.amount,
         type: incomeData.type,
-      }).select().single();
+        currency: incomeData.currency || 'USD',
+      } as any).select().single();
 
       if (error) throw error;
 
@@ -194,6 +198,7 @@ export function usePortfolioData() {
         source: data.source,
         amount: Number(data.amount),
         type: data.type as Income['type'],
+        currency: (data as any).currency || 'USD',
       }, ...prev]);
 
       toast({ title: 'Income added successfully' });
@@ -210,11 +215,16 @@ export function usePortfolioData() {
     if (!user) return;
 
     try {
-      const { error } = await supabase.from('income').update({
+      const updatePayload: any = {
         source: incomeData.source,
         amount: incomeData.amount,
         type: incomeData.type,
-      }).eq('id', id);
+      };
+      if (incomeData.currency) {
+        updatePayload.currency = incomeData.currency;
+      }
+      
+      const { error } = await supabase.from('income').update(updatePayload).eq('id', id);
 
       if (error) throw error;
 
@@ -257,6 +267,7 @@ export function usePortfolioData() {
     category: string;
     is_recurring?: boolean;
     expense_date?: string;
+    currency?: string;
   }) => {
     if (!user) return;
 
@@ -268,6 +279,7 @@ export function usePortfolioData() {
         category: expenseData.category,
         is_recurring: expenseData.is_recurring ?? true,
         expense_date: expenseData.expense_date || null,
+        currency: expenseData.currency || 'USD',
       } as any).select().single();
 
       if (error) throw error;
@@ -279,6 +291,7 @@ export function usePortfolioData() {
         category: data.category,
         is_recurring: (data as any).is_recurring ?? true,
         expense_date: (data as any).expense_date || undefined,
+        currency: (data as any).currency || 'USD',
       }, ...prev]);
 
       toast({ title: 'Expense added successfully' });
@@ -295,11 +308,16 @@ export function usePortfolioData() {
     if (!user) return;
 
     try {
-      const { error } = await supabase.from('expenses').update({
+      const updatePayload: any = {
         name: expenseData.name,
         amount: expenseData.amount,
         category: expenseData.category,
-      }).eq('id', id);
+      };
+      if (expenseData.currency) {
+        updatePayload.currency = expenseData.currency;
+      }
+      
+      const { error } = await supabase.from('expenses').update(updatePayload).eq('id', id);
 
       if (error) throw error;
 

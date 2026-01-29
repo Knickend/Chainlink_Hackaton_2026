@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Debt, DebtType } from '@/lib/types';
+import { Debt, DebtType, DisplayUnit, FOREX_RATES_TO_USD, BankingCurrency, convertCurrency, UNIT_SYMBOLS, DEFAULT_CONVERSION_RATES, calculateConversionRates } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 export function useDebts() {
@@ -34,6 +34,7 @@ export function useDebts() {
         principal_amount: Number(d.principal_amount),
         interest_rate: Number(d.interest_rate),
         monthly_payment: d.monthly_payment ? Number(d.monthly_payment) : undefined,
+        currency: (d as any).currency || 'USD',
       })));
     } catch (error: any) {
       toast({
@@ -57,6 +58,7 @@ export function useDebts() {
     principal_amount: number;
     interest_rate: number;
     monthly_payment?: number;
+    currency?: string;
   }) => {
     if (!user) return;
 
@@ -68,7 +70,8 @@ export function useDebts() {
         principal_amount: debtData.principal_amount,
         interest_rate: debtData.interest_rate,
         monthly_payment: debtData.monthly_payment || null,
-      }).select().single();
+        currency: debtData.currency || 'USD',
+      } as any).select().single();
 
       if (error) throw error;
 
@@ -79,6 +82,7 @@ export function useDebts() {
         principal_amount: Number(data.principal_amount),
         interest_rate: Number(data.interest_rate),
         monthly_payment: data.monthly_payment ? Number(data.monthly_payment) : undefined,
+        currency: (data as any).currency || 'USD',
       }, ...prev]);
 
       toast({ title: 'Debt added successfully' });
@@ -96,13 +100,18 @@ export function useDebts() {
     if (!user) return;
 
     try {
-      const { error } = await supabase.from('debts').update({
+      const updatePayload: any = {
         name: debtData.name,
         debt_type: debtData.debt_type,
         principal_amount: debtData.principal_amount,
         interest_rate: debtData.interest_rate,
         monthly_payment: debtData.monthly_payment || null,
-      }).eq('id', id);
+      };
+      if (debtData.currency) {
+        updatePayload.currency = debtData.currency;
+      }
+      
+      const { error } = await supabase.from('debts').update(updatePayload).eq('id', id);
 
       if (error) throw error;
 
@@ -139,13 +148,25 @@ export function useDebts() {
     }
   }, [user, toast]);
 
-  // Calculate totals
-  const totalDebt = debts.reduce((sum, d) => sum + d.principal_amount, 0);
-  const monthlyPayments = debts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0);
+  // Calculate totals in USD (for consistent portfolio metrics)
+  const totalDebt = debts.reduce((sum, d) => {
+    const currency = d.currency || 'USD';
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (d.principal_amount * rate);
+  }, 0);
+  
+  const monthlyPayments = debts.reduce((sum, d) => {
+    if (!d.monthly_payment) return sum;
+    const currency = d.currency || 'USD';
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (d.monthly_payment * rate);
+  }, 0);
+  
   const monthlyInterest = debts.reduce((sum, d) => {
-    // If no monthly payment, estimate interest portion
+    const currency = d.currency || 'USD';
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
     const monthlyRate = d.interest_rate / 100 / 12;
-    return sum + (d.principal_amount * monthlyRate);
+    return sum + (d.principal_amount * rate * monthlyRate);
   }, 0);
 
   return {

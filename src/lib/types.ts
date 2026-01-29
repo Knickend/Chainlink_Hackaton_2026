@@ -85,17 +85,19 @@ export function getUnitLabel(unit: CommodityUnit): string {
 export interface Income {
   id: string;
   source: string;
-  amount: number; // monthly in USD
+  amount: number; // in original currency
   type: 'work' | 'passive' | 'investment';
+  currency: string; // 'USD', 'EUR', 'GBP', etc.
 }
 
 export interface Expense {
   id: string;
   name: string;
-  amount: number; // in USD
+  amount: number; // in original currency
   category: string;
   is_recurring: boolean; // true for monthly recurring, false for one-time
   expense_date?: string; // ISO date string for one-time expenses
+  currency: string; // 'USD', 'EUR', 'GBP', etc.
 }
 
 export type DebtType = 'mortgage' | 'credit_card' | 'personal_loan' | 'auto_loan' | 'student_loan' | 'other';
@@ -113,9 +115,10 @@ export interface Debt {
   id: string;
   name: string;
   debt_type: DebtType;
-  principal_amount: number;
+  principal_amount: number; // in original currency
   interest_rate: number; // annual percentage
-  monthly_payment?: number;
+  monthly_payment?: number; // in original currency
+  currency: string; // 'USD', 'EUR', 'GBP', etc.
 }
 
 export interface InvestmentPreferences {
@@ -172,6 +175,21 @@ export function calculateConversionRates(btcPrice: number, goldPrice: number): R
 export function convertToUSD(amount: number, currency: string): number {
   const rate = FOREX_RATES_TO_USD[currency as BankingCurrency];
   return rate ? amount * rate : amount;
+}
+
+// Helper to convert from one fiat currency to another via USD
+export function convertCurrency(amount: number, fromCurrency: string, toCurrency: string): number {
+  // If same currency, no conversion needed
+  if (fromCurrency === toCurrency) return amount;
+  
+  // Convert to USD first
+  const amountInUSD = convertToUSD(amount, fromCurrency);
+  
+  // Then convert from USD to target currency
+  const targetRate = FOREX_RATES_TO_USD[toCurrency as BankingCurrency];
+  if (!targetRate) return amountInUSD; // If target not found, return USD amount
+  
+  return amountInUSD / targetRate;
 }
 
 // Helper to get currency symbol
