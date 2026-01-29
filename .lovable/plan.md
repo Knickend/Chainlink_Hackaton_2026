@@ -1,191 +1,283 @@
 
-# Make "No Investable Income" Warning Interactive with Debt Optimization
+# Full Admin Dashboard with Analytics & Charts
 
 ## Overview
 
-When a user has negative free income (expenses + debt payments exceed income), they currently see a static warning. This plan makes that warning clickable to open a **Debt Optimization Advisor** view that provides insights and actionable solutions for improving their debt situation.
+Transform the admin dashboard into a comprehensive analytics hub with advanced KPIs, visualizations, and trend analysis. This will provide administrators with deep insights into user engagement, feedback patterns, and platform health.
 
 ---
 
-## Current Behavior
+## New Features
 
-- `InvestmentStrategyCard` shows a static "No Investable Income" warning when `freeMonthlyIncome < 0`
-- Users cannot access the Investment Strategy Planner in this state
-- No actionable guidance is provided
+### 1. Enhanced Stats Row (Expanded KPIs)
 
----
+Replace the current 4-stat grid with a more comprehensive stats section:
 
-## Proposed User Experience
+| KPI | Description | Data Source |
+|-----|-------------|-------------|
+| Total Bugs | Count of bug reports | `feedback.type = 'bug'` |
+| Feature Requests | Count of feature requests | `feedback.type = 'feature'` |
+| Critical Issues | Bugs with critical priority | `feedback.priority = 'critical'` |
+| Resolution Rate | Percentage of resolved items | `resolved / total * 100` |
+| Avg Response Time | Average time to first update | `avg(updated_at - created_at)` |
+| Pending | New + In Progress items | `status = 'new' OR 'in_progress'` |
+| Resolved | Completed items | `status = 'resolved'` |
+| Declined | Rejected items | `status = 'declined'` |
 
-1. **Clickable Warning Card**: The "No Investable Income" card becomes clickable with a cursor change and hover effect
-2. **Opens Debt Optimization Dialog**: Clicking opens a dialog/modal showing:
-   - Summary of current debt situation (total debt, monthly payments, monthly interest)
-   - Priority debt analysis (high-interest debts that should be tackled first)
-   - Actionable tips specific to their situation
-   - Recommendations for how to free up investable income
-3. **Maintains Investment Strategy Access**: Even with negative income, users can see debt-focused advice
+### 2. User Analytics Section
+
+| KPI | Description | Data Source |
+|-----|-------------|-------------|
+| Total Users | All registered users | `profiles` count |
+| New Users (7d) | Users registered in last 7 days | `profiles.created_at > now - 7d` |
+| Active Users | Users with recent activity | Users with assets/expenses updated recently |
+| Total Portfolio Value | Sum of all user assets | `sum(assets.value)` |
+| Total Tracked Debt | Sum of all user debts | `sum(debts.principal_amount)` |
+
+### 3. Charts Section
+
+**Chart 1: Feedback Trends (Line Chart)**
+- Shows feedback submissions over time (weekly buckets)
+- Separate lines for bugs vs features
+- Uses `created_at` grouped by week
+
+**Chart 2: Status Distribution (Pie Chart)**
+- Breakdown by status: New, In Progress, Resolved, Declined
+- Visual representation of workload
+
+**Chart 3: Priority Breakdown (Bar Chart)**
+- Horizontal bar chart showing priority distribution
+- Only for bug reports (features don't have priority)
+
+**Chart 4: User Growth (Area Chart)**
+- Shows cumulative user signups over time
+- Monthly granularity
+
+### 4. Tabbed Interface
+
+Organize the dashboard into logical tabs:
+- **Overview** - All KPI cards and summary charts
+- **Feedback** - Existing feedback table with filters
+- **Users** - User analytics and growth charts
 
 ---
 
 ## Technical Implementation
 
-### 1. Create new component: `DebtOptimizationDialog.tsx`
+### New Files to Create
 
-A dialog that shows debt analysis and optimization suggestions when the user has no investable income.
+| File | Purpose |
+|------|---------|
+| `src/hooks/useAdminAnalytics.ts` | Fetch platform-wide analytics data |
+| `src/components/admin/AdminOverview.tsx` | Overview tab with all charts |
+| `src/components/admin/AdminUserStats.tsx` | User-specific analytics |
+| `src/components/admin/FeedbackTrendChart.tsx` | Line chart for feedback over time |
+| `src/components/admin/StatusDistributionChart.tsx` | Pie chart for status breakdown |
+| `src/components/admin/PriorityBreakdownChart.tsx` | Bar chart for priority distribution |
+| `src/components/admin/UserGrowthChart.tsx` | Area chart for user signups |
 
-**Content to display:**
-- **Budget Gap**: Shows the monthly shortfall amount
-- **Debt Overview**: Total debt, monthly payments, monthly interest being paid
-- **Priority Debts Section**: List of high-interest debts with recommendations
-- **Optimization Tips**: Generated from `debtAnalysis.tips` plus additional negative-income specific tips
-- **Action Items**: Concrete suggestions like "Reduce expenses by X/month" or "Focus on paying off Y first"
+### Files to Modify
 
-### 2. Update `InvestmentStrategyCard.tsx`
-
-**Changes to the negative income section (lines 67-89):**
-- Add state for dialog open/close: `const [debtDialogOpen, setDebtDialogOpen] = useState(false)`
-- Make the warning card clickable with `onClick={() => setDebtDialogOpen(true)}`
-- Add hover styles: `cursor-pointer hover:border-destructive transition-colors`
-- Add a visual hint that it's clickable (e.g., "Tap for optimization tips" or a chevron icon)
-- Render the `DebtOptimizationDialog` component
-
-**Pass additional props to the dialog:**
-- `debts` - for debt analysis
-- `formatValue` - for currency formatting
-- `monthlyShortfall` - the absolute value of negative income
-
-### 3. Update the `analyzeDebts` function in `src/lib/debtAnalysis.ts`
-
-Add new tips specifically for users with negative income:
-- Suggestions about expense reduction
-- Debt consolidation considerations
-- Minimum payment warnings
-- Income supplementation ideas
-
-Add a new function `generateNegativeIncomeTips(debts, shortfall)` that provides:
-- "You need to free up at least {shortfall}/month to break even"
-- "Consider refinancing {debt} to lower your monthly payment"
-- "Cutting {suggestedCategory} expenses could help balance your budget"
+| File | Changes |
+|------|---------|
+| `src/pages/Admin.tsx` | Add tabbed layout, integrate new components |
+| `src/components/admin/AdminStats.tsx` | Expand to include new KPIs |
 
 ---
 
-## File Changes Summary
+## Database Considerations
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/DebtOptimizationDialog.tsx` | **Create** | New dialog for debt optimization advice |
-| `src/components/InvestmentStrategyCard.tsx` | **Modify** | Make negative income card clickable, add dialog |
-| `src/lib/debtAnalysis.ts` | **Modify** | Add negative-income specific tips generator |
+The analytics queries need to be run with admin privileges. Since RLS policies already allow admins to view all feedback, we can query:
+- `feedback` - Full access for admins
+- `profiles` - Need to add admin read policy
+- `assets` - Need to add admin read policy (aggregated only)
+- `debts` - Need to add admin read policy (aggregated only)
+
+New RLS policies required for `profiles`, `assets`, and `debts` tables to allow admins to read aggregate data.
 
 ---
 
 ## Component Structure
 
 ```text
-┌─────────────────────────────────────────────────────┐
-│  No Investable Income (clickable card)              │
-│  ┌───────────────────────────────────────────────┐  │
-│  │ ⚠️ Your expenses exceed income by $1,272/mo  │  │
-│  │                                               │  │
-│  │ Tap to see debt optimization strategies →    │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-                         │
-                         ▼ (on click)
-┌─────────────────────────────────────────────────────┐
-│  Debt Optimization Advisor (Dialog)                 │
-│  ┌───────────────────────────────────────────────┐  │
-│  │ Monthly Gap: -$1,272                         │  │
-│  │ Total Debt: $150,000                         │  │
-│  │ Monthly Payments: $2,500                     │  │
-│  │ Monthly Interest: $750                       │  │
-│  └───────────────────────────────────────────────┘  │
-│                                                     │
-│  Priority Actions:                                  │
-│  • Focus on Visa Card (18% APR) first              │
-│  • Increase mortgage payment to cover interest     │
-│                                                     │
-│  Tips:                                              │
-│  • Reduce monthly spending by $1,272 to break even │
-│  • Consider debt consolidation for lower rates     │
-│  • Review expenses for potential savings           │
-└─────────────────────────────────────────────────────┘
+Admin Page
+├── Header (existing)
+├── Tabs
+│   ├── Overview Tab
+│   │   ├── Enhanced Stats Grid (8 KPIs in 2 rows)
+│   │   │   ├── Row 1: Bugs, Features, Critical, Resolution Rate
+│   │   │   └── Row 2: Avg Response, Pending, Resolved, Declined
+│   │   ├── Charts Row 1
+│   │   │   ├── FeedbackTrendChart (spans 2 cols)
+│   │   │   └── StatusDistributionChart
+│   │   └── User Stats Section
+│   │       ├── User KPI Cards (Total, New, Active)
+│   │       └── Platform Stats (Portfolio Value, Total Debt)
+│   │
+│   ├── Feedback Tab
+│   │   ├── FeedbackFilters (existing)
+│   │   └── FeedbackTable (existing)
+│   │
+│   └── Users Tab
+│       ├── UserGrowthChart
+│       ├── Top Users Table (by assets)
+│       └── Recent Signups List
+│
+└── FeedbackDetailDialog (existing)
 ```
 
 ---
 
 ## Detailed Code Changes
 
-### InvestmentStrategyCard.tsx - Negative Income Section
+### 1. useAdminAnalytics.ts Hook
 
-Current (lines 67-89):
-```tsx
-if (freeMonthlyIncome < 0) {
-  return (
-    <motion.div ... className="glass-card rounded-xl p-6 border-destructive/50">
-      <div className="flex items-start gap-4">
-        ...static content...
-      </div>
-    </motion.div>
-  );
+```typescript
+// Fetches:
+// - Feedback stats with time-series data
+// - User counts and growth
+// - Platform-wide financial aggregates
+
+interface AdminAnalytics {
+  feedback: {
+    total: number;
+    bugs: number;
+    features: number;
+    critical: number;
+    resolutionRate: number;
+    avgResponseHours: number;
+    byStatus: { status: string; count: number }[];
+    byPriority: { priority: string; count: number }[];
+    trends: { week: string; bugs: number; features: number }[];
+  };
+  users: {
+    total: number;
+    newLast7Days: number;
+    growth: { month: string; count: number }[];
+  };
+  platform: {
+    totalPortfolioValue: number;
+    totalTrackedDebt: number;
+  };
 }
 ```
 
-Updated:
+### 2. Enhanced AdminStats Component
+
+Current: 4 cards in a row
+Updated: 8 cards in 2 rows with additional metrics:
+- Row 1: Bugs, Features, Critical, Resolution Rate %
+- Row 2: Avg Response Time, Pending, Resolved, Declined
+
+### 3. FeedbackTrendChart Component
+
+- Uses Recharts `LineChart`
+- X-axis: Week labels (e.g., "Jan 1", "Jan 8")
+- Y-axis: Count of submissions
+- Two lines: Bugs (red) and Features (amber)
+- Gradient fill under lines
+
+### 4. StatusDistributionChart Component
+
+- Uses Recharts `PieChart`
+- 4 segments: New (blue), In Progress (amber), Resolved (green), Declined (red)
+- Legend with percentages
+- Interactive tooltips
+
+### 5. Admin Page Tabs
+
 ```tsx
-if (freeMonthlyIncome < 0) {
-  return (
-    <>
-      <motion.div
-        onClick={() => setDebtDialogOpen(true)}
-        className="glass-card rounded-xl p-6 border-destructive/50 cursor-pointer hover:border-destructive hover:bg-destructive/5 transition-all"
-      >
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-lg bg-destructive/10">
-            <AlertTriangle className="w-6 h-6 text-destructive" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-lg">No Investable Income</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your expenses and debt payments exceed your income by {formatValue(Math.abs(freeMonthlyIncome))}/month.
-            </p>
-            <p className="text-sm text-primary mt-2 flex items-center gap-1">
-              <Lightbulb className="w-4 h-4" />
-              View debt optimization strategies
-            </p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-muted-foreground" />
-        </div>
-      </motion.div>
-      
-      <DebtOptimizationDialog
-        open={debtDialogOpen}
-        onOpenChange={setDebtDialogOpen}
-        debts={debts}
-        monthlyShortfall={Math.abs(freeMonthlyIncome)}
-        monthlyPayments={monthlyPayments}
-        formatValue={formatValue}
-      />
-    </>
-  );
-}
+<Tabs defaultValue="overview">
+  <TabsList>
+    <TabsTrigger value="overview">Overview</TabsTrigger>
+    <TabsTrigger value="feedback">Feedback</TabsTrigger>
+    <TabsTrigger value="users">Users</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="overview">
+    <AdminOverview analytics={analytics} />
+  </TabsContent>
+  
+  <TabsContent value="feedback">
+    {/* Existing filters + table */}
+  </TabsContent>
+  
+  <TabsContent value="users">
+    <AdminUserStats analytics={analytics} />
+  </TabsContent>
+</Tabs>
 ```
-
-### DebtOptimizationDialog.tsx - New Component
-
-Key sections:
-1. **Header**: "Debt Optimization Advisor"
-2. **Budget Gap Alert**: Shows the monthly shortfall prominently
-3. **Debt Summary Stats**: Total debt, monthly payments, monthly interest
-4. **Priority Debts**: Cards for each high-interest debt with recommendations
-5. **Optimization Tips**: Smart tips from debtAnalysis plus shortfall-specific advice
-6. **Action Steps**: Concrete next steps the user can take
 
 ---
 
-## Visual Enhancements
+## Visual Design
 
-- **Hover effect** on the warning card indicates it's interactive
-- **Chevron icon** on the right side suggests more content is available
-- **"View debt optimization strategies"** text with Lightbulb icon provides clear CTA
-- Dialog uses existing glass-card styling for consistency
+All charts will follow the existing app design patterns:
+- `glass-card` styling for containers
+- HSL color palette matching existing theme
+- Framer Motion animations for entrance
+- Recharts library (already installed)
+- Responsive grid layouts
+
+### Color Scheme for Charts
+
+| Data Type | Color |
+|-----------|-------|
+| Bugs | `hsl(0, 84%, 60%)` (destructive) |
+| Features | `hsl(43, 96%, 56%)` (warning/gold) |
+| New | `hsl(221, 83%, 53%)` (primary blue) |
+| In Progress | `hsl(43, 96%, 56%)` (amber) |
+| Resolved | `hsl(142, 71%, 45%)` (success green) |
+| Declined | `hsl(0, 84%, 60%)` (red) |
+
+---
+
+## Required Database Migration
+
+Add RLS policies for admin access to aggregate data:
+
+```sql
+-- Allow admins to count profiles
+CREATE POLICY "Admins can view all profiles"
+  ON profiles FOR SELECT
+  USING (has_role(auth.uid(), 'admin'));
+
+-- Allow admins to read aggregate asset data
+CREATE POLICY "Admins can view all assets for analytics"
+  ON assets FOR SELECT
+  USING (has_role(auth.uid(), 'admin'));
+
+-- Allow admins to read aggregate debt data
+CREATE POLICY "Admins can view all debts for analytics"
+  ON debts FOR SELECT
+  USING (has_role(auth.uid(), 'admin'));
+```
+
+---
+
+## Implementation Order
+
+1. Add database RLS policies for admin access
+2. Create `useAdminAnalytics` hook with all queries
+3. Expand `AdminStats` component with new KPIs
+4. Create chart components (FeedbackTrendChart, StatusDistributionChart, PriorityBreakdownChart)
+5. Create `AdminOverview` component combining stats and charts
+6. Create `AdminUserStats` component with UserGrowthChart
+7. Update `Admin.tsx` with tabbed layout
+8. Test all analytics and charts
+
+---
+
+## Summary
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| `useAdminAnalytics.ts` | Hook | Centralized analytics data fetching |
+| `AdminOverview.tsx` | Component | Overview tab with charts and stats |
+| `AdminUserStats.tsx` | Component | User analytics tab |
+| `FeedbackTrendChart.tsx` | Component | Line chart for feedback trends |
+| `StatusDistributionChart.tsx` | Component | Pie chart for status breakdown |
+| `PriorityBreakdownChart.tsx` | Component | Bar chart for priority distribution |
+| `UserGrowthChart.tsx` | Component | Area chart for user growth |
+| `AdminStats.tsx` | Update | Expanded KPI cards |
+| `Admin.tsx` | Update | Tabbed layout integration |
