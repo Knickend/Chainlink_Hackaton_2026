@@ -171,11 +171,11 @@ serve(async (req) => {
               messages: [
                 {
                   role: 'system',
-                  content: 'You are a financial data API. Return ONLY valid JSON. No markdown, no explanation.'
+                  content: 'You are a financial data API. Return ONLY valid JSON with no markdown formatting, no code blocks, no backticks. Always provide numeric values, never null.'
                 },
                 {
                   role: 'user',
-                  content: 'Return current USD prices as JSON: {"gold": <Gold per troy oz>, "silver": <Silver per troy oz>}'
+                  content: 'Return the current spot prices in USD as JSON: {"gold": <Gold price per troy oz as number>, "silver": <Silver price per troy oz as number>}. Both values must be positive numbers. Do not use markdown formatting.'
                 }
               ],
             }),
@@ -188,11 +188,26 @@ serve(async (req) => {
 
             if (content) {
               try {
-                const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+                // Strip markdown formatting if present (Perplexity sometimes wraps in code blocks)
+                let jsonStr = typeof content === 'string' ? content.trim() : JSON.stringify(content);
+                if (jsonStr.startsWith('```json')) {
+                  jsonStr = jsonStr.slice(7);
+                } else if (jsonStr.startsWith('```')) {
+                  jsonStr = jsonStr.slice(3);
+                }
+                if (jsonStr.endsWith('```')) {
+                  jsonStr = jsonStr.slice(0, -3);
+                }
+                jsonStr = jsonStr.trim();
+                
+                const parsed = JSON.parse(jsonStr);
                 commodityPrices = {
                   gold: validatePrice(parsed.gold, 'GOLD'),
-                  silver: validatePrice(parsed.silver, 'SILVER'),
+                  silver: parsed.silver !== null && parsed.silver !== undefined 
+                    ? validatePrice(parsed.silver, 'SILVER') 
+                    : getCachedPrice('SILVER'),
                 };
+                console.log('Parsed commodity prices:', commodityPrices);
               } catch (parseErr) {
                 console.error('Failed to parse Perplexity response:', parseErr);
               }
