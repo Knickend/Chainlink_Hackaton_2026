@@ -1,234 +1,141 @@
 
-# First-Time User Tutorial Implementation
+# Fix for Tutorial Step 7 Not Showing
 
-## Overview
+## Problem Summary
 
-Create an interactive, step-by-step tutorial that guides new users through all the features of InControl. The tutorial will use a spotlight/tooltip approach that highlights different areas of the dashboard and explains their functionality in simple terms.
+The tutorial is getting stuck on step 7 (Assets Section) because:
 
----
+1. **Missing unique keys on AnimatePresence children** - Framer Motion requires unique keys for each child inside `AnimatePresence` to properly animate elements. The console shows duplicate key warnings which cause unpredictable behavior.
 
-## Tutorial Features to Cover
+2. **Tooltip renders at wrong position** - When the target element isn't found or positioned correctly, the tooltip still renders at `(0, 0)` instead of waiting for valid coordinates.
 
-Based on the app analysis, the tutorial will cover these key areas:
-
-1. **Welcome & Dashboard Overview** - Introduction to InControl
-2. **Key Metrics** - Net Worth, Total Debt, Monthly Income, Monthly Net, Yield
-3. **Unit Selector** - Switch between USD, EUR, GBP, BTC, Gold
-4. **Charts** - Net Worth trend and Asset Allocation pie chart
-5. **Assets** - Adding and managing different asset types (Banking, Crypto, Stocks, Commodities)
-6. **Income Tracking** - Adding income sources (work, passive, investment)
-7. **Expense Tracking** - Managing recurring and one-time expenses
-8. **Debt Management** - Adding and tracking debts
-9. **AI Financial Advisor** - Using the chat feature for financial guidance
-10. **Pro Features** - Investment Strategy, Debt Payoff Calculator, Portfolio History
+3. **Race condition with scroll** - The element might not be in view when the overlay tries to calculate its position, causing the lookup to fail.
 
 ---
 
-## User Experience Flow
+## Solution
 
-```text
-User Signs Up / First Login
-       |
-       v
-+------------------+
-|  Welcome Modal   |  "Welcome to InControl! Would you like a quick tour?"
-|  [Start Tour]    |  [Skip]
-+------------------+
-       |
-       v
-Step-by-step spotlight tour
-highlighting each feature
-       |
-       v
-+------------------+
-|  Tour Complete!  |  "You're ready to start tracking your wealth!"
-|  [Get Started]   |
-+------------------+
-```
+### 1. Add unique keys to AnimatePresence children
 
----
+Add a `key` prop to each motion element inside AnimatePresence that changes based on the current step:
 
-## Technical Implementation
-
-### New Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/components/Tutorial/TutorialProvider.tsx` | Context provider for tutorial state |
-| `src/components/Tutorial/TutorialOverlay.tsx` | Spotlight overlay with tooltip |
-| `src/components/Tutorial/TutorialStep.tsx` | Individual step component |
-| `src/components/Tutorial/WelcomeModal.tsx` | Initial welcome modal |
-| `src/components/Tutorial/CompletionModal.tsx` | Tutorial completion celebration |
-| `src/components/Tutorial/tutorialSteps.ts` | Step definitions and content |
-| `src/hooks/useTutorial.ts` | Hook for managing tutorial state |
-
-### Database Changes
-
-Add a column to track tutorial completion:
-
-```sql
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS has_completed_tutorial BOOLEAN DEFAULT false;
-```
-
----
-
-## Tutorial Steps Content
-
-### Step 1: Welcome
-- **Target**: None (modal)
-- **Title**: "Welcome to InControl!"
-- **Content**: "Let's take a quick tour to help you get the most out of your financial dashboard."
-
-### Step 2: Key Metrics Overview
-- **Target**: Stats cards section
-- **Title**: "Your Financial Snapshot"
-- **Content**: "These cards show your most important numbers at a glance - your total net worth, debt, monthly income, and what's left after expenses."
-
-### Step 3: Net Worth Card
-- **Target**: Net Worth stat card
-- **Title**: "Net Worth"
-- **Content**: "This is your total assets minus debts. It's the most important number for tracking your financial progress."
-
-### Step 4: Unit Selector
-- **Target**: Unit selector buttons
-- **Title**: "View in Different Currencies"
-- **Content**: "Switch between USD, EUR, GBP, Bitcoin, or Gold to see all your values in your preferred unit."
-
-### Step 5: Theme Toggle
-- **Target**: Theme toggle button
-- **Title**: "Light or Dark Mode"
-- **Content**: "Prefer a different look? Toggle between light and dark themes here."
-
-### Step 6: Charts Section
-- **Target**: Charts row
-- **Title**: "Visualize Your Wealth"
-- **Content**: "Track your net worth over time and see how your assets are allocated across different categories."
-
-### Step 7: Assets Section
-- **Target**: Assets by Category section
-- **Title**: "Manage Your Assets"
-- **Content**: "Add and track all types of assets - bank accounts, crypto, stocks, and commodities. Each category shows its total value and percentage of your portfolio."
-
-### Step 8: Add Asset Button
-- **Target**: Add Asset button
-- **Title**: "Adding Assets is Easy"
-- **Content**: "Click here to add any asset. For stocks and crypto, just search by name and we'll fetch live prices automatically!"
-
-### Step 9: Income Card
-- **Target**: Income card
-- **Title**: "Track Your Income"
-- **Content**: "Add all your income sources - salary, side hustles, rental income, dividends. See your total monthly income at a glance."
-
-### Step 10: Expense Card
-- **Target**: Expense card
-- **Title**: "Monitor Expenses"
-- **Content**: "Keep track of where your money goes. Add recurring monthly expenses to see how much you're really saving."
-
-### Step 11: Debt Card
-- **Target**: Debt overview card
-- **Title**: "Manage Your Debt"
-- **Content**: "Track mortgages, loans, and credit cards. See your total debt, monthly payments, and interest costs."
-
-### Step 12: AI Advisor Button
-- **Target**: Floating chat button
-- **Title**: "Your AI Financial Advisor"
-- **Content**: "Have questions about investing, budgeting, or debt? Click here to chat with our AI financial advisor anytime."
-
-### Step 13: Pro Features (if applicable)
-- **Target**: Investment Strategy or Debt Calculator section
-- **Title**: "Unlock Pro Features"
-- **Content**: "Upgrade to Pro for investment strategy recommendations, detailed debt payoff calculators, and portfolio performance tracking."
-
-### Step 14: Completion
-- **Target**: None (modal)
-- **Title**: "You're All Set!"
-- **Content**: "Start by adding your first asset. The more data you add, the better insights you'll get. Happy tracking!"
-
----
-
-## Component Structure
-
-### TutorialProvider
 ```typescript
-interface TutorialState {
-  isActive: boolean;
-  currentStep: number;
-  totalSteps: number;
-  hasCompletedTutorial: boolean;
+// Before
+<motion.div initial={{ opacity: 0 }} ...>
+
+// After  
+<motion.div key={`overlay-${currentStep}`} initial={{ opacity: 0 }} ...>
+```
+
+### 2. Wait for valid target position before rendering tooltip
+
+Only render the spotlight and tooltip when we have valid coordinates:
+
+```typescript
+// Before
+if (!isActive || !currentStepData?.target) {
+  return null;
 }
 
-// Provides context for:
-// - Starting/stopping the tutorial
-// - Navigating between steps
-// - Marking tutorial as complete
+// After
+if (!isActive || !currentStepData?.target) {
+  return null;
+}
+
+// Don't render until we have valid position data
+if (!targetRect) {
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/75" />
+  );
+}
 ```
 
-### TutorialOverlay
-- Creates a dark overlay with a spotlight "hole" around the target element
-- Positions a tooltip near the highlighted element
-- Includes Next/Previous/Skip buttons
-- Uses Framer Motion for smooth transitions
+### 3. Add retry logic for element finding
 
-### Tutorial Tooltip Content
-- Step indicator (e.g., "3 of 14")
-- Title
-- Description text
-- Navigation buttons (Previous, Next, Skip)
-- Progress bar
+If the element isn't found immediately, retry a few times with increasing delays to handle slow-loading elements:
 
----
+```typescript
+const updateTargetPosition = useCallback(() => {
+  if (!currentStepData?.target) {
+    setTargetRect(null);
+    return;
+  }
 
-## Integration Points
-
-### Index.tsx Changes
-- Import and wrap with TutorialProvider
-- Add `data-tutorial` attributes to key elements for targeting
-- Show welcome modal on first visit
-
-### Database Integration
-- Check `has_completed_tutorial` on load
-- Update to `true` when tutorial completes or is skipped
-- Allow restart from settings if needed
-
----
-
-## Accessibility Considerations
-
-- Keyboard navigation (arrow keys, Escape to exit)
-- Screen reader announcements for each step
-- High contrast spotlight border
-- Focus management between steps
+  const findElement = (attempt = 0) => {
+    const element = document.querySelector(`[data-tutorial="${currentStepData.target}"]`);
+    if (element) {
+      // Calculate position...
+    } else if (attempt < 3) {
+      // Retry after delay
+      setTimeout(() => findElement(attempt + 1), 200);
+    } else {
+      // Skip to next step if element not found after retries
+      console.warn(`Tutorial element not found: ${currentStepData.target}`);
+      setTargetRect(null);
+    }
+  };
+  
+  findElement();
+}, [currentStepData]);
+```
 
 ---
 
-## Mobile Responsiveness
+## Files to Modify
 
-- Smaller tooltip on mobile
-- Vertical layout for tooltip content
-- Touch-friendly navigation buttons
-- Adjust spotlight positioning for scrollable content
-
----
-
-## Summary of Changes
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/Tutorial/TutorialProvider.tsx` | Create | Context and state management |
-| `src/components/Tutorial/TutorialOverlay.tsx` | Create | Spotlight overlay component |
-| `src/components/Tutorial/TutorialStep.tsx` | Create | Step content renderer |
-| `src/components/Tutorial/WelcomeModal.tsx` | Create | Initial tour prompt |
-| `src/components/Tutorial/CompletionModal.tsx` | Create | Celebration on completion |
-| `src/components/Tutorial/tutorialSteps.ts` | Create | Step definitions |
-| `src/hooks/useTutorial.ts` | Create | Tutorial state hook |
-| `src/pages/Index.tsx` | Modify | Add tutorial integration and data attributes |
-| `supabase/migrations/xxx.sql` | Create | Add `has_completed_tutorial` column |
+| File | Changes |
+|------|---------|
+| `src/components/Tutorial/TutorialOverlay.tsx` | Add keys to motion elements, show loading state when targetRect is null, add retry logic for element finding |
 
 ---
 
-## Optional Enhancements
+## Technical Details
 
-- **Restart Tutorial**: Add button in settings to restart the tour
-- **Feature-Specific Tours**: Mini-tutorials when users first access Pro features
-- **Progress Persistence**: Remember which step user was on if they close mid-tutorial
-- **Animated Mascot**: Add a friendly character to guide the tour
+### Updated TutorialOverlay.tsx structure:
+
+```typescript
+return (
+  <AnimatePresence mode="wait">
+    {/* Loading overlay while finding element */}
+    {!targetRect && (
+      <motion.div
+        key="loading-overlay"
+        className="fixed inset-0 z-[90] bg-black/75"
+      />
+    )}
+    
+    {/* Dark overlay with spotlight - only when we have position */}
+    {targetRect && (
+      <motion.div
+        key={`spotlight-${currentStep}`}
+        // ... spotlight styles
+      />
+    )}
+    
+    {/* Tooltip - only when we have position */}
+    {targetRect && (
+      <motion.div
+        key={`tooltip-${currentStep}`}
+        // ... tooltip content
+      />
+    )}
+  </AnimatePresence>
+);
+```
+
+### Key changes:
+- Add `mode="wait"` to AnimatePresence for smoother transitions
+- Add unique `key` props to each motion element
+- Conditionally render spotlight and tooltip only when `targetRect` is valid
+- Show a simple dark overlay while searching for the element
+- Add retry logic with 3 attempts and 200ms delays between attempts
+
+---
+
+## Expected Outcome
+
+After these fixes:
+- Step 7 will properly find and highlight the "Assets by Category" section
+- The tooltip will only appear once the element is located
+- No more React key warnings in the console
+- Smooth transitions between steps
