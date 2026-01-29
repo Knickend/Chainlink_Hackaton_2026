@@ -1,96 +1,74 @@
 
-# Fix Header Alignment Issue
+
+# Fix Header Controls Alignment - Sign Out Button Wrapping
 
 ## Problem
 
-The Sign in/Sign out button appears on a second row below the other header controls (Price indicator, Currency selector, Theme toggle, Tour button), creating a misaligned appearance.
+Even on full desktop view, the Sign out button wraps to a second line below the other header controls. The screenshot shows:
+- First row: Cached indicator, refresh, USD/BTC/Gold/EUR/GBP selector, Theme toggle, Tour button
+- Second row: Sign out button (alone)
 
 ## Root Cause
 
-The current header layout has 3 flex children with `justify-between`:
-1. Logo section (with PRO badge)
-2. Description text (`<p>Track your assets...</p>`)
-3. Controls section (with `flex-wrap`)
+The controls div uses `flex-wrap` which allows items to wrap to new lines when space runs out. Even on wide screens, the combined width of all controls exceeds the available space:
 
-When the viewport width is tight, the `flex-wrap` on the controls div causes the Sign in button to wrap to a new line while other items stay on the first row.
+| Element | Approximate Width |
+|---------|------------------|
+| PriceIndicator | ~120px |
+| UnitSelector (5 currencies) | ~280px |
+| ThemeToggle | ~36px |
+| Tour button | ~70px |
+| Sign out button | ~90px |
+| **Total** | **~596px + gaps** |
+
+With the logo and description taking the left side, there's not enough room for all controls in one line, so the last item (Sign out) wraps.
 
 ## Solution
 
-Restructure the header to:
-1. Group the logo and description text together on the left side
-2. Keep all controls together on the right side
-3. Change wrapping behavior so the entire controls section moves as a unit when needed
+Remove `flex-wrap` and instead use `flex-shrink-0` to prevent controls from shrinking, combined with allowing the header to scroll horizontally on very narrow screens OR reducing the width of some elements.
 
-## Updated Layout
-
-```text
-Current (buggy):
-+----------------------------------------------------------+
-| [Logo] [PRO]    [Description]    [Controls on one line]  |
-|                                  [Sign in wrapped below] |
-+----------------------------------------------------------+
-
-Proposed (fixed):
-+----------------------------------------------------------+
-| [Logo] [PRO]                     [PriceIndicator] [...]  |
-| [Description]                    [Theme] [Tour] [Sign in]|
-+----------------------------------------------------------+
-
-OR on wider screens:
-+----------------------------------------------------------+
-| [Logo] [PRO] [Description]   [All controls on one line]  |
-+----------------------------------------------------------+
-```
+Better approach: Remove `flex-wrap` entirely so controls never wrap, and rely on the column layout on smaller screens (already handled by `lg:flex-row`).
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Restructure header to group logo + description, align controls properly |
+| `src/pages/Index.tsx` | Remove `flex-wrap` from controls div, add `flex-shrink-0` |
 
 ## Technical Implementation
 
 ```tsx
-{/* Header */}
-<motion.header
-  initial={{ opacity: 0, y: -20 }}
-  animate={{ opacity: 1, y: 0 }}
-  className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
->
-  {/* Left section: Logo + Description */}
-  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-    <div className="flex items-center gap-2">
-      <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-        <span className="gradient-text">In</span>
-        <span className="text-foreground">Control</span>
-      </h1>
-      {isPro && <ProBadge />}
-    </div>
-    <p className="text-muted-foreground">
-      Track your assets across all markets
-    </p>
-  </div>
-  
-  {/* Right section: Controls - all aligned in a row */}
-  <div className="flex items-center gap-3 flex-wrap">
-    <PriceIndicator ... />
-    <UnitSelector ... />
-    <ThemeToggle />
-    {hasCompletedTutorial && <Button>Tour</Button>}
-    <Button>Sign in/out</Button>
-  </div>
-</motion.header>
+{/* Right section: Controls - all on one line */}
+<div className="flex items-center gap-3 flex-shrink-0">
+  <PriceIndicator ... />
+  <UnitSelector ... />
+  <ThemeToggle />
+  {hasCompletedTutorial && <Button>Tour</Button>}
+  <Button>Sign in/out</Button>
+</div>
 ```
 
 Key changes:
-1. Wrap logo and description in a single parent `<div>`
-2. Change responsive breakpoint from `sm:` to `lg:` for row layout (gives more space)
-3. Remove `mt-1` from description text
-4. Keep all controls together - they will wrap as a group if needed
+1. Remove `flex-wrap` from the controls div (line 176)
+2. Add `flex-shrink-0` to prevent the controls section from shrinking
+3. This ensures all controls stay on one line when in row mode (`lg:flex-row`)
+4. On smaller screens, the entire controls div will stack below the logo (due to `flex-col` default)
 
 ## Expected Outcome
 
-- On large screens: All controls appear on one line, aligned with logo
-- On medium screens: Controls may wrap but will do so as logical groups
-- Sign in/out button will always be inline with Tour, Theme toggle, etc.
-- Clean, professional header alignment at all breakpoints
+```text
+Desktop (lg and up):
++------------------------------------------------------------------+
+| [Logo] [PRO] [Description]   [All controls on single line →→→→→] |
++------------------------------------------------------------------+
+
+Tablet/Mobile (below lg):
++------------------------+
+| [Logo] [PRO]           |
+| [Description]          |
+| [All controls in row]  |
++------------------------+
+```
+
+All controls will remain on a single line - no individual buttons will wrap to separate rows.
+
