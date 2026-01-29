@@ -36,16 +36,16 @@ export function YieldBreakdownCard({
   // Sort by yield amount descending
   yieldBreakdown.sort((a, b) => b.yieldAmount - a.yieldAmount);
 
-  const getCategoryColor = (category: string) => {
+  const getCategoryBgColor = (category: string) => {
     switch (category) {
       case 'crypto':
-        return 'text-bitcoin';
+        return 'bg-bitcoin/20 text-bitcoin';
       case 'banking':
-        return 'text-blue-400';
+        return 'bg-blue-400/20 text-blue-400';
       case 'stocks':
-        return 'text-success';
+        return 'bg-success/20 text-success';
       default:
-        return 'text-muted-foreground';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -106,17 +106,27 @@ export function YieldBreakdownCard({
                 {yieldBreakdown.map((item, idx) => (
                   <div
                     key={`${item.symbol || item.name}-${idx}`}
-                    className="flex items-center justify-between text-sm"
+                    className="py-2 px-3 rounded-lg bg-secondary/30"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium truncate">{item.name}</span>
-                      <span className={cn('text-xs', getCategoryColor(item.category))}>
-                        {getCategoryLabel(item.category)} {item.yieldPercent.toFixed(1)}%
+                    {/* Top row: Asset name and yield amount */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{item.name}</span>
+                      <span className="font-mono text-sm text-success">
+                        +{formatValue(item.yieldAmount)}
                       </span>
                     </div>
-                    <span className="font-mono text-success ml-2 shrink-0">
-                      +{formatValue(item.yieldAmount)}
-                    </span>
+                    {/* Bottom row: Category and percentage */}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={cn(
+                        'text-xs px-1.5 py-0.5 rounded',
+                        getCategoryBgColor(item.category)
+                      )}>
+                        {getCategoryLabel(item.category)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.yieldPercent.toFixed(1)}% APY
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
