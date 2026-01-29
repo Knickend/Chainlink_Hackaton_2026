@@ -11,6 +11,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { TwoFactorVerify } from '@/components/security/TwoFactorVerify';
+import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm';
+import { ResetPasswordForm } from '@/components/auth/ResetPasswordForm';
+import { supabase } from '@/integrations/supabase/client';
 
 const authSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -23,6 +26,8 @@ const Auth = () => {
   const [searchParams] = useSearchParams();
   const [isSignUp, setIsSignUp] = useState(searchParams.get('signup') === 'true');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const { user, signUp, signIn, requiresMFA } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -35,11 +40,28 @@ const Auth = () => {
     },
   });
 
+  // Listen for PASSWORD_RECOVERY event
   useEffect(() => {
-    if (user && !requiresMFA) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowResetPassword(true);
+      }
+    });
+
+    // Check if we're coming from a reset link
+    const mode = searchParams.get('mode');
+    if (mode === 'reset') {
+      setShowResetPassword(true);
+    }
+
+    return () => subscription.unsubscribe();
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (user && !requiresMFA && !showResetPassword) {
       navigate('/app');
     }
-  }, [user, requiresMFA, navigate]);
+  }, [user, requiresMFA, navigate, showResetPassword]);
 
   const onSubmit = async (data: AuthFormData) => {
     setIsSubmitting(true);
@@ -90,6 +112,125 @@ const Auth = () => {
     );
   }
 
+  // Render appropriate form based on state
+  const renderForm = () => {
+    if (showResetPassword) {
+      return <ResetPasswordForm onSuccess={() => navigate('/app')} />;
+    }
+
+    if (showForgotPassword) {
+      return <ForgotPasswordForm onBack={() => setShowForgotPassword(false)} />;
+    }
+
+    return (
+      <>
+        <h2 className="text-xl font-semibold text-center mb-6">
+          {isSignUp ? 'Create your account' : 'Welcome back'}
+        </h2>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="you@example.com"
+                        className="pl-10 bg-secondary/50"
+                        {...field}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
+                        className="pl-10 bg-secondary/50"
+                        {...field}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {!isSignUp && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-primary hover:text-primary/80 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full bg-primary hover:bg-primary/90"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {isSignUp ? 'Creating account...' : 'Signing in...'}
+                </>
+              ) : (
+                isSignUp ? 'Create account' : 'Sign in'
+              )}
+            </Button>
+          </form>
+        </Form>
+
+        <div className="mt-6 text-center space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              form.reset();
+            }}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isSignUp
+              ? 'Already have an account? Sign in'
+              : "Don't have an account? Sign up"}
+          </button>
+          
+          <div className="pt-2 border-t border-border/50">
+            <button
+              type="button"
+              onClick={() => navigate('/app')}
+              className="text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              ← View demo
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       {/* Ambient glow effect */}
@@ -111,97 +252,7 @@ const Auth = () => {
             </h1>
           </div>
 
-          <h2 className="text-xl font-semibold text-center mb-6">
-            {isSignUp ? 'Create your account' : 'Welcome back'}
-          </h2>
-
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          type="email"
-                          placeholder="you@example.com"
-                          className="pl-10 bg-secondary/50"
-                          {...field}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10 bg-secondary/50"
-                          {...field}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Button
-                type="submit"
-                className="w-full bg-primary hover:bg-primary/90"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {isSignUp ? 'Creating account...' : 'Signing in...'}
-                  </>
-                ) : (
-                  isSignUp ? 'Create account' : 'Sign in'
-                )}
-              </Button>
-            </form>
-          </Form>
-
-          <div className="mt-6 text-center space-y-3">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                form.reset();
-              }}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {isSignUp
-                ? 'Already have an account? Sign in'
-                : "Don't have an account? Sign up"}
-            </button>
-            
-            <div className="pt-2 border-t border-border/50">
-              <button
-                type="button"
-                onClick={() => navigate('/app')}
-                className="text-sm text-primary hover:text-primary/80 transition-colors"
-              >
-                ← View demo
-              </button>
-            </div>
-          </div>
+          {renderForm()}
         </div>
       </motion.div>
     </div>

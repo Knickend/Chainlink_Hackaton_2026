@@ -20,6 +20,9 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  // Password reset functions
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   // MFA functions
   enrollMFA: () => Promise<MFAEnrollResult | null>;
   verifyMFAEnrollment: (factorId: string, code: string) => Promise<{ error: Error | null }>;
@@ -124,6 +127,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const resetPassword = async (email: string) => {
+    const redirectUrl = `${window.location.origin}/auth?mode=reset`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    });
+    return { error };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    return { error };
+  };
+
   const enrollMFA = async (): Promise<MFAEnrollResult | null> => {
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: 'totp',
@@ -216,6 +234,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp, 
       signIn, 
       signOut,
+      resetPassword,
+      updatePassword,
       enrollMFA,
       verifyMFAEnrollment,
       unenrollMFA,
