@@ -39,6 +39,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory, DebtType } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
+import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal } from '@/components/Tutorial';
 
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -118,12 +119,18 @@ const Index = () => {
   const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Ambient glow effect */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-glow-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/3 rounded-full blur-3xl animate-glow-pulse" />
-      </div>
+    <TutorialProvider>
+      {/* Tutorial Components */}
+      <WelcomeModal />
+      <CompletionModal />
+      <TutorialOverlay />
+      
+      <div className="min-h-screen bg-background">
+        {/* Ambient glow effect */}
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-glow-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/3 rounded-full blur-3xl animate-glow-pulse" />
+        </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Demo Banner */}
@@ -192,16 +199,18 @@ const Index = () => {
         </motion.header>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <StatCard
-            title="Net Worth"
-            value={formatValue(adjustedNetWorth, false)}
-            subtitle={totalDebt > 0 ? `Assets: ${formatValue(metrics.totalNetWorth, false)}` : undefined}
-            icon={Wallet}
-            trend={{ value: 14.5, isPositive: true }}
-            variant="primary"
-            delay={0}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8" data-tutorial="key-metrics">
+          <div data-tutorial="net-worth-card">
+            <StatCard
+              title="Net Worth"
+              value={formatValue(adjustedNetWorth, false)}
+              subtitle={totalDebt > 0 ? `Assets: ${formatValue(metrics.totalNetWorth, false)}` : undefined}
+              icon={Wallet}
+              trend={{ value: 14.5, isPositive: true }}
+              variant="primary"
+              delay={0}
+            />
+          </div>
           <StatCard
             title="Total Debt"
             value={formatValue(demoTotalDebt, false)}
@@ -235,7 +244,7 @@ const Index = () => {
         </div>
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8" data-tutorial="charts-section">
           <NetWorthChart formatValue={formatValue} displayUnit={displayUnit} />
           <AllocationChart data={categoryTotals} formatValue={formatValue} />
           {isPro && !isDemo && (
@@ -283,7 +292,7 @@ const Index = () => {
         )}
 
         {/* Asset Categories */}
-        <div className="mb-8">
+        <div className="mb-8" data-tutorial="assets-section">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Assets by Category</h2>
             <div className="flex items-center gap-2">
@@ -294,7 +303,7 @@ const Index = () => {
                 onDeleteAsset={isDemo ? undefined : deleteAsset}
                 livePrices={prices}
               />
-              {!isDemo && <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />}
+              {!isDemo && <div data-tutorial="add-asset-button"><AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} /></div>}
             </div>
           </div>
           {categoryTotals.length === 0 ? (
@@ -323,41 +332,47 @@ const Index = () => {
 
         {/* Income, Expenses & Debt */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <IncomeExpenseCard
-            type="income"
-            items={income}
-            total={formatValue(metrics.totalIncome)}
-            formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' }) => addIncome({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
-            displayUnit={displayUnit}
-            onUpdateIncome={isDemo ? undefined : updateIncome}
-            onDeleteIncome={isDemo ? undefined : deleteIncome}
-          />
-          <IncomeExpenseCard
-            type="expense"
-            items={expenses}
-            total={formatValue(metrics.totalExpenses)}
-            formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
-            secondaryActionButton={!isDemo && isPro ? (
-              <AddOneTimeExpenseDialog onAdd={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />
-            ) : undefined}
-            onUpdateExpense={isDemo ? undefined : updateExpense}
-            onDeleteExpense={isDemo ? undefined : deleteExpense}
-            displayUnit={displayUnit}
-          />
-          <DebtOverviewCard
-            debts={demoDebts}
-            totalDebt={demoTotalDebt}
-            monthlyPayments={demoMonthlyPayments}
-            monthlyInterest={demoMonthlyInterest}
-            formatValue={formatValue}
-            onUpdateDebt={isDemo ? undefined : updateDebt}
-            onDeleteDebt={isDemo ? undefined : deleteDebt}
-            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number }) => addDebt({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
-            delay={0.2}
-            displayUnit={displayUnit}
-          />
+          <div data-tutorial="income-card">
+            <IncomeExpenseCard
+              type="income"
+              items={income}
+              total={formatValue(metrics.totalIncome)}
+              formatValue={formatValue}
+              actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' }) => addIncome({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
+              displayUnit={displayUnit}
+              onUpdateIncome={isDemo ? undefined : updateIncome}
+              onDeleteIncome={isDemo ? undefined : deleteIncome}
+            />
+          </div>
+          <div data-tutorial="expense-card">
+            <IncomeExpenseCard
+              type="expense"
+              items={expenses}
+              total={formatValue(metrics.totalExpenses)}
+              formatValue={formatValue}
+              actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
+              secondaryActionButton={!isDemo && isPro ? (
+                <AddOneTimeExpenseDialog onAdd={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />
+              ) : undefined}
+              onUpdateExpense={isDemo ? undefined : updateExpense}
+              onDeleteExpense={isDemo ? undefined : deleteExpense}
+              displayUnit={displayUnit}
+            />
+          </div>
+          <div data-tutorial="debt-card">
+            <DebtOverviewCard
+              debts={demoDebts}
+              totalDebt={demoTotalDebt}
+              monthlyPayments={demoMonthlyPayments}
+              monthlyInterest={demoMonthlyInterest}
+              formatValue={formatValue}
+              onUpdateDebt={isDemo ? undefined : updateDebt}
+              onDeleteDebt={isDemo ? undefined : deleteDebt}
+              actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number }) => addDebt({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
+              delay={0.2}
+              displayUnit={displayUnit}
+            />
+          </div>
         </div>
 
         {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
@@ -392,12 +407,13 @@ const Index = () => {
         </motion.footer>
       </div>
 
-      {/* AI Financial Advisor Chat */}
-      <FinancialAdvisorChat />
-      
-      {/* Feedback Button */}
-      <FeedbackButton />
-    </div>
+        {/* AI Financial Advisor Chat */}
+        <FinancialAdvisorChat />
+        
+        {/* Feedback Button */}
+        <FeedbackButton />
+      </div>
+    </TutorialProvider>
   );
 };
 

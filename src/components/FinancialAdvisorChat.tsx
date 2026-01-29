@@ -181,6 +181,7 @@ export function FinancialAdvisorChat() {
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ delay: 0.5, type: 'spring' }}
+        data-tutorial="ai-advisor-button"
       >
         <Button
           onClick={() => setIsOpen(true)}

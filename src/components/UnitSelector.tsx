@@ -17,7 +17,7 @@ const units: { value: DisplayUnit; label: string; icon: string }[] = [
 
 export function UnitSelector({ value, onChange }: UnitSelectorProps) {
   return (
-    <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg">
+    <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg" data-tutorial="unit-selector">
       {units.map((unit) => (
         <button
           key={unit.value}
