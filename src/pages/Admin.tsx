@@ -3,14 +3,17 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Shield, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useFeedback } from '@/hooks/useFeedback';
+import { useAdminAnalytics } from '@/hooks/useAdminAnalytics';
 import { FeedbackTable } from '@/components/admin/FeedbackTable';
 import { FeedbackFilters } from '@/components/admin/FeedbackFilters';
 import { FeedbackDetailDialog } from '@/components/admin/FeedbackDetailDialog';
-import { AdminStats } from '@/components/admin/AdminStats';
+import { AdminOverview } from '@/components/admin/AdminOverview';
+import { AdminUserStats } from '@/components/admin/AdminUserStats';
 import { Feedback, FeedbackType, FeedbackStatus } from '@/lib/feedback.types';
 
 const Admin = () => {
@@ -18,7 +21,10 @@ const Admin = () => {
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, isLoading: roleLoading } = useUserRole();
   
-  // Filters
+  // Tab state
+  const [activeTab, setActiveTab] = useState('overview');
+  
+  // Filters for feedback tab
   const [typeFilter, setTypeFilter] = useState<FeedbackType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<FeedbackStatus | 'all'>('all');
   
@@ -33,6 +39,7 @@ const Admin = () => {
   };
 
   const { feedback, isLoading: feedbackLoading, updateFeedback, isUpdating } = useFeedback(filters, true);
+  const analytics = useAdminAnalytics();
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -106,47 +113,57 @@ const Admin = () => {
                 Admin Dashboard
               </h1>
               <p className="text-muted-foreground mt-1">
-                Manage user feedback and submissions
+                Analytics, feedback management, and user insights
               </p>
             </div>
           </div>
           <ThemeToggle />
         </motion.header>
 
-        {/* Stats */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8"
-        >
-          <AdminStats feedback={feedback} />
-        </motion.section>
+        {/* Tabbed Content */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="feedback">Feedback</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+          </TabsList>
 
-        {/* Filters & Table */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="glass-card rounded-xl p-6"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <h2 className="text-xl font-semibold">All Feedback</h2>
-            <FeedbackFilters
-              type={typeFilter}
-              status={statusFilter}
-              onTypeChange={setTypeFilter}
-              onStatusChange={setStatusFilter}
-              onClear={handleClearFilters}
-            />
-          </div>
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            <AdminOverview analytics={analytics} />
+          </TabsContent>
 
-          <FeedbackTable
-            feedback={feedback}
-            onSelect={handleSelectFeedback}
-            isLoading={feedbackLoading}
-          />
-        </motion.section>
+          {/* Feedback Tab */}
+          <TabsContent value="feedback" className="space-y-6">
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card rounded-xl p-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <h2 className="text-xl font-semibold">All Feedback</h2>
+                <FeedbackFilters
+                  type={typeFilter}
+                  status={statusFilter}
+                  onTypeChange={setTypeFilter}
+                  onStatusChange={setStatusFilter}
+                  onClear={handleClearFilters}
+                />
+              </div>
+
+              <FeedbackTable
+                feedback={feedback}
+                onSelect={handleSelectFeedback}
+                isLoading={feedbackLoading}
+              />
+            </motion.section>
+          </TabsContent>
+
+          {/* Users Tab */}
+          <TabsContent value="users" className="space-y-6">
+            <AdminUserStats analytics={analytics} />
+          </TabsContent>
+        </Tabs>
 
         {/* Detail Dialog */}
         <FeedbackDetailDialog
