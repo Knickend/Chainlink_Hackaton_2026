@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Settings2, AlertTriangle, Plus, AlertCircle, Lightbulb } from 'lucide-react';
+import { TrendingUp, Settings2, AlertTriangle, Plus, AlertCircle, Lightbulb, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useInvestmentPreferences, InvestmentAllocation } from '@/hooks/useInvestmentPreferences';
 import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
+import { DebtOptimizationDialog } from './DebtOptimizationDialog';
 import { Debt } from '@/lib/types';
 import { analyzeDebts, calculateDebtAwareAllocations, DebtAnalysis, DebtAwareAllocation } from '@/lib/debtAnalysis';
 
@@ -25,6 +26,7 @@ export function InvestmentStrategyCard({
   delay = 0,
 }: InvestmentStrategyCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [debtDialogOpen, setDebtDialogOpen] = useState(false);
   const {
     preferences,
     loading,
@@ -63,28 +65,44 @@ export function InvestmentStrategyCard({
     );
   }
 
-  // Negative income warning
+  // Negative income warning - now interactive
   if (freeMonthlyIncome < 0) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay }}
-        className="glass-card rounded-xl p-6 border-destructive/50"
-      >
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-lg bg-destructive/10">
-            <AlertTriangle className="w-6 h-6 text-destructive" />
+      <>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay }}
+          onClick={() => setDebtDialogOpen(true)}
+          className="glass-card rounded-xl p-6 border-destructive/50 cursor-pointer hover:border-destructive hover:bg-destructive/5 transition-all"
+        >
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-lg bg-destructive/10">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">No Investable Income</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your expenses and debt payments exceed your income by {formatValue(Math.abs(freeMonthlyIncome))}/month.
+              </p>
+              <p className="text-sm text-primary mt-2 flex items-center gap-1">
+                <Lightbulb className="w-4 h-4" />
+                View debt optimization strategies
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground mt-1" />
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">No Investable Income</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your expenses and debt payments exceed your income by {formatValue(Math.abs(freeMonthlyIncome))}/month.
-              Consider reviewing your budget before setting up an investment strategy.
-            </p>
-          </div>
-        </div>
-      </motion.div>
+        </motion.div>
+
+        <DebtOptimizationDialog
+          open={debtDialogOpen}
+          onOpenChange={setDebtDialogOpen}
+          debts={debts}
+          monthlyShortfall={Math.abs(freeMonthlyIncome)}
+          monthlyPayments={monthlyPayments}
+          formatValue={formatValue}
+        />
+      </>
     );
   }
 
