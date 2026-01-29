@@ -173,7 +173,7 @@ const IndexContent = () => {
           </div>
           
           {/* Right section: Controls - all aligned in a row */}
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <PriceIndicator
               isLoading={pricesLoading}
               lastUpdated={lastUpdated}
