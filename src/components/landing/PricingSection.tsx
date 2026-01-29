@@ -40,7 +40,7 @@ const plans = [
       'Everything in Standard',
       'Monthly performance tracking',
       'YTD overview & analytics',
-      'One-time expense tracking',
+      'Non-recurring expense tracking',
       'Debt payoff calculator',
       'Investment strategy advisor',
       'Priority support',

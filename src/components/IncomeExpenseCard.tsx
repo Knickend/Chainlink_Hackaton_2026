@@ -93,7 +93,7 @@ export function IncomeExpenseCard({
             <p className="text-xs text-muted-foreground">
               {isIncome 
                 ? `${items.length} sources`
-                : `${recurringCount} monthly${oneTimeCount > 0 ? `, ${oneTimeCount} one-time` : ''}`
+                : `${recurringCount} recurring${oneTimeCount > 0 ? `, ${oneTimeCount} non-recurring` : ''}`
               }
             </p>
           </div>
@@ -149,9 +149,9 @@ export function IncomeExpenseCard({
                     )}
                   >
                     {expense.is_recurring ? (
-                      <><Repeat className="w-2.5 h-2.5 mr-0.5" />Monthly</>
+                      <><Repeat className="w-2.5 h-2.5 mr-0.5" />Recurring</>
                     ) : (
-                      <><Zap className="w-2.5 h-2.5 mr-0.5" />One-time</>
+                      <><Zap className="w-2.5 h-2.5 mr-0.5" />Non-recurring</>
                     )}
                   </Badge>
                 )}
