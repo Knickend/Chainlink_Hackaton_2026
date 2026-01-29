@@ -1,87 +1,63 @@
 
-Goal: Fix the Debt Payoff Calculator so it does not “double convert” debt amounts. A debt entered as €400,000 should show €400,000 when the display unit is EUR (and a correctly converted USD value when the display unit is USD).
+# Update Expense Labels: "Recurring" and "Non-Recurring"
 
-## What’s happening (root cause)
-- Debts are now stored with their own `currency` (e.g., EUR) and the raw `principal_amount` / `monthly_payment` are in that original currency.
-- `DebtPayoffCalculator` still formats all numbers using `formatValue(...)`, which assumes every number it receives is in USD.
-- So when the calculator formats a EUR-stored amount (400,000) with `formatValue`, it treats it as “400,000 USD” and converts it to EUR → ~€368,000 (using the USD→EUR rate), producing the incorrect value you see.
+## Overview
 
-## Key design decision
-- Keep payoff math in the debt’s own currency (principal, payment, interest).
-- Only convert for display using the debt’s stored currency, so EUR stays EUR when viewing in EUR.
+Update all user-facing labels to use clearer terminology:
+- **"Expense" → "Recurring"** (for monthly recurring expenses)
+- **"One-Time" → "Non-Recurring"** (for non-recurring expenses)
 
-## Changes to make
+---
 
-### 1) Update `DebtPayoffCalculator` to be currency-aware
-File: `src/components/DebtPayoffCalculator.tsx`
+## Files to Update
 
-**Prop changes**
-- Replace/extend current props so the calculator can:
-  - Convert amounts from each debt’s stored currency into the selected display unit
-  - Format those converted amounts correctly
+### 1. `src/components/SubscriptionBanner.tsx`
+| Line | Current | New |
+|------|---------|-----|
+| 30 | `One-time expenses` | `Non-recurring expenses` |
 
-Proposed new props:
-- `displayUnit: DisplayUnit`
-- `convertFromCurrency: (amount: number, fromCurrency: string) => number` (from `usePortfolio`)
-- `formatCurrencyValue: (amount: number, fromCurrency: string, showDecimals?: boolean) => string` (from `usePortfolio`)
-- Keep `debts` and `delay`
+### 2. `src/components/AddOneTimeExpenseDialog.tsx`
+| Line | Current | New |
+|------|---------|-----|
+| 78 | `One-Time` (button text) | `Non-Recurring` |
+| 84 | `Add One-Time Expense` (dialog title) | `Add Non-Recurring Expense` |
+| 178 | `Add One-Time Expense` (submit button) | `Add Non-Recurring Expense` |
 
-**In-component formatting**
-- For per-debt values (principal, interest, payment, totals, minimum payment):
-  - Use `formatCurrencyValue(value, debt.currency || 'USD')`
-  - This ensures:
-    - If debt.currency === displayUnit → shows the original number unchanged (so €400,000 stays €400,000)
-    - If different → converts correctly
+### 3. `src/components/AddExpenseDialog.tsx`
+| Line | Current | New |
+|------|---------|-----|
+| 62 | `Add Expense` (button) | `Add Recurring` |
+| 67 | `Add New Expense` (dialog title) | `Add Recurring Expense` |
+| 132 | `Add Expense` (submit button) | `Add Recurring Expense` |
 
-**Fix summary totals**
-The calculator currently sums raw numbers directly (which mixes currencies and then formats as USD).
-Instead:
-- Compute totals in *display unit* numerically using `convertFromCurrency` on each debt’s amounts, then sum:
-  - `totalMonthlyPaymentsDisplay = sum(convertFromCurrency(debt.monthly_payment, debt.currency))`
-  - `totalInterestToPayDisplay = sum(convertFromCurrency(details.totalInterest, details.debt.currency))`
-- Add a local helper to format numbers that are already “in display unit” (no conversion step), because the hook formatters assume a source currency:
-  - For USD/EUR/GBP: symbol + 2 decimals
-  - For BTC: symbol + 6 decimals
-  - For GOLD: 4 decimals + “oz”
-  - Use `UNIT_SYMBOLS[displayUnit]` and `displayUnit` to choose formatting
+### 4. `src/components/IncomeExpenseCard.tsx`
+| Line | Current | New |
+|------|---------|-----|
+| 96 | `${recurringCount} monthly${oneTimeCount > 0 ? \`, \${oneTimeCount} one-time\` : ''}` | `${recurringCount} recurring${oneTimeCount > 0 ? \`, \${oneTimeCount} non-recurring\` : ''}` |
+| 152 | `Monthly` (badge text) | `Recurring` |
+| 154 | `One-time` (badge text) | `Non-recurring` |
 
-**Places in the UI to update inside the calculator**
-- Summary stats:
-  - Total Interest (use display-total + local “already display unit” formatting)
-  - Monthly Payments (same)
-- Per-debt card:
-  - Progress bar labels: Principal / Interest
-  - Warning: “Minimum payment needed…”
-  - Payment details: Payment / Total
+### 5. `src/components/landing/PricingSection.tsx`
+| Line | Current | New |
+|------|---------|-----|
+| 43 | `One-time expense tracking` | `Non-recurring expense tracking` |
 
-### 2) Pass the new props from the dashboard page
-File: `src/pages/Index.tsx`
+### 6. `src/lib/subscription.ts`
+| Line | Current | New |
+|------|---------|-----|
+| 34 | `One-time expense tracking` | `Non-recurring expense tracking` |
 
-- When destructuring from `usePortfolio(...)`, also include:
-  - `convertFromCurrency`
-  - `formatCurrencyValue`
-- Update the `<DebtPayoffCalculator />` call to pass:
-  - `debts={demoDebts}`
-  - `displayUnit={displayUnit}`
-  - `convertFromCurrency={convertFromCurrency}`
-  - `formatCurrencyValue={formatCurrencyValue}`
-  - `delay={...}`
-- Remove `formatValue` from the calculator call if no longer needed by that component.
+---
 
-## Validation checklist (what you should see after)
-1. Add a debt while display unit = EUR:
-   - Principal: €400,000
-   - Payment: €1,400/mo
-2. Switch display unit to USD:
-   - Principal changes to the correctly converted USD amount
-   - Payment changes to the correctly converted USD amount
-3. Switch back to EUR:
-   - Principal returns to exactly €400,000 (not €368,000)
-4. Confirm the “Total Interest” and “Monthly Payments” in the calculator summary also look consistent with the per-debt numbers.
+## Summary of Changes
 
-## Notes / edge cases
-- If any older debts were created before `currency` was saved correctly, they may still have `currency='USD'` even if you meant EUR. Those would still display “wrong” because the stored currency is wrong. If that comes up, the next step would be adding an explicit “Currency” selector inside Add/Edit Debt dialogs so you can correct old entries.
-
-## Files touched
-- `src/components/DebtPayoffCalculator.tsx`
-- `src/pages/Index.tsx`
+| Component | Current Label | New Label |
+|-----------|---------------|-----------|
+| Add button for recurring | "Add Expense" | "Add Recurring" |
+| Add dialog for recurring | "Add New Expense" | "Add Recurring Expense" |
+| Add button for non-recurring | "One-Time" | "Non-Recurring" |
+| Add dialog for non-recurring | "Add One-Time Expense" | "Add Non-Recurring Expense" |
+| Badge for recurring | "Monthly" | "Recurring" |
+| Badge for non-recurring | "One-time" | "Non-recurring" |
+| Subtitle count | "X monthly, Y one-time" | "X recurring, Y non-recurring" |
+| Pro feature list | "One-time expense tracking" | "Non-recurring expense tracking" |
