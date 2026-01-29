@@ -43,7 +43,7 @@ import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal, useTu
 
 // Inner component that has access to tutorial context
 const IndexContent = () => {
-  const { startTutorial, hasCompletedTutorial } = useTutorialContext();
+  const { startTutorial, hasCompletedTutorial, isActive: isTutorialActive } = useTutorialContext();
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
@@ -56,8 +56,10 @@ const IndexContent = () => {
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
-  const isPro = subscriptionTier === 'pro';
-  const isSubscribed = subscriptionTier !== 'free';
+  // Show Pro during tutorial OR in demo mode so users see all features
+  const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
+  const isPro = effectiveSubscriptionTier === 'pro';
+  const isSubscribed = effectiveSubscriptionTier !== 'free';
   
   // First call to usePortfolio with undefined prices to get assets for symbol extraction
   const portfolioInitial = usePortfolio(undefined, isDemo);
