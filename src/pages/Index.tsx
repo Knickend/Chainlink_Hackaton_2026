@@ -168,7 +168,7 @@ const IndexContent = () => {
               </h1>
               {isPro && <ProBadge />}
             </div>
-    <p className="text-muted-foreground whitespace-nowrap hidden lg:block">
+    <p className="text-muted-foreground whitespace-nowrap hidden xl:block">
       Track your assets across all markets
     </p>
           </div>
