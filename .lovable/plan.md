@@ -1,124 +1,127 @@
 
-
-# Add Two-Factor Authentication (2FA) Security
+# Add Password Reset via Email
 
 ## Overview
 
-Implement TOTP-based Two-Factor Authentication using authenticator apps (Google Authenticator, Authy, etc.). This provides an additional security layer beyond email/password by requiring users to enter a time-based code from their mobile device.
+Implement password reset functionality that allows users to request a password reset link via email and set a new password when they click the link. This uses the built-in Supabase Auth password reset feature.
 
-## How It Works
+## User Flow
 
-1. **User enables 2FA** in their security settings
-2. **QR code is displayed** that they scan with an authenticator app
-3. **User verifies** by entering the 6-digit code from the app
-4. **On future logins**, after entering password, they must also enter the current 2FA code
+1. User clicks "Forgot password?" on the login screen
+2. User enters their email address
+3. System sends a password reset email with a secure link
+4. User clicks the link and is redirected to the app
+5. User enters and confirms their new password
+6. Password is updated and user can sign in
 
 ## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `src/components/security/TwoFactorSetup.tsx` | Dialog for enrolling in 2FA with QR code display |
-| `src/components/security/TwoFactorVerify.tsx` | OTP input form for verifying 2FA during login |
-| `src/components/security/SecuritySettings.tsx` | Security settings panel with 2FA toggle |
+| `src/components/auth/ForgotPasswordForm.tsx` | Email input form for requesting password reset |
+| `src/components/auth/ResetPasswordForm.tsx` | New password input form after clicking reset link |
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Add MFA-related functions (enroll, unenroll, verify, check status) |
-| `src/pages/Auth.tsx` | Handle MFA challenge during login flow |
-| `src/pages/Index.tsx` | Add security settings button in header |
+| `src/contexts/AuthContext.tsx` | Add `resetPassword` and `updatePassword` functions |
+| `src/pages/Auth.tsx` | Add "Forgot password?" link and handle reset flow states |
 
 ## Implementation Details
 
-### 1. Update AuthContext with MFA Functions
+### 1. Update AuthContext (AuthContext.tsx)
 
-Add the following capabilities to the auth context:
+Add two new functions to the auth context:
 
 ```typescript
 interface AuthContextType {
   // Existing...
-  
-  // MFA functions
-  enrollMFA: () => Promise<{ qrCode: string; secret: string; factorId: string } | null>;
-  verifyMFAEnrollment: (factorId: string, code: string) => Promise<{ error: Error | null }>;
-  unenrollMFA: (factorId: string) => Promise<{ error: Error | null }>;
-  verifyMFA: (code: string) => Promise<{ error: Error | null }>;
-  getMFAStatus: () => Promise<{ enabled: boolean; factorId?: string }>;
-  requiresMFA: boolean;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
 }
 ```
 
-Key implementation patterns:
-- Use `supabase.auth.mfa.enroll()` to generate QR code and secret
-- Use `supabase.auth.mfa.verify()` to complete enrollment
-- Check `session.user.factors` to determine MFA status
-- Use `supabase.auth.mfa.challenge()` and `verify()` for login verification
+**Reset Password Function:**
+- Uses `supabase.auth.resetPasswordForEmail()` with redirect URL pointing to `/auth?mode=reset`
+- Sends an email with a secure reset link
 
-### 2. Two-Factor Setup Component
+**Update Password Function:**
+- Uses `supabase.auth.updateUser({ password })` to set the new password
+- Works when user has clicked the reset link (session is established)
 
-A dialog that guides users through enabling 2FA:
-- Display QR code generated from Supabase MFA enroll
-- Show backup codes for recovery (stored securely)
-- OTP input using the existing `input-otp` component for verification
-- Confirmation step before finalizing
+### 2. Forgot Password Form Component
 
-### 3. Two-Factor Verify Component
+A simple form that:
+- Accepts email address input with validation
+- Shows loading state while sending
+- Displays success message after email is sent
+- Includes "Back to sign in" link
 
-Used during login when MFA is enabled:
-- Clean 6-digit OTP input
-- "Remember this device" option (optional enhancement)
-- Error handling for invalid codes
-- Link to recovery options
+### 3. Reset Password Form Component
 
-### 4. Security Settings Panel
+Form displayed when user clicks the email link:
+- Two password fields (new password + confirmation)
+- Password strength requirements (minimum 6 characters)
+- Validation that passwords match
+- Success state redirects to app
 
-Add to the main app header or as a dropdown menu option:
-- Toggle to enable/disable 2FA
-- Shows current 2FA status (enabled/disabled)
-- Option to regenerate backup codes
-- Button to view enrolled authenticator
+### 4. Update Auth Page (Auth.tsx)
 
-### 5. Updated Login Flow
+Add state management for the password reset flow:
 
 ```text
-User enters email/password
+Normal login/signup form
          ↓
-    Credentials valid?
-    ↓ No → Show error
-    ↓ Yes
+  Click "Forgot password?"
          ↓
-    MFA enabled for user?
-    ↓ No → Redirect to app
-    ↓ Yes
+  Show ForgotPasswordForm
          ↓
-    Show 2FA verification screen
+  Email sent → Show success message
+         
+---
+
+User clicks email link (arrives at /auth?mode=reset)
          ↓
-    Code valid?
-    ↓ No → Show error, retry
-    ↓ Yes → Redirect to app
+  Detect PASSWORD_RECOVERY event
+         ↓
+  Show ResetPasswordForm
+         ↓
+  Password updated → Redirect to /app
 ```
 
-## User Experience
+**URL Parameters:**
+- `?mode=reset` - Detected when user arrives from reset email link
+- Supabase automatically establishes a session from the link token
 
-**Enabling 2FA:**
-1. User clicks "Security" or gear icon in app header
-2. Clicks "Enable Two-Factor Authentication"
-3. Scans QR code with authenticator app
-4. Enters 6-digit code to confirm setup
-5. Sees success message with backup codes
+**Auth State Detection:**
+- Listen for `PASSWORD_RECOVERY` event in `onAuthStateChange`
+- When detected, show the reset password form
 
-**Signing in with 2FA:**
-1. User enters email and password as normal
-2. After password verification, 2FA screen appears
-3. User enters 6-digit code from authenticator app
-4. Successfully logged in
+### 5. UI Integration on Auth Page
 
-## Technical Considerations
+Add a "Forgot password?" link below the password field:
 
-- Supabase MFA uses TOTP (Time-based One-Time Password) standard
-- QR codes are generated server-side by Supabase
-- Factor enrollment is tied to the user's account
-- The `input-otp` component is already installed and will be used for code entry
-- Proper error handling for expired/invalid codes
+```tsx
+<button
+  type="button"
+  onClick={() => setShowForgotPassword(true)}
+  className="text-sm text-primary hover:text-primary/80"
+>
+  Forgot password?
+</button>
+```
 
+## Technical Notes
+
+- Supabase handles email delivery and secure token generation
+- Reset links expire after a configurable time (default: 1 hour)
+- The redirect URL must be configured in the backend auth settings (already set up for this project)
+- No additional edge functions or email services required - Supabase Auth handles everything
+
+## Security Considerations
+
+- Password validation using Zod (minimum 6 characters)
+- Confirmation field ensures user enters password correctly
+- Reset tokens are single-use and time-limited
+- No sensitive information exposed in success/error messages
