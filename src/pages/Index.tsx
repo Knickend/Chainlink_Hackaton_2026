@@ -35,6 +35,7 @@ import { ProBadge } from '@/components/ProBadge';
 import { PerformanceCard } from '@/components/PerformanceCard';
 import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
+import { SecuritySettings } from '@/components/security/SecuritySettings';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory, DebtType } from '@/lib/types';
@@ -195,6 +196,7 @@ const IndexContent = () => {
                 <span className="hidden sm:inline">Tour</span>
               </Button>
             )}
+            {!isDemo && <SecuritySettings />}
             {isDemo ? (
               <Button 
                 variant="default" 
