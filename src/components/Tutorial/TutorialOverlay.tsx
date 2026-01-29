@@ -145,21 +145,9 @@ export function TutorialOverlay() {
 
   return (
     <AnimatePresence mode="wait">
-      {/* Dark overlay with spotlight cutout */}
+      {/* Single spotlight border that creates the dark overlay via box-shadow */}
       <motion.div
-        key={`spotlight-bg-${currentStep}`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[90] pointer-events-none"
-        style={{
-          background: `radial-gradient(ellipse ${targetRect.width + 40}px ${targetRect.height + 40}px at ${targetRect.left + targetRect.width / 2}px ${targetRect.top + targetRect.height / 2}px, transparent 0%, rgba(0,0,0,0.75) 100%)`,
-        }}
-      />
-
-      {/* Spotlight border highlight */}
-      <motion.div
-        key={`spotlight-border-${currentStep}`}
+        key={`spotlight-${currentStep}`}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0 }}
@@ -169,7 +157,7 @@ export function TutorialOverlay() {
           left: targetRect.left,
           width: targetRect.width,
           height: targetRect.height,
-          boxShadow: '0 0 0 9999px rgba(0,0,0,0.75), 0 0 20px rgba(var(--primary), 0.5)',
+          boxShadow: '0 0 0 9999px rgba(0,0,0,0.75), 0 0 20px hsl(var(--primary) / 0.3)',
         }}
       />
 
