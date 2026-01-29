@@ -36,7 +36,7 @@ export function Footer() {
               Terms of Service
             </a>
             <a
-              href="#"
+              href="mailto:InControl.Finance@proton.me"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
               Contact
