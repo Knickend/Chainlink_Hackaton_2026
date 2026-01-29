@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
+import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { mockDebts } from '@/lib/mockData';
 import { useLivePrices } from '@/hooks/useLivePrices';
@@ -386,6 +387,9 @@ const Index = () => {
 
       {/* AI Financial Advisor Chat */}
       <FinancialAdvisorChat />
+      
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 };

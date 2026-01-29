@@ -1,0 +1,166 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Shield, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useFeedback } from '@/hooks/useFeedback';
+import { FeedbackTable } from '@/components/admin/FeedbackTable';
+import { FeedbackFilters } from '@/components/admin/FeedbackFilters';
+import { FeedbackDetailDialog } from '@/components/admin/FeedbackDetailDialog';
+import { AdminStats } from '@/components/admin/AdminStats';
+import { Feedback, FeedbackType, FeedbackStatus } from '@/lib/feedback.types';
+
+const Admin = () => {
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { isAdmin, isLoading: roleLoading } = useUserRole();
+  
+  // Filters
+  const [typeFilter, setTypeFilter] = useState<FeedbackType | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<FeedbackStatus | 'all'>('all');
+  
+  // Selected feedback for detail view
+  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  // Build filter object
+  const filters = {
+    type: typeFilter !== 'all' ? typeFilter : undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+  };
+
+  const { feedback, isLoading: feedbackLoading, updateFeedback, isUpdating } = useFeedback(filters, true);
+
+  // Redirect if not authenticated or not admin
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    }
+  }, [authLoading, user, navigate]);
+
+  useEffect(() => {
+    if (!roleLoading && user && !isAdmin) {
+      navigate('/app');
+    }
+  }, [roleLoading, user, isAdmin, navigate]);
+
+  // Loading state
+  if (authLoading || roleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Checking permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not admin - show access denied (will redirect)
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Shield className="w-12 h-12 text-destructive" />
+          <p className="text-muted-foreground">Access denied. Admin only.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleSelectFeedback = (item: Feedback) => {
+    setSelectedFeedback(item);
+    setDetailOpen(true);
+  };
+
+  const handleClearFilters = () => {
+    setTypeFilter('all');
+    setStatusFilter('all');
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Ambient glow effect */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-glow-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/3 rounded-full blur-3xl animate-glow-pulse" />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <motion.header
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+        >
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
+                <Shield className="w-6 h-6 text-primary" />
+                Admin Dashboard
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Manage user feedback and submissions
+              </p>
+            </div>
+          </div>
+          <ThemeToggle />
+        </motion.header>
+
+        {/* Stats */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8"
+        >
+          <AdminStats feedback={feedback} />
+        </motion.section>
+
+        {/* Filters & Table */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="glass-card rounded-xl p-6"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h2 className="text-xl font-semibold">All Feedback</h2>
+            <FeedbackFilters
+              type={typeFilter}
+              status={statusFilter}
+              onTypeChange={setTypeFilter}
+              onStatusChange={setStatusFilter}
+              onClear={handleClearFilters}
+            />
+          </div>
+
+          <FeedbackTable
+            feedback={feedback}
+            onSelect={handleSelectFeedback}
+            isLoading={feedbackLoading}
+          />
+        </motion.section>
+
+        {/* Detail Dialog */}
+        <FeedbackDetailDialog
+          feedback={selectedFeedback}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          onUpdate={async (id, updates) => {
+            await updateFeedback({ id, updates });
+          }}
+          isUpdating={isUpdating}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default Admin;
