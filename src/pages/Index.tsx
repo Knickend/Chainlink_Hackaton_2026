@@ -168,9 +168,9 @@ const IndexContent = () => {
               </h1>
               {isPro && <ProBadge />}
             </div>
-            <p className="text-muted-foreground whitespace-nowrap hidden md:block">
-              Track your assets across all markets
-            </p>
+    <p className="text-muted-foreground whitespace-nowrap hidden lg:block">
+      Track your assets across all markets
+    </p>
           </div>
           
           {/* Right section: Controls - all aligned in a row */}
