@@ -1,102 +1,190 @@
 
-# Dedicated Admin Login Page (Hidden from Public)
+# Fix Currency Display Unit Across All Components
 
-## Overview
+## Problem
 
-I'll create a dedicated admin login page at a hidden URL that provides:
-- A secret login endpoint not linked from the public site
-- Admin-only authentication with automatic role verification
-- Redirect to admin dashboard upon successful login
-- Clean, secure admin-branded login experience
+When switching the display unit from USD to another currency (GBP, EUR, BTC, Gold) using the currency selector, multiple components continue showing hardcoded `$` or `USD` text in their form labels instead of reflecting the selected currency symbol.
 
 ---
 
-## Architecture
+## Components Affected
 
-```text
-/admin/login (hidden URL)
-       |
-       v
-+------------------+
-|  Admin Login UI  |
-|  (email/password)|
-+------------------+
-       |
-       v
-+------------------+     +------------------+
-|  Authenticate    | --> |  Check user_roles|
-|  via Auth        |     |  for admin role  |
-+------------------+     +------------------+
-       |                          |
-       v                          v
-  [Not admin?]              [Is admin?]
-       |                          |
-       v                          v
-   Show error            Redirect to /admin
+I've identified **8 components** with hardcoded currency references:
+
+### Form Dialogs (Labels need dynamic currency symbol)
+
+| Component | Hardcoded Labels | Lines |
+|-----------|------------------|-------|
+| `AddDebtDialog.tsx` | "Outstanding Balance ($)" and "Monthly Payment ($ - optional)" | 130, 172 |
+| `EditDebtDialog.tsx` | "Outstanding Balance ($)" and "Monthly Payment ($ - optional)" | 135, 177 |
+| `AddIncomeDialog.tsx` | "Monthly Amount (USD)" | 80 |
+| `EditIncomeDialog.tsx` | "Monthly Amount (USD)" | 90 |
+| `AddExpenseDialog.tsx` | "Monthly Amount (USD)" | 88 |
+| `EditExpenseDialog.tsx` | "Monthly Amount (USD)" | 98 |
+| `AddOneTimeExpenseDialog.tsx` | "Amount (USD)" | 111 |
+
+### Chart Component (Y-axis labels need dynamic symbol)
+
+| Component | Issue | Line |
+|-----------|-------|------|
+| `NetWorthChart.tsx` | Y-axis tickFormatter uses hardcoded `$` | 47 |
+
+---
+
+## Solution Overview
+
+### Approach: Pass `displayUnit` as a prop to all affected components
+
+Since the `displayUnit` state lives in the `Index.tsx` page (via `usePortfolio`), we need to pass it down to each component that displays currency labels. The components will then use the `UNIT_SYMBOLS` map from `lib/types.ts` to get the correct symbol.
+
+---
+
+## Technical Implementation
+
+### 1. Update Types (No changes needed)
+
+The `UNIT_SYMBOLS` map already exists in `src/lib/types.ts`:
+
+```tsx
+export const UNIT_SYMBOLS: Record<DisplayUnit, string> = {
+  USD: '$',
+  BTC: '₿',
+  GOLD: 'oz',
+  EUR: '€',
+  GBP: '£',
+};
 ```
 
+### 2. Update Form Dialog Components
+
+For each form dialog, add `displayUnit` prop and use it in labels:
+
+**AddDebtDialog.tsx** (and EditDebtDialog.tsx):
+```tsx
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+
+interface AddDebtDialogProps {
+  onAdd: (data: DebtFormData) => void;
+  displayUnit: DisplayUnit;  // Add prop
+}
+
+// In FormLabel:
+<FormLabel>Outstanding Balance ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+<FormLabel>Monthly Payment ({UNIT_SYMBOLS[displayUnit]} - optional)</FormLabel>
+```
+
+**AddIncomeDialog.tsx** (and EditIncomeDialog.tsx):
+```tsx
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+
+interface AddIncomeDialogProps {
+  onAdd: (income: IncomeFormData) => void;
+  displayUnit: DisplayUnit;
+}
+
+// In FormLabel:
+<FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+```
+
+**AddExpenseDialog.tsx** (and EditExpenseDialog.tsx):
+```tsx
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+
+interface AddExpenseDialogProps {
+  onAdd: (expense: ExpenseFormData) => void;
+  displayUnit: DisplayUnit;
+}
+
+// In FormLabel:
+<FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+```
+
+**AddOneTimeExpenseDialog.tsx**:
+```tsx
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+
+interface AddOneTimeExpenseDialogProps {
+  onAdd: (...) => void;
+  displayUnit: DisplayUnit;
+}
+
+// In FormLabel:
+<FormLabel>Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+```
+
+### 3. Update NetWorthChart.tsx
+
+```tsx
+import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+
+interface NetWorthChartProps {
+  formatValue: (value: number, showDecimals?: boolean) => string;
+  displayUnit: DisplayUnit;
+}
+
+// Update YAxis tickFormatter:
+tickFormatter={(value) => {
+  const symbol = UNIT_SYMBOLS[displayUnit];
+  if (displayUnit === 'GOLD') {
+    return `${(value / 1000).toFixed(2)} ${symbol}`;
+  }
+  if (displayUnit === 'BTC') {
+    return `${symbol}${value.toFixed(4)}`;
+  }
+  return `${symbol}${(value / 1000).toFixed(0)}k`;
+}}
+```
+
+### 4. Update Index.tsx to Pass displayUnit
+
+Pass `displayUnit` to all the affected components:
+
+```tsx
+<AddDebtDialog onAdd={addDebt} displayUnit={displayUnit} />
+<AddIncomeDialog onAdd={addIncome} displayUnit={displayUnit} />
+<AddExpenseDialog onAdd={...} displayUnit={displayUnit} />
+<AddOneTimeExpenseDialog onAdd={...} displayUnit={displayUnit} />
+<NetWorthChart formatValue={formatValue} displayUnit={displayUnit} />
+```
+
+### 5. Update Child Components (Edit Dialogs)
+
+The Edit dialogs are rendered inside `DebtOverviewCard` and `IncomeExpenseCard`, so we also need to pass `displayUnit` through these parent components.
+
+**DebtOverviewCard.tsx**: Add `displayUnit` prop and pass to `EditDebtDialog`
+**IncomeExpenseCard.tsx**: Add `displayUnit` prop and pass to `EditIncomeDialog` and `EditExpenseDialog`
+
 ---
 
-## Features
-
-- **Hidden URL**: `/admin/login` - not linked from landing page, auth page, or anywhere public
-- **Admin-only access**: Even if credentials are valid, non-admins see an access denied message
-- **Clean admin branding**: Shield icon and "Admin Portal" styling to distinguish from regular login
-- **Security**: Standard input validation with zod, proper error handling
-- **Convenience**: Remember me option, quick access for repeat logins
-
----
-
-## Technical Details
-
-### New File
-
-| File | Purpose |
-|------|---------|
-| `src/pages/AdminLogin.tsx` | Dedicated admin login page |
-
-### Modified Files
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Add `/admin/login` route |
-
-### Implementation
-
-The admin login page will:
-1. Present a branded login form with email/password fields
-2. On submit, authenticate with the standard auth system
-3. After authentication, check if user has admin role using `useUserRole`
-4. If admin: redirect to `/admin`
-5. If not admin: show error message and sign them out
-6. If auth fails: show standard credential error
-
-### Security Measures
-
-- URL is not linked anywhere publicly - admins access it by typing the URL directly
-- Standard zod validation for email/password inputs
-- Role verification happens after authentication
-- Non-admins who guess the URL and try to log in get signed out immediately
-- No indication on the main site that this page exists
+| `src/components/AddDebtDialog.tsx` | Add displayUnit prop, update 2 FormLabels |
+| `src/components/EditDebtDialog.tsx` | Add displayUnit prop, update 2 FormLabels |
+| `src/components/AddIncomeDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
+| `src/components/EditIncomeDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
+| `src/components/AddExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
+| `src/components/EditExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
+| `src/components/AddOneTimeExpenseDialog.tsx` | Add displayUnit prop, update 1 FormLabel |
+| `src/components/NetWorthChart.tsx` | Add displayUnit prop, update YAxis tickFormatter |
+| `src/components/DebtOverviewCard.tsx` | Add displayUnit prop, pass to EditDebtDialog |
+| `src/components/IncomeExpenseCard.tsx` | Add displayUnit prop, pass to Edit dialogs |
+| `src/pages/Index.tsx` | Pass displayUnit to all affected components |
 
 ---
 
-## Page Design
+## Testing Checklist
 
-The admin login page will have:
-- Dark, professional styling matching the app theme
-- Shield icon branding for "Admin Portal"
-- Simple email/password form
-- Clear error states for invalid credentials or non-admin access
-- Link back to main site (optional, can be removed for extra secrecy)
+After implementation:
 
----
+1. Select USD - all labels show `$` and chart Y-axis shows `$150k`
+2. Select EUR - all labels show `€` and chart Y-axis shows `€150k`
+3. Select GBP - all labels show `£` and chart Y-axis shows `£150k`
+4. Select BTC - all labels show `₿` and chart Y-axis shows `₿0.0015`
+5. Select Gold - all labels show `oz` and chart Y-axis shows `45.00 oz`
+6. Open Add Debt dialog - verify labels update
+7. Open Add Income dialog - verify labels update
+8. Open Add Expense dialog - verify labels update
+9. Click edit on existing items - verify labels update
 
-## How Admins Access It
-
-Admins simply navigate directly to:
-```
-https://your-app.com/admin/login
-```
-
-This URL is not discoverable through the UI - you share it privately with admin users.
