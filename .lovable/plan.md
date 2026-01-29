@@ -1,141 +1,99 @@
 
-# Fix for Tutorial Step 7 Not Showing
+# Fix Tutorial Step 6 Chart Highlight Alignment
 
-## Problem Summary
+## Problem
 
-The tutorial is getting stuck on step 7 (Assets Section) because:
+The tutorial step 6 ("Visualize Your Wealth") is highlighting the entire charts row grid, which spans 3 columns and extends too far to the right. This creates a very large spotlight that doesn't feel focused.
 
-1. **Missing unique keys on AnimatePresence children** - Framer Motion requires unique keys for each child inside `AnimatePresence` to properly animate elements. The console shows duplicate key warnings which cause unpredictable behavior.
-
-2. **Tooltip renders at wrong position** - When the target element isn't found or positioned correctly, the tooltip still renders at `(0, 0)` instead of waiting for valid coordinates.
-
-3. **Race condition with scroll** - The element might not be in view when the overlay tries to calculate its position, causing the lookup to fail.
+Looking at the screenshot:
+- The highlight box extends from the Net Worth chart all the way to the Portfolio History section
+- The third column (Portfolio History) is a Pro feature that may not be relevant to the "charts" explanation
+- The spotlight should focus only on the two main visualization charts
 
 ---
 
 ## Solution
 
-### 1. Add unique keys to AnimatePresence children
+Wrap only the **NetWorthChart** and **AllocationChart** in a container with the `data-tutorial="charts-section"` attribute, rather than the entire 3-column grid.
 
-Add a `key` prop to each motion element inside AnimatePresence that changes based on the current step:
+### Layout Change
 
-```typescript
-// Before
-<motion.div initial={{ opacity: 0 }} ...>
+| Current | Proposed |
+|---------|----------|
+| 1 grid with 3 columns, entire grid tagged | Split into 2 columns tagged + 1 column separate |
 
-// After  
-<motion.div key={`overlay-${currentStep}`} initial={{ opacity: 0 }} ...>
-```
+### Updated Structure
 
-### 2. Wait for valid target position before rendering tooltip
+```text
+Before:
++------------------------------------------+
+| [data-tutorial="charts-section"]         |
+| +----------+ +----------+ +------------+ |
+| | NetWorth | | Allocat. | | Portfolio  | |
+| | Chart    | | Chart    | | History    | |
+| +----------+ +----------+ +------------+ |
++------------------------------------------+
 
-Only render the spotlight and tooltip when we have valid coordinates:
-
-```typescript
-// Before
-if (!isActive || !currentStepData?.target) {
-  return null;
-}
-
-// After
-if (!isActive || !currentStepData?.target) {
-  return null;
-}
-
-// Don't render until we have valid position data
-if (!targetRect) {
-  return (
-    <div className="fixed inset-0 z-[90] bg-black/75" />
-  );
-}
-```
-
-### 3. Add retry logic for element finding
-
-If the element isn't found immediately, retry a few times with increasing delays to handle slow-loading elements:
-
-```typescript
-const updateTargetPosition = useCallback(() => {
-  if (!currentStepData?.target) {
-    setTargetRect(null);
-    return;
-  }
-
-  const findElement = (attempt = 0) => {
-    const element = document.querySelector(`[data-tutorial="${currentStepData.target}"]`);
-    if (element) {
-      // Calculate position...
-    } else if (attempt < 3) {
-      // Retry after delay
-      setTimeout(() => findElement(attempt + 1), 200);
-    } else {
-      // Skip to next step if element not found after retries
-      console.warn(`Tutorial element not found: ${currentStepData.target}`);
-      setTargetRect(null);
-    }
-  };
-  
-  findElement();
-}, [currentStepData]);
+After:
++----------------------------+ +------------+
+| [data-tutorial="charts-   | | Portfolio  |
+|       section"]           | | History    |
+| +----------+ +----------+ | | (no tag)   |
+| | NetWorth | | Allocat. | | +------------+
+| | Chart    | | Chart    | |
+| +----------+ +----------+ |
++----------------------------+
 ```
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/Tutorial/TutorialOverlay.tsx` | Add keys to motion elements, show loading state when targetRect is null, add retry logic for element finding |
+| File | Change |
+|------|--------|
+| `src/pages/Index.tsx` | Restructure the charts grid to wrap only the first 2 charts with the tutorial attribute |
 
 ---
 
 ## Technical Details
 
-### Updated TutorialOverlay.tsx structure:
-
-```typescript
-return (
-  <AnimatePresence mode="wait">
-    {/* Loading overlay while finding element */}
-    {!targetRect && (
-      <motion.div
-        key="loading-overlay"
-        className="fixed inset-0 z-[90] bg-black/75"
-      />
-    )}
-    
-    {/* Dark overlay with spotlight - only when we have position */}
-    {targetRect && (
-      <motion.div
-        key={`spotlight-${currentStep}`}
-        // ... spotlight styles
-      />
-    )}
-    
-    {/* Tooltip - only when we have position */}
-    {targetRect && (
-      <motion.div
-        key={`tooltip-${currentStep}`}
-        // ... tooltip content
-      />
-    )}
-  </AnimatePresence>
-);
+### Current Code (line ~261):
+```tsx
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8" data-tutorial="charts-section">
+  <NetWorthChart ... />
+  <AllocationChart ... />
+  {/* Portfolio History / Performance cards */}
+</div>
 ```
 
-### Key changes:
-- Add `mode="wait"` to AnimatePresence for smoother transitions
-- Add unique `key` props to each motion element
-- Conditionally render spotlight and tooltip only when `targetRect` is valid
-- Show a simple dark overlay while searching for the element
-- Add retry logic with 3 attempts and 200ms delays between attempts
+### Proposed Code:
+```tsx
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+  {/* Wrap the two main charts in a subgrid with the tutorial attribute */}
+  <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
+    <NetWorthChart ... />
+    <AllocationChart ... />
+  </div>
+  {/* Third column remains outside the tutorial target */}
+  {isPro && !isDemo && (
+    <PortfolioHistoryCard ... />
+  )}
+  {/* ... other conditionals */}
+</div>
+```
+
+This approach:
+1. Uses `lg:col-span-2` to make the inner container span 2 columns
+2. Creates a nested grid (`grid-cols-2`) for the two charts
+3. Places `data-tutorial="charts-section"` only on this inner container
+4. Keeps the Portfolio History section separate from the spotlight
 
 ---
 
 ## Expected Outcome
 
-After these fixes:
-- Step 7 will properly find and highlight the "Assets by Category" section
-- The tooltip will only appear once the element is located
-- No more React key warnings in the console
-- Smooth transitions between steps
+After this fix:
+- Step 6 will highlight only the Net Worth Trend and Asset Allocation charts
+- The spotlight will be visually tighter and more focused
+- The Portfolio History section won't be included in the highlight
+- The layout will remain identical visually - only the tutorial targeting changes
