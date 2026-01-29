@@ -1,63 +1,68 @@
 
 
-# Fix Header Text Alignment
+# Redesign Header Section
 
 ## The Issue
 
-The description text "Track your assets across all markets" is breaking vertically (each word on its own line) instead of staying horizontally aligned with the logo. This happens because the flex container doesn't properly constrain the text wrapping.
+The description text "Track your assets across all markets" is overlapping with the UnitSelector (currency buttons) because:
+1. Both sections are trying to occupy the same horizontal space
+2. The right section with all controls (UnitSelector, ThemeToggle, Tour, Security, Sign out) takes up significant width
+3. There's no proper constraint to prevent overlap on medium-to-large screens
 
 ## Solution
 
-Update the header's left section to properly align the description text and prevent awkward word-by-word breaking.
+Restructure the header to cleanly separate the logo/branding from the controls, ensuring no overlap occurs. The description text will only show when there's genuinely enough room.
 
 ## File to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Fix header layout to keep description text aligned horizontally |
+| `src/pages/Index.tsx` | Restructure header layout with proper flex constraints |
 
 ## Implementation Details
 
-**Current code (lines 162-174):**
+### Updated Header Structure
+
 ```tsx
-{/* Left section: Logo + Description */}
-<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-  <div className="flex items-center gap-2">
-    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-      <span className="gradient-text">In</span>
-      <span className="text-foreground">Control</span>
-    </h1>
-    {isPro && <ProBadge />}
+<motion.header
+  initial={{ opacity: 0, y: -20 }}
+  animate={{ opacity: 1, y: 0 }}
+  className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
+>
+  {/* Left section: Logo + Description */}
+  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+    <div className="flex items-center gap-2 flex-shrink-0">
+      <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+        <span className="gradient-text">In</span>
+        <span className="text-foreground">Control</span>
+      </h1>
+      {isPro && <ProBadge />}
+    </div>
+    <p className="text-muted-foreground whitespace-nowrap hidden md:block">
+      Track your assets across all markets
+    </p>
   </div>
-  <p className="text-muted-foreground">
-    Track your assets across all markets
-  </p>
-</div>
+  
+  {/* Right section: Controls - all aligned in a row */}
+  <div className="flex items-center gap-3 flex-shrink-0">
+    {/* Controls here */}
+  </div>
+</motion.header>
 ```
 
-**Updated code:**
-```tsx
-{/* Left section: Logo + Description */}
-<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-  <div className="flex items-center gap-2 flex-shrink-0">
-    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-      <span className="gradient-text">In</span>
-      <span className="text-foreground">Control</span>
-    </h1>
-    {isPro && <ProBadge />}
-  </div>
-  <p className="text-muted-foreground whitespace-nowrap hidden md:block">
-    Track your assets across all markets
-  </p>
-</div>
-```
+### Key Changes
 
-## Changes Explained
+1. **Add `flex-shrink-0`** to the right controls section - prevents the controls from shrinking and causing overlap
+2. **Keep `min-w-0`** on the left section - allows the left section to shrink gracefully when needed
+3. **Keep `whitespace-nowrap hidden md:block`** on description - ensures it only shows when there's room and doesn't wrap awkwardly
 
-1. **Add `min-w-0`** to the parent container - prevents flex children from overflowing
-2. **Add `flex-shrink-0`** to the logo container - ensures the logo never shrinks
-3. **Add `whitespace-nowrap`** to the description - prevents the text from breaking mid-sentence
-4. **Add `hidden md:block`** to the description - hides it on smaller screens where there isn't enough horizontal space, showing it only on medium screens and up
+The root issue is that both sections need `flex-shrink-0` to prevent shrinking, but when both refuse to shrink, they overlap. The fix is to let the left section (with description) shrink by removing content at smaller breakpoints while the controls stay fixed.
 
-This ensures the header stays cleanly aligned with the logo and controls on opposite sides, and the description only appears when there's adequate screen width to display it properly.
+### Responsive Behavior
+
+- **Large screens (lg+)**: Logo, PRO badge, description, and all controls visible in one row
+- **Medium screens (md)**: Description hidden to make room for controls
+- **Small screens (sm)**: Header wraps to two rows - logo on top, controls below
+
+This ensures the header remains clean and readable at all viewport sizes without any overlapping elements.
 
