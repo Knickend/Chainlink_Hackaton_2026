@@ -1,30 +1,30 @@
 
-# Add Contact Email to Landing Page Footer
+
+# Update Hero Section Subheadline
 
 ## Change Summary
 
-Update the "Contact" link in the footer to use the company email address `InControl.Finance@proton.me` as a `mailto:` link instead of a placeholder `#` href.
+Update the landing page subheadline to include ETFs and commodities in the list of supported asset types.
 
 ## File to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/landing/Footer.tsx` | Update Contact link to use mailto with the email address |
+| `src/components/landing/HeroSection.tsx` | Update subheadline text on lines 37-40 |
 
 ## Implementation
 
-Change the Contact anchor from:
-```tsx
-<a href="#" className="...">
-  Contact
-</a>
+**Current text:**
+```
+Track assets, manage debt, and build wealth across crypto, stocks, 
+and precious metals — all in one beautiful dashboard.
 ```
 
-To:
-```tsx
-<a href="mailto:InControl.Finance@proton.me" className="...">
-  Contact
-</a>
+**Updated text:**
+```
+Track assets, manage debt, and build wealth across crypto, stocks, ETFs, 
+commodities, and precious metals — all in one beautiful dashboard.
 ```
 
-This makes the Contact link functional - clicking it will open the user's default email client with the company email pre-filled as the recipient.
+This adds "ETFs" and "commodities" to the list, accurately reflecting the full range of asset types the application supports.
+
