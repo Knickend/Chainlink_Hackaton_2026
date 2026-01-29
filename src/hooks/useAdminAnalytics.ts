@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfWeek, subWeeks, format, parseISO, subDays } from 'date-fns';
+import { startOfWeek, subWeeks, format, parseISO, subDays, isWithinInterval } from 'date-fns';
+import { DateRange } from 'react-day-picker';
 
 export interface AdminAnalytics {
   feedback: {
@@ -31,7 +32,12 @@ export interface AdminAnalytics {
   error: Error | null;
 }
 
-export function useAdminAnalytics(): AdminAnalytics {
+export interface UseAdminAnalyticsOptions {
+  dateRange?: DateRange;
+}
+
+export function useAdminAnalytics(options: UseAdminAnalyticsOptions = {}): AdminAnalytics {
+  const { dateRange } = options;
   // Fetch all feedback data
   const { data: feedbackData, isLoading: feedbackLoading, error: feedbackError } = useQuery({
     queryKey: ['admin-feedback-analytics'],
@@ -88,11 +94,27 @@ export function useAdminAnalytics(): AdminAnalytics {
   const isLoading = feedbackLoading || profilesLoading || assetsLoading || debtsLoading;
   const error = feedbackError || profilesError || assetsError || debtsError;
 
-  // Process feedback analytics
-  const feedback = processFeedbackAnalytics(feedbackData || []);
+  // Filter data by date range if provided
+  const filterByDateRange = <T extends { created_at?: string | null }>(data: T[]): T[] => {
+    if (!dateRange?.from) return data;
+    
+    return data.filter(item => {
+      if (!item.created_at) return true;
+      const itemDate = parseISO(item.created_at);
+      const from = dateRange.from!;
+      const to = dateRange.to || new Date();
+      return isWithinInterval(itemDate, { start: from, end: to });
+    });
+  };
 
-  // Process user analytics
-  const users = processUserAnalytics(profilesData || [], assetsData || []);
+  const filteredFeedback = filterByDateRange(feedbackData || []);
+  const filteredProfiles = filterByDateRange(profilesData || []);
+
+  // Process feedback analytics
+  const feedback = processFeedbackAnalytics(filteredFeedback, dateRange);
+
+  // Process user analytics (uses all profiles for total, filtered for trends)
+  const users = processUserAnalytics(profilesData || [], filteredProfiles, assetsData || [], dateRange);
 
   // Process platform analytics
   const platform = processPlatformAnalytics(assetsData || [], debtsData || []);
@@ -106,7 +128,7 @@ export function useAdminAnalytics(): AdminAnalytics {
   };
 }
 
-function processFeedbackAnalytics(feedback: any[]) {
+function processFeedbackAnalytics(feedback: any[], dateRange?: DateRange) {
   const total = feedback.length;
   const bugs = feedback.filter(f => f.type === 'bug').length;
   const features = feedback.filter(f => f.type === 'feature').length;
@@ -191,14 +213,16 @@ function generateWeeklyTrends(feedback: any[]) {
   return weeks;
 }
 
-function processUserAnalytics(profiles: any[], assets: any[]) {
-  const total = profiles.length;
+function processUserAnalytics(allProfiles: any[], filteredProfiles: any[], assets: any[], dateRange?: DateRange) {
+  const total = allProfiles.length;
   
-  const sevenDaysAgo = subDays(new Date(), 7);
-  const newLast7Days = profiles.filter(p => {
-    const created = parseISO(p.created_at);
-    return created >= sevenDaysAgo;
-  }).length;
+  // New users calculation - use date range if provided, otherwise last 7 days
+  const newUsers = dateRange?.from 
+    ? filteredProfiles.length 
+    : allProfiles.filter(p => {
+        const created = parseISO(p.created_at);
+        return created >= subDays(new Date(), 7);
+      }).length;
 
   // Active users = users with assets updated in last 30 days
   const thirtyDaysAgo = subDays(new Date(), 30);
@@ -210,11 +234,11 @@ function processUserAnalytics(profiles: any[], assets: any[]) {
   const activeUsers = activeUserIds.size;
 
   // Monthly growth (last 6 months)
-  const growth = generateMonthlyGrowth(profiles);
+  const growth = generateMonthlyGrowth(allProfiles);
 
   return {
     total,
-    newLast7Days,
+    newLast7Days: newUsers,
     activeUsers,
     growth,
   };

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Shield, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -14,6 +15,7 @@ import { FeedbackFilters } from '@/components/admin/FeedbackFilters';
 import { FeedbackDetailDialog } from '@/components/admin/FeedbackDetailDialog';
 import { AdminOverview } from '@/components/admin/AdminOverview';
 import { AdminUserStats } from '@/components/admin/AdminUserStats';
+import { AnalyticsFilters } from '@/components/admin/AnalyticsFilters';
 import { Feedback, FeedbackType, FeedbackStatus } from '@/lib/feedback.types';
 
 const Admin = () => {
@@ -23,6 +25,9 @@ const Admin = () => {
   
   // Tab state
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Date range for analytics
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   
   // Filters for feedback tab
   const [typeFilter, setTypeFilter] = useState<FeedbackType | 'all'>('all');
@@ -39,7 +44,7 @@ const Admin = () => {
   };
 
   const { feedback, isLoading: feedbackLoading, updateFeedback, isUpdating } = useFeedback(filters, true);
-  const analytics = useAdminAnalytics();
+  const analytics = useAdminAnalytics({ dateRange });
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -130,6 +135,13 @@ const Admin = () => {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">Analytics Overview</h2>
+              <AnalyticsFilters
+                dateRange={dateRange}
+                onDateRangeChange={setDateRange}
+              />
+            </div>
             <AdminOverview analytics={analytics} />
           </TabsContent>
 
