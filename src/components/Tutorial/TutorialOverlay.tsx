@@ -33,53 +33,61 @@ export function TutorialOverlay() {
       return;
     }
 
-    const element = document.querySelector(`[data-tutorial="${currentStepData.target}"]`);
-    if (element) {
-      const rect = element.getBoundingClientRect();
-      const padding = 8;
-      setTargetRect({
-        top: rect.top - padding + window.scrollY,
-        left: rect.left - padding,
-        width: rect.width + padding * 2,
-        height: rect.height + padding * 2,
-      });
+    const findElement = (attempt = 0) => {
+      const element = document.querySelector(`[data-tutorial="${currentStepData.target}"]`);
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        const padding = 8;
+        setTargetRect({
+          top: rect.top - padding + window.scrollY,
+          left: rect.left - padding,
+          width: rect.width + padding * 2,
+          height: rect.height + padding * 2,
+        });
 
-      // Calculate tooltip position
-      const tooltipWidth = 320;
-      const tooltipHeight = 200;
-      const margin = 16;
+        // Calculate tooltip position
+        const tooltipWidth = 320;
+        const tooltipHeight = 200;
+        const margin = 16;
 
-      let top = rect.bottom + window.scrollY + margin;
-      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+        let top = rect.bottom + window.scrollY + margin;
+        let left = rect.left + rect.width / 2 - tooltipWidth / 2;
 
-      // Adjust based on position preference
-      switch (currentStepData.position) {
-        case 'top':
-          top = rect.top + window.scrollY - tooltipHeight - margin;
-          break;
-        case 'left':
-          top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
-          left = rect.left - tooltipWidth - margin;
-          break;
-        case 'right':
-          top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
-          left = rect.right + margin;
-          break;
-        default: // bottom
-          break;
+        // Adjust based on position preference
+        switch (currentStepData.position) {
+          case 'top':
+            top = rect.top + window.scrollY - tooltipHeight - margin;
+            break;
+          case 'left':
+            top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
+            left = rect.left - tooltipWidth - margin;
+            break;
+          case 'right':
+            top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
+            left = rect.right + margin;
+            break;
+          default: // bottom
+            break;
+        }
+
+        // Keep tooltip within viewport
+        left = Math.max(margin, Math.min(left, window.innerWidth - tooltipWidth - margin));
+        top = Math.max(margin, Math.min(top, document.documentElement.scrollHeight - tooltipHeight - margin));
+
+        setTooltipPosition({ top, left });
+
+        // Scroll element into view if needed
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempt < 3) {
+        // Retry after delay
+        setTimeout(() => findElement(attempt + 1), 200);
+      } else {
+        console.warn(`Tutorial element not found: ${currentStepData.target}`);
+        setTargetRect(null);
       }
+    };
 
-      // Keep tooltip within viewport
-      left = Math.max(margin, Math.min(left, window.innerWidth - tooltipWidth - margin));
-      top = Math.max(margin, Math.min(top, document.documentElement.scrollHeight - tooltipHeight - margin));
-
-      setTooltipPosition({ top, left });
-
-      // Scroll element into view if needed
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      setTargetRect(null);
-    }
+    findElement();
   }, [currentStepData]);
 
   useEffect(() => {
@@ -122,40 +130,52 @@ export function TutorialOverlay() {
 
   const progress = ((currentStep + 1) / totalSteps) * 100;
 
+  // Show loading overlay while finding element
+  if (!targetRect) {
+    return (
+      <motion.div
+        key="loading-overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[90] bg-black/75"
+      />
+    );
+  }
+
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {/* Dark overlay with spotlight cutout */}
       <motion.div
+        key={`spotlight-bg-${currentStep}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[90] pointer-events-none"
         style={{
-          background: targetRect
-            ? `radial-gradient(ellipse ${targetRect.width + 40}px ${targetRect.height + 40}px at ${targetRect.left + targetRect.width / 2}px ${targetRect.top + targetRect.height / 2}px, transparent 0%, rgba(0,0,0,0.75) 100%)`
-            : 'rgba(0,0,0,0.75)',
+          background: `radial-gradient(ellipse ${targetRect.width + 40}px ${targetRect.height + 40}px at ${targetRect.left + targetRect.width / 2}px ${targetRect.top + targetRect.height / 2}px, transparent 0%, rgba(0,0,0,0.75) 100%)`,
         }}
       />
 
       {/* Spotlight border highlight */}
-      {targetRect && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed z-[91] rounded-lg border-2 border-primary pointer-events-none"
-          style={{
-            top: targetRect.top,
-            left: targetRect.left,
-            width: targetRect.width,
-            height: targetRect.height,
-            boxShadow: '0 0 0 9999px rgba(0,0,0,0.75), 0 0 20px rgba(var(--primary), 0.5)',
-          }}
-        />
-      )}
+      <motion.div
+        key={`spotlight-border-${currentStep}`}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed z-[91] rounded-lg border-2 border-primary pointer-events-none"
+        style={{
+          top: targetRect.top,
+          left: targetRect.left,
+          width: targetRect.width,
+          height: targetRect.height,
+          boxShadow: '0 0 0 9999px rgba(0,0,0,0.75), 0 0 20px rgba(var(--primary), 0.5)',
+        }}
+      />
 
       {/* Tooltip */}
       <motion.div
+        key={`tooltip-${currentStep}`}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
