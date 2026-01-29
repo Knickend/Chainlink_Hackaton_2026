@@ -78,14 +78,14 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2 border-warning/30 hover:border-warning/50 text-warning">
           <Zap className="w-4 h-4" />
-          One-Time
+          Non-Recurring
           <ProBadge className="ml-1" />
         </Button>
       </DialogTrigger>
       <DialogContent className="glass-card border-warning/20 sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="text-warning flex items-center gap-2">
-            Add One-Time Expense
+            Add Non-Recurring Expense
             <ProBadge />
           </DialogTitle>
         </DialogHeader>
@@ -193,7 +193,7 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
             />
 
             <Button type="submit" className="w-full bg-warning hover:bg-warning/90 text-warning-foreground">
-              Add One-Time Expense
+              Add Non-Recurring Expense
             </Button>
           </form>
         </Form>

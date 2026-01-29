@@ -27,7 +27,7 @@ export function SubscriptionBanner({ onUpgrade }: SubscriptionBannerProps) {
               </span>
               <span className="flex items-center gap-1">
                 <Zap className="w-3 h-3" />
-                One-time expenses
+                Non-recurring expenses
               </span>
             </p>
           </div>

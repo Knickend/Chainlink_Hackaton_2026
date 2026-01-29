@@ -59,12 +59,12 @@ export function AddExpenseDialog({ onAdd, displayUnit }: AddExpenseDialogProps) 
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2 border-danger/30 hover:border-danger/50 text-danger">
           <Plus className="w-4 h-4" />
-          Add Expense
+          Add Recurring
         </Button>
       </DialogTrigger>
       <DialogContent className="glass-card border-danger/20 sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="text-danger">Add New Expense</DialogTitle>
+          <DialogTitle className="text-danger">Add Recurring Expense</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -129,7 +129,7 @@ export function AddExpenseDialog({ onAdd, displayUnit }: AddExpenseDialogProps) 
             />
 
             <Button type="submit" className="w-full bg-danger hover:bg-danger/90">
-              Add Expense
+              Add Recurring Expense
             </Button>
           </form>
         </Form>
