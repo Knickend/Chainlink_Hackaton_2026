@@ -30,7 +30,7 @@ const features = [
   {
     icon: Shield,
     title: 'Secure & Private',
-    description: 'Your data is encrypted end-to-end and never shared with third parties.',
+    description: 'Your data is encrypted and hosted on SOC 2 Type II compliant infrastructure. Never shared with third parties.',
   },
 ];
 
