@@ -81,6 +81,8 @@ const Index = () => {
     assetsByCategory,
     categoryTotals,
     formatValue,
+    convertFromCurrency,
+    formatCurrencyValue,
     loading: dataLoading,
     addAsset,
     updateAsset,
@@ -364,7 +366,9 @@ const Index = () => {
             {isPro ? (
               <DebtPayoffCalculator
                 debts={demoDebts}
-                formatValue={formatValue}
+                displayUnit={displayUnit}
+                convertFromCurrency={convertFromCurrency}
+                formatCurrencyValue={formatCurrencyValue}
                 delay={0.3}
               />
             ) : (

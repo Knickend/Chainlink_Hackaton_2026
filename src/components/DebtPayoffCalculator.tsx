@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Calculator, Calendar, TrendingDown, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
-import { Debt, DEBT_TYPES } from '@/lib/types';
+import { Debt, DEBT_TYPES, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +12,9 @@ import {
 
 interface DebtPayoffCalculatorProps {
   debts: Debt[];
-  formatValue: (value: number, showSign?: boolean) => string;
+  displayUnit: DisplayUnit;
+  convertFromCurrency: (amount: number, fromCurrency: string) => number;
+  formatCurrencyValue: (amount: number, fromCurrency: string, showDecimals?: boolean) => string;
   delay?: number;
 }
 
@@ -109,24 +111,47 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
+// Helper to format values that are already in the display unit (no conversion needed)
+function formatDisplayUnitValue(value: number, displayUnit: DisplayUnit, showDecimals = true): string {
+  const symbol = UNIT_SYMBOLS[displayUnit];
+  
+  if (displayUnit === 'GOLD') {
+    return `${value.toFixed(4)} ${symbol}`;
+  }
+  
+  if (displayUnit === 'BTC') {
+    return `${symbol}${value.toFixed(6)}`;
+  }
+  
+  const formatted = showDecimals 
+    ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  
+  return `${symbol}${formatted}`;
+}
+
 export function DebtPayoffCalculator({
   debts,
-  formatValue,
+  displayUnit,
+  convertFromCurrency,
+  formatCurrencyValue,
   delay = 0,
 }: DebtPayoffCalculatorProps) {
   const [isOpen, setIsOpen] = useState(true);
 
-  if (debts.length === 0) {
-    return null;
-  }
-
-  const payoffDetails = debts.map(calculatePayoffDetails);
-  const payableDebts = payoffDetails.filter(d => d.isPayable);
+  const payoffDetails = useMemo(() => debts.map(calculatePayoffDetails), [debts]);
+  const payableDebts = useMemo(() => payoffDetails.filter(d => d.isPayable), [payoffDetails]);
   
-  // Calculate totals
-  const totalDebt = debts.reduce((sum, d) => sum + d.principal_amount, 0);
-  const totalMonthlyPayments = debts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0);
-  const totalInterestToPay = payableDebts.reduce((sum, d) => sum + d.totalInterest, 0);
+  // Calculate totals in display unit by converting each debt's values first
+  const totalMonthlyPaymentsDisplay = useMemo(() => 
+    debts.reduce((sum, d) => sum + convertFromCurrency(d.monthly_payment || 0, d.currency || 'USD'), 0),
+    [debts, convertFromCurrency]
+  );
+  
+  const totalInterestToPayDisplay = useMemo(() => 
+    payableDebts.reduce((sum, d) => sum + convertFromCurrency(d.totalInterest, d.debt.currency || 'USD'), 0),
+    [payableDebts, convertFromCurrency]
+  );
   
   // Find the longest payoff time
   const longestPayoff = Math.max(...payableDebts.map(d => d.monthsToPayoff || 0), 0);
@@ -135,6 +160,10 @@ export function DebtPayoffCalculator({
     date.setMonth(date.getMonth() + longestPayoff);
     return date;
   })() : null;
+
+  if (debts.length === 0) {
+    return null;
+  }
 
   return (
     <motion.div
@@ -174,12 +203,12 @@ export function DebtPayoffCalculator({
           <div className="text-center border-x border-border/50">
             <p className="text-xs text-muted-foreground">Total Interest</p>
             <p className="font-semibold text-amber-500">
-              {totalInterestToPay > 0 ? formatValue(totalInterestToPay) : '—'}
+              {totalInterestToPayDisplay > 0 ? formatDisplayUnitValue(totalInterestToPayDisplay, displayUnit) : '—'}
             </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Monthly Payments</p>
-            <p className="font-semibold">{formatValue(totalMonthlyPayments)}</p>
+            <p className="font-semibold">{formatDisplayUnitValue(totalMonthlyPaymentsDisplay, displayUnit)}</p>
           </div>
         </div>
 
@@ -188,6 +217,7 @@ export function DebtPayoffCalculator({
           <div className="space-y-3 mt-4">
             {payoffDetails.map((details) => {
               const debtTypeLabel = DEBT_TYPES.find(t => t.value === details.debt.debt_type)?.label || details.debt.debt_type;
+              const debtCurrency = details.debt.currency || 'USD';
               const progressPercent = details.isPayable && details.monthsToPayoff 
                 ? Math.min(100, (1 - details.debt.principal_amount / (details.debt.principal_amount + details.totalInterest)) * 100)
                 : 0;
@@ -229,8 +259,8 @@ export function DebtPayoffCalculator({
                     <div className="space-y-1">
                       <Progress value={progressPercent} className="h-2" />
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Principal: {formatValue(details.debt.principal_amount)}</span>
-                        <span>Interest: {formatValue(details.totalInterest)}</span>
+                        <span>Principal: {formatCurrencyValue(details.debt.principal_amount, debtCurrency)}</span>
+                        <span>Interest: {formatCurrencyValue(details.totalInterest, debtCurrency)}</span>
                       </div>
                     </div>
                   )}
@@ -240,7 +270,7 @@ export function DebtPayoffCalculator({
                     <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
                       <TrendingDown className="w-3 h-3" />
                       <span>
-                        Minimum payment needed: {formatValue(details.minimumPayment)}/mo to cover interest
+                        Minimum payment needed: {formatCurrencyValue(details.minimumPayment, debtCurrency)}/mo to cover interest
                       </span>
                     </div>
                   )}
@@ -250,11 +280,11 @@ export function DebtPayoffCalculator({
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <DollarSign className="w-3 h-3" />
-                        <span>Payment: {formatValue(details.debt.monthly_payment || 0)}/mo</span>
+                        <span>Payment: {formatCurrencyValue(details.debt.monthly_payment || 0, debtCurrency)}/mo</span>
                       </div>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Calendar className="w-3 h-3" />
-                        <span>Total: {formatValue(details.totalPayment)}</span>
+                        <span>Total: {formatCurrencyValue(details.totalPayment, debtCurrency)}</span>
                       </div>
                     </div>
                   )}
@@ -267,7 +297,7 @@ export function DebtPayoffCalculator({
           {payableDebts.length > 0 && (
             <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
               <p className="text-xs text-muted-foreground">
-                💡 <span className="font-medium text-foreground">Tip:</span> Increasing your monthly payment by just {formatValue(totalMonthlyPayments * 0.1)} could save you months of interest payments.
+                💡 <span className="font-medium text-foreground">Tip:</span> Increasing your monthly payment by just {formatDisplayUnitValue(totalMonthlyPaymentsDisplay * 0.1, displayUnit)} could save you months of interest payments.
               </p>
             </div>
           )}
