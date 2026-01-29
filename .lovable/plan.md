@@ -1,74 +1,154 @@
 
 
-# Fix Header Controls Alignment - Sign Out Button Wrapping
+# Improve Annual Yield Card Breakdown Design
 
 ## Problem
 
-Even on full desktop view, the Sign out button wraps to a second line below the other header controls. The screenshot shows:
-- First row: Cached indicator, refresh, USD/BTC/Gold/EUR/GBP selector, Theme toggle, Tour button
-- Second row: Sign out button (alone)
+The yield breakdown section in the Annual Yield card looks cramped and cropped:
+- Asset names are truncated ("Eth...", "Ra...", "Chai...", "HS...")
+- The category label (Staking/Interest) and percentage are crowded together on the same line
+- The overall layout feels cramped within the card boundaries
 
-## Root Cause
+## Current Layout
 
-The controls div uses `flex-wrap` which allows items to wrap to new lines when space runs out. Even on wide screens, the combined width of all controls exceeds the available space:
+```text
+| Eth...    Staking 2.5%  +$7,054.30 |
+| Ra...     Interest 1.3% +$1,404.00 |
+```
 
-| Element | Approximate Width |
-|---------|------------------|
-| PriceIndicator | ~120px |
-| UnitSelector (5 currencies) | ~280px |
-| ThemeToggle | ~36px |
-| Tour button | ~70px |
-| Sign out button | ~90px |
-| **Total** | **~596px + gaps** |
-
-With the logo and description taking the left side, there's not enough room for all controls in one line, so the last item (Sign out) wraps.
+Everything is crammed on a single line, causing truncation and visual noise.
 
 ## Solution
 
-Remove `flex-wrap` and instead use `flex-shrink-0` to prevent controls from shrinking, combined with allowing the header to scroll horizontally on very narrow screens OR reducing the width of some elements.
+Redesign each yield source as a **two-line item with better visual hierarchy**:
 
-Better approach: Remove `flex-wrap` entirely so controls never wrap, and rely on the column layout on smaller screens (already handled by `lg:flex-row`).
+```text
+| Ethereum                 +$7,054.30 |
+| Staking · 2.5%                      |
+|                                     |
+| Raiffeisen Savings       +$1,404.00 |
+| Interest · 1.3%                     |
+```
+
+Each item will have:
+1. **Top row**: Full asset name (left) + yield amount (right, green)
+2. **Bottom row**: Category badge with yield percentage (muted, smaller text)
+
+This gives more horizontal space for asset names and creates clear visual separation between sources.
+
+---
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Remove `flex-wrap` from controls div, add `flex-shrink-0` |
+| `src/components/YieldBreakdownCard.tsx` | Redesign breakdown item layout to two-line format |
+
+---
 
 ## Technical Implementation
 
+### New Breakdown Item Structure
+
 ```tsx
-{/* Right section: Controls - all on one line */}
-<div className="flex items-center gap-3 flex-shrink-0">
-  <PriceIndicator ... />
-  <UnitSelector ... />
-  <ThemeToggle />
-  {hasCompletedTutorial && <Button>Tour</Button>}
-  <Button>Sign in/out</Button>
-</div>
+{yieldBreakdown.map((item, idx) => (
+  <div
+    key={`${item.symbol || item.name}-${idx}`}
+    className="py-2 px-3 rounded-lg bg-secondary/30"
+  >
+    {/* Top row: Asset name and yield amount */}
+    <div className="flex items-center justify-between">
+      <span className="font-medium text-sm">{item.name}</span>
+      <span className="font-mono text-sm text-success">
+        +{formatValue(item.yieldAmount)}
+      </span>
+    </div>
+    {/* Bottom row: Category and percentage */}
+    <div className="flex items-center gap-1.5 mt-1">
+      <span className={cn(
+        'text-xs px-1.5 py-0.5 rounded',
+        getCategoryBgColor(item.category)
+      )}>
+        {getCategoryLabel(item.category)}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {item.yieldPercent.toFixed(1)}% APY
+      </span>
+    </div>
+  </div>
+))}
 ```
 
-Key changes:
-1. Remove `flex-wrap` from the controls div (line 176)
-2. Add `flex-shrink-0` to prevent the controls section from shrinking
-3. This ensures all controls stay on one line when in row mode (`lg:flex-row`)
-4. On smaller screens, the entire controls div will stack below the logo (due to `flex-col` default)
+### Key Improvements
 
-## Expected Outcome
+1. **Full asset names**: No truncation, using full width of top row
+2. **Category badges**: Small colored pills for Staking/Interest/Dividend
+3. **Vertical spacing**: Each item is a distinct card-like row with padding
+4. **Background highlight**: Subtle `bg-secondary/30` to separate items visually
+5. **APY suffix**: Adding "APY" after percentage for clarity
 
+### Helper Function for Category Background
+
+```tsx
+const getCategoryBgColor = (category: string) => {
+  switch (category) {
+    case 'crypto':
+      return 'bg-bitcoin/20 text-bitcoin';
+    case 'banking':
+      return 'bg-blue-400/20 text-blue-400';
+    case 'stocks':
+      return 'bg-success/20 text-success';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
+};
+```
+
+---
+
+## Visual Comparison
+
+### Before
 ```text
-Desktop (lg and up):
-+------------------------------------------------------------------+
-| [Logo] [PRO] [Description]   [All controls on single line →→→→→] |
-+------------------------------------------------------------------+
-
-Tablet/Mobile (below lg):
-+------------------------+
-| [Logo] [PRO]           |
-| [Description]          |
-| [All controls in row]  |
-+------------------------+
++----------------------------------+
+| BREAKDOWN                        |
+| Eth... Staking 2.5%   +$7,054.30 |
+| Ra...  Interest 1.3%  +$1,404.00 |
+| Chai.. Staking 4.8%     +$620.50 |
+| HS...  Interest 2.3%    +$292.10 |
++----------------------------------+
 ```
 
-All controls will remain on a single line - no individual buttons will wrap to separate rows.
+### After
+```text
++----------------------------------+
+| BREAKDOWN                        |
+| ┌──────────────────────────────┐ |
+| │ Ethereum           +$7,054.30│ |
+| │ [Staking] 2.5% APY           │ |
+| └──────────────────────────────┘ |
+| ┌──────────────────────────────┐ |
+| │ Raiffeisen Savings +$1,404.00│ |
+| │ [Interest] 1.3% APY          │ |
+| └──────────────────────────────┘ |
+| ┌──────────────────────────────┐ |
+| │ Chainlink            +$620.50│ |
+| │ [Staking] 4.8% APY           │ |
+| └──────────────────────────────┘ |
+| ┌──────────────────────────────┐ |
+| │ HSBC Premier          +$292.10│ |
+| │ [Interest] 2.3% APY          │ |
+| └──────────────────────────────┘ |
++----------------------------------+
+```
+
+---
+
+## Summary
+
+This redesign converts the cramped single-line layout into a cleaner two-line format with:
+- Full asset names (no truncation)
+- Clear category badges with appropriate colors
+- Better visual separation between yield sources
+- Consistent styling with the app's glass-card aesthetic
 
