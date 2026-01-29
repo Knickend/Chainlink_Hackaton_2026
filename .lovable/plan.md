@@ -1,171 +1,87 @@
 
+Goal: Fix the Debt Payoff Calculator so it does not “double convert” debt amounts. A debt entered as €400,000 should show €400,000 when the display unit is EUR (and a correctly converted USD value when the display unit is USD).
 
-# Fix Currency Conversion Bug for Debts, Income, and Expenses
+## What’s happening (root cause)
+- Debts are now stored with their own `currency` (e.g., EUR) and the raw `principal_amount` / `monthly_payment` are in that original currency.
+- `DebtPayoffCalculator` still formats all numbers using `formatValue(...)`, which assumes every number it receives is in USD.
+- So when the calculator formats a EUR-stored amount (400,000) with `formatValue`, it treats it as “400,000 USD” and converts it to EUR → ~€368,000 (using the USD→EUR rate), producing the incorrect value you see.
 
-## Problem
+## Key design decision
+- Keep payoff math in the debt’s own currency (principal, payment, interest).
+- Only convert for display using the debt’s stored currency, so EUR stays EUR when viewing in EUR.
 
-When you enter €400,000 for a debt while EUR is selected as the display currency, switching between EUR and USD causes the value to change incorrectly (€400,000 becomes €368,000).
+## Changes to make
 
-**Why this happens:**
-- The debt form shows the currency symbol (€) matching your selected display unit
-- But when you enter 400,000, it stores this raw number in the database
-- The system then treats 400,000 as USD when displaying
-- Converting "400,000 USD" to EUR (×0.92) shows €368,000
+### 1) Update `DebtPayoffCalculator` to be currency-aware
+File: `src/components/DebtPayoffCalculator.tsx`
 
-The same issue exists for Income and Expenses - they don't store the currency they were entered in.
+**Prop changes**
+- Replace/extend current props so the calculator can:
+  - Convert amounts from each debt’s stored currency into the selected display unit
+  - Format those converted amounts correctly
 
----
+Proposed new props:
+- `displayUnit: DisplayUnit`
+- `convertFromCurrency: (amount: number, fromCurrency: string) => number` (from `usePortfolio`)
+- `formatCurrencyValue: (amount: number, fromCurrency: string, showDecimals?: boolean) => string` (from `usePortfolio`)
+- Keep `debts` and `delay`
 
-## Solution Overview
+**In-component formatting**
+- For per-debt values (principal, interest, payment, totals, minimum payment):
+  - Use `formatCurrencyValue(value, debt.currency || 'USD')`
+  - This ensures:
+    - If debt.currency === displayUnit → shows the original number unchanged (so €400,000 stays €400,000)
+    - If different → converts correctly
 
-There are two possible approaches:
+**Fix summary totals**
+The calculator currently sums raw numbers directly (which mixes currencies and then formats as USD).
+Instead:
+- Compute totals in *display unit* numerically using `convertFromCurrency` on each debt’s amounts, then sum:
+  - `totalMonthlyPaymentsDisplay = sum(convertFromCurrency(debt.monthly_payment, debt.currency))`
+  - `totalInterestToPayDisplay = sum(convertFromCurrency(details.totalInterest, details.debt.currency))`
+- Add a local helper to format numbers that are already “in display unit” (no conversion step), because the hook formatters assume a source currency:
+  - For USD/EUR/GBP: symbol + 2 decimals
+  - For BTC: symbol + 6 decimals
+  - For GOLD: 4 decimals + “oz”
+  - Use `UNIT_SYMBOLS[displayUnit]` and `displayUnit` to choose formatting
 
-### Option A: Store Currency with Each Record (Recommended)
+**Places in the UI to update inside the calculator**
+- Summary stats:
+  - Total Interest (use display-total + local “already display unit” formatting)
+  - Monthly Payments (same)
+- Per-debt card:
+  - Progress bar labels: Principal / Interest
+  - Warning: “Minimum payment needed…”
+  - Payment details: Payment / Total
 
-Add a `currency` field to debts, income, and expenses tables (similar to how banking assets work). This allows accurate multi-currency tracking but requires database changes.
+### 2) Pass the new props from the dashboard page
+File: `src/pages/Index.tsx`
 
-### Option B: Always Store as USD (Simpler)
+- When destructuring from `usePortfolio(...)`, also include:
+  - `convertFromCurrency`
+  - `formatCurrencyValue`
+- Update the `<DebtPayoffCalculator />` call to pass:
+  - `debts={demoDebts}`
+  - `displayUnit={displayUnit}`
+  - `convertFromCurrency={convertFromCurrency}`
+  - `formatCurrencyValue={formatCurrencyValue}`
+  - `delay={...}`
+- Remove `formatValue` from the calculator call if no longer needed by that component.
 
-Convert values to USD when saving, then convert to display currency when showing. The label would always show the selected display symbol, and the value would be converted on save.
+## Validation checklist (what you should see after)
+1. Add a debt while display unit = EUR:
+   - Principal: €400,000
+   - Payment: €1,400/mo
+2. Switch display unit to USD:
+   - Principal changes to the correctly converted USD amount
+   - Payment changes to the correctly converted USD amount
+3. Switch back to EUR:
+   - Principal returns to exactly €400,000 (not €368,000)
+4. Confirm the “Total Interest” and “Monthly Payments” in the calculator summary also look consistent with the per-debt numbers.
 
-**Recommended: Option A** - This matches the existing pattern for banking assets and provides better accuracy for users tracking finances in multiple currencies.
+## Notes / edge cases
+- If any older debts were created before `currency` was saved correctly, they may still have `currency='USD'` even if you meant EUR. Those would still display “wrong” because the stored currency is wrong. If that comes up, the next step would be adding an explicit “Currency” selector inside Add/Edit Debt dialogs so you can correct old entries.
 
----
-
-## Technical Implementation
-
-### 1. Database Changes
-
-Add `currency` column to three tables:
-
-```sql
--- Add currency column to debts table
-ALTER TABLE debts ADD COLUMN currency text DEFAULT 'USD';
-
--- Add currency column to income table  
-ALTER TABLE income ADD COLUMN currency text DEFAULT 'USD';
-
--- Add currency column to expenses table
-ALTER TABLE expenses ADD COLUMN currency text DEFAULT 'USD';
-```
-
-### 2. Type Updates (`src/lib/types.ts`)
-
-Update the `Debt`, `Income`, and `Expense` interfaces:
-
-```typescript
-export interface Debt {
-  id: string;
-  name: string;
-  debt_type: DebtType;
-  principal_amount: number;
-  interest_rate: number;
-  monthly_payment?: number;
-  currency: string;  // NEW: 'USD', 'EUR', 'GBP', etc.
-}
-
-export interface Income {
-  id: string;
-  source: string;
-  amount: number;
-  type: 'work' | 'passive' | 'investment';
-  currency: string;  // NEW
-}
-
-export interface Expense {
-  id: string;
-  name: string;
-  amount: number;
-  category: string;
-  is_recurring: boolean;
-  expense_date?: string;
-  currency: string;  // NEW
-}
-```
-
-### 3. Hook Updates
-
-**useDebts.ts:**
-- Save the `displayUnit` as `currency` when adding/updating
-- When displaying, check if the debt's currency matches the display unit
-- If match: show amount directly without conversion
-- If different: convert from debt's currency → USD → display currency
-
-**Similar updates for usePortfolioData.ts** for income and expenses.
-
-### 4. Dialog Updates
-
-**AddDebtDialog.tsx / EditDebtDialog.tsx:**
-- Accept `displayUnit` prop (already done)
-- Pass the current `displayUnit` as `currency` when saving
-
-**Similar for Income and Expense dialogs.**
-
-### 5. Display Logic
-
-When formatting values in DebtOverviewCard, IncomeExpenseCard, etc.:
-
-```typescript
-const displayDebtValue = (debt: Debt, displayUnit: DisplayUnit): number => {
-  // If the debt's currency matches display unit, show original amount
-  if (debt.currency === displayUnit) {
-    return debt.principal_amount;
-  }
-  
-  // Otherwise, convert: debt currency → USD → display unit
-  const amountInUSD = debt.principal_amount * FOREX_RATES_TO_USD[debt.currency];
-  return amountInUSD * conversionRates[displayUnit];
-};
-```
-
----
-
-## Files to Modify
-
-| Category | File | Changes |
-|----------|------|---------|
-| Database | Migration | Add `currency` column to debts, income, expenses |
-| Types | `src/lib/types.ts` | Add `currency` field to interfaces |
-| Hooks | `src/hooks/useDebts.ts` | Save/load currency, add conversion logic |
-| Hooks | `src/hooks/usePortfolioData.ts` | Save/load currency for income/expenses |
-| Dialogs | `src/components/AddDebtDialog.tsx` | Pass currency when adding |
-| Dialogs | `src/components/EditDebtDialog.tsx` | Handle currency in edit |
-| Dialogs | `src/components/AddIncomeDialog.tsx` | Pass currency when adding |
-| Dialogs | `src/components/EditIncomeDialog.tsx` | Handle currency in edit |
-| Dialogs | `src/components/AddExpenseDialog.tsx` | Pass currency when adding |
-| Dialogs | `src/components/EditExpenseDialog.tsx` | Handle currency in edit |
-| Dialogs | `src/components/AddOneTimeExpenseDialog.tsx` | Pass currency when adding |
-| Cards | `src/components/DebtOverviewCard.tsx` | Use currency-aware display |
-| Cards | `src/components/IncomeExpenseCard.tsx` | Use currency-aware display |
-| Page | `src/pages/Index.tsx` | Update totals calculation |
-
----
-
-## Special Considerations
-
-### Existing Data Migration
-- Existing debts/income/expenses will default to USD (matching current behavior)
-- No data loss - users can edit existing items to set correct currency if needed
-
-### Display Unit vs Entry Currency
-- The form label shows the currently selected display unit symbol (€, £, $)
-- When saved, the `currency` field stores which currency was active
-- This ensures values display correctly regardless of display unit changes
-
-### BTC and Gold Units
-- For BTC and GOLD display units, values would still be stored in USD
-- These are display-only conversions since debts/expenses are in fiat currencies
-
----
-
-## Testing Checklist
-
-After implementation:
-
-1. Add a debt of €400,000 while EUR is selected
-2. Switch to USD - debt should show ~$435,000 (400k × 1.08)
-3. Switch back to EUR - debt should show exactly €400,000
-4. Add an income in GBP, verify it displays correctly across currencies
-5. Verify existing debts/income/expenses still work (default to USD)
-6. Test editing a debt - verify currency is preserved
-
+## Files touched
+- `src/components/DebtPayoffCalculator.tsx`
+- `src/pages/Index.tsx`
