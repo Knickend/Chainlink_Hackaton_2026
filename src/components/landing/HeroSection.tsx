@@ -77,7 +77,7 @@ export function HeroSection() {
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-success rounded-full" />
-              Bank-level security
+              SOC 2 Type II compliant
             </div>
           </motion.div>
         </motion.div>
