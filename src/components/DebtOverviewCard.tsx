@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { CreditCard, Trash2, Home, Car, GraduationCap, Wallet } from 'lucide-react';
-import { Debt, DebtType, DEBT_TYPES, DisplayUnit } from '@/lib/types';
+import { Debt, DebtType, DEBT_TYPES, DisplayUnit, convertCurrency, UNIT_SYMBOLS, FOREX_RATES_TO_USD, BankingCurrency, DEFAULT_CONVERSION_RATES } from '@/lib/types';
 import { EditDebtDialog } from './EditDebtDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,30 @@ export function DebtOverviewCard({
   delay = 0,
   displayUnit,
 }: DebtOverviewCardProps) {
+  // Helper to format a debt value with its stored currency
+  const formatDebtValue = (amount: number, debtCurrency: string): string => {
+    // For BTC and GOLD display units, convert via USD
+    if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
+      const amountInUSD = amount * (FOREX_RATES_TO_USD[debtCurrency as BankingCurrency] || 1);
+      const converted = amountInUSD * DEFAULT_CONVERSION_RATES[displayUnit];
+      const symbol = UNIT_SYMBOLS[displayUnit];
+      if (displayUnit === 'GOLD') {
+        return `${converted.toFixed(4)} ${symbol}`;
+      }
+      return `${symbol}${converted.toFixed(6)}`;
+    }
+    
+    // For fiat display units - if same currency, show original amount
+    if (debtCurrency === displayUnit) {
+      const symbol = UNIT_SYMBOLS[displayUnit];
+      return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    
+    // Otherwise, convert from stored currency to display currency
+    const converted = convertCurrency(amount, debtCurrency, displayUnit);
+    const symbol = UNIT_SYMBOLS[displayUnit];
+    return `${symbol}${converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -116,15 +140,15 @@ export function DebtOverviewCard({
                 <div className="flex items-center gap-2">
                   <div className="text-right">
                     <p className="font-semibold text-sm text-destructive/90">
-                      {formatValue(debt.principal_amount)}
+                      {formatDebtValue(debt.principal_amount, debt.currency || 'USD')}
                     </p>
                     {debt.monthly_payment ? (
                       <p className="text-xs text-muted-foreground">
-                        {formatValue(debt.monthly_payment)}/mo
+                        {formatDebtValue(debt.monthly_payment, debt.currency || 'USD')}/mo
                       </p>
                     ) : (
                       <p className="text-xs text-amber-500">
-                        ~{formatValue(estimatedMonthlyInterest)} int/mo
+                        ~{formatDebtValue(estimatedMonthlyInterest, debt.currency || 'USD')} int/mo
                       </p>
                     )}
                   </div>

@@ -37,7 +37,7 @@ import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { AssetCategory } from '@/lib/types';
+import { AssetCategory, DebtType } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
 
 const Index = () => {
@@ -326,7 +326,7 @@ const Index = () => {
             items={income}
             total={formatValue(metrics.totalIncome)}
             formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={addIncome} displayUnit={displayUnit} />}
+            actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' }) => addIncome({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
             displayUnit={displayUnit}
             onUpdateIncome={isDemo ? undefined : updateIncome}
             onDeleteIncome={isDemo ? undefined : deleteIncome}
@@ -336,9 +336,9 @@ const Index = () => {
             items={expenses}
             total={formatValue(metrics.totalExpenses)}
             formatValue={formatValue}
-            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true })} displayUnit={displayUnit} />}
+            actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
             secondaryActionButton={!isDemo && isPro ? (
-              <AddOneTimeExpenseDialog onAdd={(data) => addExpense(data)} displayUnit={displayUnit} />
+              <AddOneTimeExpenseDialog onAdd={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />
             ) : undefined}
             onUpdateExpense={isDemo ? undefined : updateExpense}
             onDeleteExpense={isDemo ? undefined : deleteExpense}
@@ -352,7 +352,7 @@ const Index = () => {
             formatValue={formatValue}
             onUpdateDebt={isDemo ? undefined : updateDebt}
             onDeleteDebt={isDemo ? undefined : deleteDebt}
-            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={addDebt} displayUnit={displayUnit} />}
+            actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number }) => addDebt({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
             delay={0.2}
             displayUnit={displayUnit}
           />
