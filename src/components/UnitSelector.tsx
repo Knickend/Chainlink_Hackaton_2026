@@ -1,6 +1,11 @@
-import { motion } from 'framer-motion';
 import { DisplayUnit } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface UnitSelectorProps {
   value: DisplayUnit;
@@ -16,32 +21,31 @@ const units: { value: DisplayUnit; label: string; icon: string }[] = [
 ];
 
 export function UnitSelector({ value, onChange }: UnitSelectorProps) {
+  const selectedUnit = units.find((u) => u.value === value);
+
   return (
-    <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg" data-tutorial="unit-selector">
-      {units.map((unit) => (
-        <button
-          key={unit.value}
-          onClick={() => onChange(unit.value)}
-          className={cn(
-            'relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-            value === unit.value
-              ? 'text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {value === unit.value && (
-            <motion.div
-              layoutId="unit-selector-bg"
-              className="absolute inset-0 bg-primary rounded-md"
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            />
-          )}
-          <span className="relative z-10 flex items-center gap-1">
-            <span>{unit.icon}</span>
-            <span className="hidden sm:inline">{unit.label}</span>
+    <Select value={value} onValueChange={(val) => onChange(val as DisplayUnit)}>
+      <SelectTrigger 
+        className="w-[90px] h-9 gap-1.5 bg-secondary/50 border-0"
+        data-tutorial="unit-selector"
+      >
+        <SelectValue>
+          <span className="flex items-center gap-1.5">
+            <span>{selectedUnit?.icon}</span>
+            <span>{selectedUnit?.label}</span>
           </span>
-        </button>
-      ))}
-    </div>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {units.map((unit) => (
+          <SelectItem key={unit.value} value={unit.value}>
+            <span className="flex items-center gap-2">
+              <span>{unit.icon}</span>
+              <span>{unit.label}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
