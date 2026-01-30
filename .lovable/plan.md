@@ -1,229 +1,145 @@
 
 
-# Complete Subscription Tier Restructuring
+# Polish Pricing Section UI
 
 ## Overview
 
-This plan consolidates all pricing changes discussed:
-1. Change currency from USD ($) to EUR (€)
-2. Add 50% first-month discount for monthly plans
-3. Add annual billing option with ~17% discount (2 months free)
-4. Limit Standard tier to 30 assets (from "Unlimited")
-5. Remove 30-day money-back guarantee
+Improve the visual polish of the pricing cards with better badge alignment, hover effects, and prominent discount highlighting.
 
-## Final Pricing Structure
+## Issues to Fix
 
-| Tier | Monthly | Annual | Savings |
-|------|---------|--------|---------|
-| Free | €0 | - | - |
-| Standard | €4.99/mo (first month €2.50) | €49.90/year (€4.16/mo) | 2 months free |
-| Pro | €9.99/mo (first month €5.00) | €99.90/year (€8.33/mo) | 2 months free |
+### 1. Badge Alignment Issues
+**Current Problem**: The "2 MONTHS FREE" badge is positioned at `right-4` which creates awkward spacing, especially on the Pro card where it conflicts with the "Most Popular" badge.
 
-**Note**: First-month 50% discount applies only to monthly billing; annual plans already have the 2-months-free discount.
+**Solution**: 
+- Move discount badges to a consistent position inside the card header area
+- For Pro card with two badges, stack them horizontally with proper spacing
+- Use flexbox layout within the card header for clean alignment
 
-## Feature Limits by Tier
+### 2. Missing Hover Effects
+**Current**: Cards have no visual feedback on hover.
 
-| Feature | Free | Standard | Pro |
-|---------|------|----------|-----|
-| Assets | Up to 10 | Up to 30 | Unlimited |
-| Real-time prices | Basic | Yes | Yes |
-| Income/Expense | No | Yes | Yes |
-| Allocation charts | No | Yes | Yes |
-| Performance tracking | No | No | Yes |
-| Debt calculator | No | No | Yes |
-| Investment strategy | No | No | Yes |
+**Solution**: Add hover state with:
+- Subtle border color change (brighten border)
+- Slight scale transform (`scale(1.02)`)
+- Enhanced shadow on hover
+- Smooth transition animation
 
-## Files to Modify
+### 3. 50% First Month Discount Not Prominent (Monthly)
+**Current**: Shows as plain text "First month: €2.50".
+
+**Solution**: When monthly billing is selected:
+- Add a prominent strikethrough on the regular price
+- Show the discounted price with a highlight/badge treatment
+- Add visual emphasis with color (emerald/green for savings)
+
+## Technical Changes
+
+### `src/components/landing/PricingSection.tsx`
+
+**Badge Positioning (lines 139-156)**:
+- Move badges inside the card content area
+- Create a flex row for badges at the top of each card
+- Align badges consistently: "Most Popular" left, discount badge right
+
+**Hover Effects (lines 85-90 and 126-137)**:
+- Add `transition-all duration-300` for smooth animations
+- Add `hover:border-primary/50` for border highlight
+- Add `hover:scale-[1.02]` for subtle zoom
+- Add `hover:shadow-lg` or custom gold shadow on hover
+
+**First Month Discount Display (lines 174-180)**:
+- When monthly: Show original price with strikethrough
+- Display discounted price prominently with emerald styling
+- Add "50% OFF" label next to the discounted price
+
+### Code Changes Preview
+
+```tsx
+// Card container with hover effects
+<motion.div
+  className={cn(
+    'glass-card rounded-2xl p-6 lg:p-8 border relative',
+    'transition-all duration-300 hover:scale-[1.02] hover:shadow-xl',
+    plan.isPopular
+      ? 'border-primary gold-glow hover:border-primary'
+      : 'border-border/50 hover:border-primary/50'
+  )}
+>
+  {/* Badges row - inside card, not absolute positioned */}
+  <div className="flex items-center justify-between mb-4">
+    {plan.isPopular && (
+      <span className="bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
+        Most Popular
+      </span>
+    )}
+    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs font-semibold ml-auto">
+      {isAnnual ? '2 MONTHS FREE' : '50% OFF 1ST MONTH'}
+    </Badge>
+  </div>
+  
+  {/* Price display with prominent discount */}
+  <div className="mb-6">
+    <span className="text-4xl font-bold">€{displayPrice.toFixed(2)}</span>
+    <span className="text-muted-foreground">{isAnnual ? '/year' : '/mo'}</span>
+    
+    {!isAnnual && (
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-sm text-muted-foreground line-through">
+          €{plan.monthlyPrice.toFixed(2)}
+        </span>
+        <span className="text-sm font-semibold text-emerald-400">
+          €{firstMonthPrice.toFixed(2)} first month
+        </span>
+      </div>
+    )}
+  </div>
+</motion.div>
+```
+
+## Visual Result
+
+**Before (Annual)**:
+```text
++------------------+
+|     [2 MO FREE] <- floating awkwardly
+| Standard         |
+| €49.90/year      |
++------------------+
+```
+
+**After (Annual)**:
+```text
++------------------+
+| [2 MONTHS FREE]  | <- aligned inside card
+|                  |
+| Standard         |
+| €49.90/year      |
+| €4.16/mo         |
++------------------+
+```
+
+**Monthly with Discount Highlight**:
+```text
++------------------+
+| [50% OFF 1ST MO] |
+|                  |
+| Standard         |
+| €4.99/mo         |
+| ~~€4.99~~ €2.50  | <- strikethrough + highlight
+| first month      |
++------------------+
+```
+
+**Hover State**:
+- Card slightly scales up (1.02x)
+- Border transitions to gold/primary color
+- Enhanced shadow appears
+- Smooth 300ms transition
+
+## Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/lib/subscription.ts` | Add billing period types, annual pricing, currency, discounts |
-| `src/components/landing/PricingSection.tsx` | EUR, billing toggle, discount badges, remove money-back |
-| `src/components/SubscriptionDialog.tsx` | EUR, billing toggle, discount display |
-
-## Implementation Details
-
-### 1. `src/lib/subscription.ts` - Central Configuration
-
-Add new types and update the plan structure:
-
-```typescript
-export type SubscriptionTier = 'free' | 'standard' | 'pro';
-export type BillingPeriod = 'monthly' | 'annual';
-
-export interface SubscriptionPlan {
-  tier: SubscriptionTier;
-  name: string;
-  monthlyPrice: number;
-  annualPrice: number;          // Total annual price (10 months worth)
-  currency: string;             // 'EUR'
-  firstMonthDiscount: number;   // 0.50 = 50% off first month (monthly only)
-  features: string[];
-  assetLimit?: number;          // undefined = unlimited
-  isPopular?: boolean;
-}
-
-export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  {
-    tier: 'standard',
-    name: 'Standard',
-    monthlyPrice: 4.99,
-    annualPrice: 49.90,         // 10 months (2 free)
-    currency: 'EUR',
-    firstMonthDiscount: 0.50,
-    assetLimit: 30,
-    features: [
-      'Up to 30 assets',
-      'Real-time price updates',
-      'Income & expense tracking',
-      'Asset allocation charts',
-    ],
-  },
-  {
-    tier: 'pro',
-    name: 'Pro',
-    monthlyPrice: 9.99,
-    annualPrice: 99.90,         // 10 months (2 free)
-    currency: 'EUR',
-    firstMonthDiscount: 0.50,
-    isPopular: true,
-    features: [
-      'Unlimited asset tracking',
-      'Everything in Standard',
-      'Monthly performance tracking',
-      'YTD overview & analytics',
-      'Non-recurring expense tracking',
-      'Debt payoff calculator',
-      'Investment strategy advisor',
-      'Priority support',
-      'Early access to features',
-    ],
-  },
-];
-
-// Helper functions
-export function getFirstMonthPrice(plan: SubscriptionPlan): number {
-  return plan.monthlyPrice * (1 - plan.firstMonthDiscount);
-}
-
-export function getMonthlyEquivalent(plan: SubscriptionPlan): number {
-  return Number((plan.annualPrice / 12).toFixed(2));
-}
-
-export function getAnnualSavings(plan: SubscriptionPlan): number {
-  return (plan.monthlyPrice * 12) - plan.annualPrice;
-}
-```
-
-### 2. `src/components/landing/PricingSection.tsx` - Landing Page
-
-Key changes:
-- Add monthly/annual billing toggle
-- Update all prices to EUR (€)
-- Show "50% OFF FIRST MONTH" badge on monthly plans
-- Show "2 MONTHS FREE" badge on annual plans
-- Remove money-back guarantee, keep "Cancel anytime • No hidden fees"
-- Update Standard features to show "Up to 30 assets"
-
-```text
-Layout with billing toggle:
-
-        [ Monthly ]  [ Annual - Save 17% ]
-                         ↑ toggle
-
-+------------+  +----------------+  +------------+
-|   FREE     |  |   STANDARD     |  |    PRO     |
-|            |  | 50% OFF 1ST MO |  |  POPULAR   |
-|    €0      |  |                |  | 50% OFF    |
-|            |  |    €4.99/mo    |  |            |
-| 10 assets  |  |  First: €2.50  |  |  €9.99/mo  |
-|            |  |   30 assets    |  | First: €5  |
-+------------+  +----------------+  +------------+
-
-When "Annual" is selected:
-
-+------------+  +----------------+  +------------+
-|   FREE     |  |   STANDARD     |  |    PRO     |
-|            |  |  2 MONTHS FREE |  |  POPULAR   |
-|    €0      |  |                |  | 2 MO FREE  |
-|            |  |   €49.90/yr    |  |            |
-| 10 assets  |  |  (€4.16/mo)    |  | €99.90/yr  |
-|            |  |   30 assets    |  | (€8.33/mo) |
-+------------+  +----------------+  +------------+
-```
-
-Footer update:
-```
-Before: "30-day money-back guarantee • Cancel anytime • No hidden fees"
-After:  "Cancel anytime • No hidden fees"
-```
-
-### 3. `src/components/SubscriptionDialog.tsx` - In-App Upgrade
-
-Key changes:
-- Add billing period toggle (Monthly / Annual)
-- Update all prices to EUR (€)
-- Show appropriate discount based on billing period
-- Update payment summary to show price breakdown
-
-```text
-Pricing step with billing toggle:
-
-   Choose Your Plan
-   
-   [ Monthly ]  [ Annual ]
-   
-   +------------------+  +------------------+
-   | STANDARD         |  | PRO      POPULAR |
-   | 50% OFF 1ST MO   |  | 50% OFF 1ST MO   |
-   |                  |  |                  |
-   | €4.99/mo         |  | €9.99/mo         |
-   | First mo: €2.50  |  | First mo: €5.00  |
-   +------------------+  +------------------+
-
-Payment step shows:
-
-+--------------------------------+
-| 🛡 Standard Monthly            |
-|                                |
-| First month: €2.50 (50% off)   |
-| Then: €4.99/month              |
-|                                |
-| Total today: €2.50             |
-+--------------------------------+
-
-OR for annual:
-
-+--------------------------------+
-| 🛡 Standard Annual             |
-|                                |
-| €49.90/year (€4.16/mo)         |
-| Save €9.98 (2 months free)     |
-|                                |
-| Total today: €49.90            |
-+--------------------------------+
-```
-
-## Data Model Considerations
-
-The `user_subscriptions` table may need a `billing_period` column to track whether users are on monthly or annual plans. This would be needed when implementing real payment processing with Stripe.
-
-```sql
--- Future consideration (not part of this change)
-ALTER TABLE user_subscriptions 
-ADD COLUMN billing_period TEXT DEFAULT 'monthly' CHECK (billing_period IN ('monthly', 'annual'));
-```
-
-For now, since payment is still a mock UI, we'll track the billing period in component state.
-
-## Summary of All Changes
-
-| Change | Location |
-|--------|----------|
-| Currency USD → EUR | All 3 files |
-| Standard: 30 asset limit | subscription.ts, PricingSection.tsx |
-| 50% first month (monthly only) | All 3 files |
-| 17% annual discount (2 mo free) | All 3 files |
-| Billing period toggle | PricingSection.tsx, SubscriptionDialog.tsx |
-| Remove money-back guarantee | PricingSection.tsx |
+| `src/components/landing/PricingSection.tsx` | Badge positioning, hover effects, discount display |
 
