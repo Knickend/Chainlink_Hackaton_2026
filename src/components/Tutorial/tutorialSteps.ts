@@ -49,6 +49,20 @@ export const tutorialSteps: TutorialStep[] = [
     position: 'top',
   },
   {
+    id: 'portfolio-history',
+    target: 'portfolio-history-card',
+    title: 'Track Your Progress',
+    content: 'See how your net worth changes month-over-month. Compare any two months side-by-side to understand your financial trajectory. (Pro feature)',
+    position: 'left',
+  },
+  {
+    id: 'investment-strategy',
+    target: 'investment-strategy-card',
+    title: 'Smart Investment Advice',
+    content: 'Get personalized recommendations on how to allocate your monthly surplus based on your debts and financial goals. (Pro feature)',
+    position: 'top',
+  },
+  {
     id: 'assets',
     target: 'assets-section',
     title: 'Manage Your Assets',
@@ -84,11 +98,25 @@ export const tutorialSteps: TutorialStep[] = [
     position: 'top',
   },
   {
+    id: 'debt-calculator',
+    target: 'debt-payoff-calculator',
+    title: 'Debt Freedom Calculator',
+    content: 'See exactly when you\'ll be debt-free with different payoff strategies. Compare avalanche vs. snowball methods to save the most interest. (Pro feature)',
+    position: 'top',
+  },
+  {
     id: 'ai-advisor',
     target: 'ai-advisor-button',
     title: 'Your AI Financial Advisor',
     content: 'Have questions about investing, budgeting, or debt? Click here to chat with our AI financial advisor anytime.',
     position: 'left',
+  },
+  {
+    id: 'feedback',
+    target: 'feedback-button',
+    title: 'Help Us Improve',
+    content: 'Found a bug or have an idea? Click here to submit feedback directly to our team. We read every submission!',
+    position: 'right',
   },
   {
     id: 'completion',
