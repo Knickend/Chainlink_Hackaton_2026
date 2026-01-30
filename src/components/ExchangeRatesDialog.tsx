@@ -67,7 +67,7 @@ export function ExchangeRatesDialog({
 
   // Determine if forex rates are live or fallback
   const getForexStatus = (currency: string): RateStatus => {
-    if (prices.forex && prices.forex[currency] && prices.forex[currency] > 0) {
+    if (prices?.forex && prices.forex[currency] && prices.forex[currency] > 0) {
       return 'live';
     }
     return 'fallback';
@@ -76,17 +76,17 @@ export function ExchangeRatesDialog({
   // Get the forex rate (live or fallback)
   const getForexRate = (currency: BankingCurrency): number => {
     if (currency === 'USD') return 1;
-    if (prices.forex && prices.forex[currency] && prices.forex[currency] > 0) {
+    if (prices?.forex && prices.forex[currency] && prices.forex[currency] > 0) {
       return 1 / prices.forex[currency]; // Convert from USD→Currency to Currency→USD
     }
     return FOREX_RATES_TO_USD[currency];
   };
 
-  // Crypto data
-  const cryptoAssets = [
-    { name: 'Bitcoin', symbol: 'BTC', price: prices.btc, status: 'live' as RateStatus },
-    { name: 'Ethereum', symbol: 'ETH', price: prices.eth, status: 'live' as RateStatus },
-    { name: 'Chainlink', symbol: 'LINK', price: prices.link, status: 'live' as RateStatus },
+  // Crypto data - guard against undefined prices
+  const cryptoAssets = prices ? [
+    { name: 'Bitcoin', symbol: 'BTC', price: prices.btc ?? 0, status: 'live' as RateStatus },
+    { name: 'Ethereum', symbol: 'ETH', price: prices.eth ?? 0, status: 'live' as RateStatus },
+    { name: 'Chainlink', symbol: 'LINK', price: prices.link ?? 0, status: 'live' as RateStatus },
     ...(prices.stocks 
       ? Object.entries(prices.stocks)
           .filter(([symbol]) => !['GOLD', 'SILVER', 'XAU', 'XAG'].includes(symbol))
@@ -98,13 +98,13 @@ export function ExchangeRatesDialog({
             status: 'live' as RateStatus,
           }))
       : []),
-  ];
+  ] : [];
 
-  // Commodities data
-  const commodityAssets = [
-    { name: 'Gold', symbol: 'XAU', price: prices.gold, unit: '/oz' },
-    { name: 'Silver', symbol: 'XAG', price: prices.silver, unit: '/oz' },
-  ];
+  // Commodities data - guard against undefined prices
+  const commodityAssets = prices ? [
+    { name: 'Gold', symbol: 'XAU', price: prices.gold ?? 0, unit: '/oz' },
+    { name: 'Silver', symbol: 'XAG', price: prices.silver ?? 0, unit: '/oz' },
+  ] : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
