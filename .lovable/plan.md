@@ -1,108 +1,68 @@
 
 
-# Polish Subscription Dialog Plan Cards
+# Fix Badge Positioning in Subscription Dialog
 
-## Problem Analysis
+## Problem
 
-The current badge positioning has alignment issues:
+Looking at the screenshot, the badges are misaligned:
 
-1. **Standard card**: The "50% OFF" badge at `-top-2.5 right-2` conflicts with the selection checkmark at `top-3 right-3`
-2. **Pro card**: Both "POPULAR" (centered) and "50% OFF" (right-aligned) badges appear, creating visual clutter and misalignment
-3. **Inconsistent spacing**: Badges have different positioning strategies
+1. **Standard card**: The single "50% OFF" badge appears left of center
+2. **Pro card**: The "POPULAR" + "50% OFF" badges are also shifted left
+3. The selection checkmark (top-right) creates visual imbalance with the centered badges
+
+## Root Cause
+
+The current implementation centers badges across the full card width (`left-0 right-0 justify-center`), but:
+- The checkmark at `top-4 right-4` occupies space in the top-right corner
+- This makes centered badges appear visually off-balance
+- With different badge counts per card (1 vs 2), alignment looks inconsistent
 
 ## Solution
 
-Restructure badge positioning with a unified approach:
-
-1. Create a **single badge container** at the top of each card that holds all badges in a row
-2. Position badges **inline** rather than absolutely scattered
-3. Move the selection checkmark **outside** the badge area to prevent overlap
-4. Use consistent sizing and spacing for all badges
+Position badges at the **top-left** of the card (aligned with card content) and keep the checkmark at the **top-right**. This creates a clear visual hierarchy:
+- Badges anchor to left, following content flow
+- Checkmark anchors to right, indicating selection
 
 ## File to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/SubscriptionDialog.tsx` | Restructure badge positioning for better alignment |
+| `src/components/SubscriptionDialog.tsx` | Change badge positioning from center to left-aligned |
 
 ## Technical Changes
 
-### Current Structure (lines 179-195, 238-245)
+### `src/components/SubscriptionDialog.tsx` - Line 180
+
+**Current**:
 ```tsx
-{/* POPULAR badge - centered */}
-{plan.isPopular && (
-  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-    <span className="...">POPULAR</span>
-  </div>
-)}
-
-{/* Discount badge - right aligned */}
-<div className="absolute -top-2.5 right-2">
-  <Badge>50% OFF</Badge>
-</div>
-
-{/* Selection checkmark - also right, causes overlap */}
-{isSelected && (
-  <motion.div className="absolute top-3 right-3">
-    <Check />
-  </motion.div>
-)}
-```
-
-### Proposed Structure
-```tsx
-{/* Unified badge row - positioned above card content */}
-<div className="absolute -top-3 left-0 right-0 flex items-center justify-center gap-2 px-4">
-  {plan.isPopular && (
-    <span className="px-2.5 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full uppercase tracking-wide">
-      Popular
-    </span>
-  )}
-  <Badge 
-    variant="secondary" 
-    className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5"
-  >
-    {isAnnual ? '2 MO FREE' : '50% OFF'}
-  </Badge>
-</div>
-
-{/* Selection checkmark - moved inside card padding area */}
-{isSelected && (
-  <motion.div className="absolute top-4 right-4 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-    <Check className="w-3 h-3 text-primary-foreground" />
-  </motion.div>
-)}
-```
-
-## Visual Comparison
-
-**Before**:
-```text
-     [POPULAR]              [50% OFF]  [checkmark overlaps here]
-+------------------+   +------------------+
-|  Standard        |   |  Pro             |
-|  €4.99/mo        |   |  €9.99/mo        |
+<div className="absolute -top-3 left-0 right-0 flex items-center justify-center gap-1.5">
 ```
 
 **After**:
-```text
-   [POPULAR] [50% OFF]      [50% OFF]
-+------------------+   +------------------+
-|  Standard    [✓] |   |  Pro         [✓] |
-|  €4.99/mo        |   |  €9.99/mo        |
+```tsx
+<div className="absolute -top-3 left-4 flex items-center gap-1.5">
 ```
 
-## Specific Changes
+Changes:
+- Remove `right-0` (no longer spanning full width)
+- Remove `justify-center` (no longer centering)
+- Change `left-0` to `left-4` (align with card's internal padding)
 
-| Change | Details |
-|--------|---------|
-| Unified badge container | Single row with `flex justify-center gap-2` for all badges |
-| Consistent badge sizing | Both badges use `text-[10px]` and similar padding |
-| Checkmark repositioned | Moved to `top-4 right-4` inside the card, clear of badges |
-| Add top padding | Add `pt-3` to card content to make room for the badge row |
-| Remove duplicate positioning | Eliminate separate absolute positions for each badge |
+## Visual Result
 
-## Summary
+**Before (misaligned)**:
+```text
+       [50% OFF]                          [POPULAR] [50% OFF]
++------------------+ [✓]     +------------------+ [✓]
+|  Standard        |         |  Pro             |
+```
 
-This change consolidates badges into a unified, centered row above each card, eliminates overlap with the selection checkmark, and provides consistent visual alignment across both Standard and Pro plans.
+**After (clean left-aligned)**:
+```text
+[50% OFF]                    [POPULAR] [50% OFF]
++------------------+ [✓]     +------------------+ [✓]
+|  Standard        |         |  Pro             |
+```
+
+Both cards will have badges consistently positioned at the top-left, with checkmarks at top-right, creating balanced visual weight on each side.
 
