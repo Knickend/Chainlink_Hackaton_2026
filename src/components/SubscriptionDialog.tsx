@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Crown, CreditCard, Shield, Zap, BarChart3, Loader2, Sparkles, Calculator, Target } from 'lucide-react';
+import { Check, Crown, CreditCard, Shield, Zap, Loader2, Sparkles, Calculator, Target } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,9 +10,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { SubscriptionTier, SUBSCRIPTION_PLANS } from '@/lib/subscription';
+import { 
+  SubscriptionTier, 
+  BillingPeriod,
+  SUBSCRIPTION_PLANS, 
+  getFirstMonthPrice, 
+  getMonthlyEquivalent,
+  getAnnualSavings 
+} from '@/lib/subscription';
 
 interface SubscriptionDialogProps {
   open: boolean;
@@ -29,12 +37,14 @@ const tierIcons: Record<SubscriptionTier, typeof Crown> = {
 export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: SubscriptionDialogProps) {
   const [step, setStep] = useState<'pricing' | 'payment' | 'success'>('pricing');
   const [selectedTier, setSelectedTier] = useState<SubscriptionTier>('standard');
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
   const [cvc, setCvc] = useState('');
 
   const selectedPlan = SUBSCRIPTION_PLANS.find(p => p.tier === selectedTier);
+  const isAnnual = billingPeriod === 'annual';
 
   const handlePayment = async () => {
     if (!cardNumber || !expiry || !cvc) {
@@ -60,6 +70,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
       setCardNumber('');
       setExpiry('');
       setCvc('');
+      setBillingPeriod('monthly');
     }, 2000);
   };
 
@@ -86,8 +97,17 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
     if (!isOpen) {
       setStep('pricing');
       setSelectedTier('standard');
+      setBillingPeriod('monthly');
     }
     onOpenChange(isOpen);
+  };
+
+  const getTodayTotal = () => {
+    if (!selectedPlan) return 0;
+    if (isAnnual) {
+      return selectedPlan.annualPrice;
+    }
+    return getFirstMonthPrice(selectedPlan);
   };
 
   return (
@@ -103,11 +123,42 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
             </DialogHeader>
             
             <div className="space-y-4 py-4">
+              {/* Billing Toggle */}
+              <div className="flex justify-center">
+                <div className="inline-flex items-center gap-1 p-1 bg-muted rounded-full">
+                  <button
+                    onClick={() => setBillingPeriod('monthly')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-all",
+                      !isAnnual
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => setBillingPeriod('annual')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-all",
+                      isAnnual
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Annual
+                  </button>
+                </div>
+              </div>
+
               {/* Plan Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {SUBSCRIPTION_PLANS.map((plan, index) => {
                   const Icon = tierIcons[plan.tier];
                   const isSelected = selectedTier === plan.tier;
+                  const displayPrice = isAnnual ? plan.annualPrice : plan.monthlyPrice;
+                  const firstMonthPrice = getFirstMonthPrice(plan);
+                  const monthlyEquivalent = getMonthlyEquivalent(plan);
                   
                   return (
                     <motion.button
@@ -132,8 +183,18 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                           </span>
                         </div>
                       )}
+
+                      {/* Discount badge */}
+                      <div className="absolute -top-2.5 right-2">
+                        <Badge 
+                          variant="secondary" 
+                          className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[9px] font-semibold px-1.5"
+                        >
+                          {isAnnual ? '2 MO FREE' : '50% OFF'}
+                        </Badge>
+                      </div>
                       
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 pt-1">
                         <Icon className={cn(
                           "w-5 h-5",
                           plan.tier === 'pro' ? "text-primary" : "text-muted-foreground"
@@ -141,9 +202,20 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                         <span className="font-semibold">{plan.name}</span>
                       </div>
                       
-                      <div className="flex items-baseline gap-1 mb-3">
-                        <span className="text-2xl font-bold">${plan.price}</span>
-                        <span className="text-sm text-muted-foreground">/mo</span>
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="text-2xl font-bold">€{displayPrice.toFixed(2)}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {isAnnual ? '/yr' : '/mo'}
+                        </span>
+                      </div>
+
+                      {/* Sub-price info */}
+                      <div className="text-xs text-muted-foreground mb-3">
+                        {isAnnual ? (
+                          <span>€{monthlyEquivalent.toFixed(2)}/mo</span>
+                        ) : (
+                          <span>First month: €{firstMonthPrice.toFixed(2)}</span>
+                        )}
                       </div>
                       
                       <ul className="space-y-1.5">
@@ -206,7 +278,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                 size="lg"
               >
                 <CreditCard className="w-4 h-4" />
-                Continue with {selectedPlan?.name} - ${selectedPlan?.price}/mo
+                Continue with {selectedPlan?.name} {isAnnual ? 'Annual' : 'Monthly'}
               </Button>
               
               <p className="text-xs text-center text-muted-foreground">
@@ -216,7 +288,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
           </>
         )}
 
-        {step === 'payment' && (
+        {step === 'payment' && selectedPlan && (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -226,16 +298,51 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
             </DialogHeader>
 
             <div className="space-y-4 py-4">
-              <div className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {selectedTier === 'pro' ? (
-                    <Crown className="w-4 h-4 text-primary" />
-                  ) : (
-                    <Shield className="w-4 h-4 text-muted-foreground" />
-                  )}
-                  <span className="text-sm">{selectedPlan?.name} Monthly</span>
+              {/* Payment Summary */}
+              <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {selectedTier === 'pro' ? (
+                      <Crown className="w-4 h-4 text-primary" />
+                    ) : (
+                      <Shield className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {selectedPlan.name} {isAnnual ? 'Annual' : 'Monthly'}
+                    </span>
+                  </div>
                 </div>
-                <span className="font-semibold">${selectedPlan?.price}/mo</span>
+
+                <div className="border-t border-border pt-2 space-y-1 text-sm">
+                  {isAnnual ? (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Annual plan (€{getMonthlyEquivalent(selectedPlan).toFixed(2)}/mo)</span>
+                        <span>€{selectedPlan.annualPrice.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-400">
+                        <span>Savings (2 months free)</span>
+                        <span>-€{getAnnualSavings(selectedPlan).toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>First month (50% off)</span>
+                        <span>€{getFirstMonthPrice(selectedPlan).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Then monthly</span>
+                        <span>€{selectedPlan.monthlyPrice.toFixed(2)}/mo</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="border-t border-border pt-2 flex justify-between font-semibold">
+                  <span>Total today</span>
+                  <span>€{getTodayTotal().toFixed(2)}</span>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -296,7 +403,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                   ) : (
                     <>
                       <Shield className="w-4 h-4" />
-                      Subscribe
+                      Pay €{getTodayTotal().toFixed(2)}
                     </>
                   )}
                 </Button>
