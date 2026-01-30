@@ -35,7 +35,7 @@ export const BANKING_CURRENCIES: { value: BankingCurrency; label: string; symbol
   { value: 'THB', label: 'Thai Baht', symbol: '฿' },
 ];
 
-// Approximate forex rates to USD (updated periodically)
+// Approximate forex rates to USD (fallback values when live rates unavailable)
 export const FOREX_RATES_TO_USD: Record<BankingCurrency, number> = {
   USD: 1,
   EUR: 1.08,
@@ -58,6 +58,23 @@ export const FOREX_RATES_TO_USD: Record<BankingCurrency, number> = {
   KRW: 0.00073,
   THB: 0.029,
 };
+
+// Get forex rate to USD using live rates with fallback to static
+export function getForexRateToUSD(
+  currency: string, 
+  liveRates?: Record<string, number>
+): number {
+  // USD is always 1
+  if (currency === 'USD') return 1;
+  
+  // Live rate takes priority (API returns USD→Currency, we need Currency→USD)
+  if (liveRates && liveRates[currency] && liveRates[currency] > 0) {
+    return 1 / liveRates[currency];
+  }
+  
+  // Fallback to static rates
+  return FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+}
 
 export interface Asset {
   id: string;
@@ -171,22 +188,31 @@ export function calculateConversionRates(btcPrice: number, goldPrice: number): R
   };
 }
 
-// Helper to convert banking currency to USD
-export function convertToUSD(amount: number, currency: string): number {
-  const rate = FOREX_RATES_TO_USD[currency as BankingCurrency];
-  return rate ? amount * rate : amount;
+// Helper to convert banking currency to USD (supports live forex rates)
+export function convertToUSD(
+  amount: number, 
+  currency: string, 
+  liveForexRates?: Record<string, number>
+): number {
+  const rate = getForexRateToUSD(currency, liveForexRates);
+  return amount * rate;
 }
 
-// Helper to convert from one fiat currency to another via USD
-export function convertCurrency(amount: number, fromCurrency: string, toCurrency: string): number {
+// Helper to convert from one fiat currency to another via USD (supports live forex rates)
+export function convertCurrency(
+  amount: number, 
+  fromCurrency: string, 
+  toCurrency: string,
+  liveForexRates?: Record<string, number>
+): number {
   // If same currency, no conversion needed
   if (fromCurrency === toCurrency) return amount;
   
   // Convert to USD first
-  const amountInUSD = convertToUSD(amount, fromCurrency);
+  const amountInUSD = convertToUSD(amount, fromCurrency, liveForexRates);
   
   // Then convert from USD to target currency
-  const targetRate = FOREX_RATES_TO_USD[toCurrency as BankingCurrency];
+  const targetRate = getForexRateToUSD(toCurrency, liveForexRates);
   if (!targetRate) return amountInUSD; // If target not found, return USD amount
   
   return amountInUSD / targetRate;

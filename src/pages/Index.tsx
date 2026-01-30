@@ -179,6 +179,7 @@ const IndexContent = () => {
               lastUpdated={lastUpdated}
               error={pricesError}
               isCached={isCached}
+              forexTimestamp={prices.forexTimestamp}
               onRefresh={refetchPrices}
             />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />

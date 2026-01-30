@@ -10,6 +10,8 @@ export interface LivePrices {
   silver: number;
   timestamp: string;
   stocks?: Record<string, { price: number; change: number; changePercent: number }>;
+  forex?: Record<string, number>; // USD to other currencies (e.g., { EUR: 0.92, GBP: 0.79 })
+  forexTimestamp?: string; // Separate timestamp for forex data freshness
 }
 
 const RESERVED_SPOT_SYMBOLS = new Set(['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER', 'XAU', 'XAG']);
@@ -22,6 +24,8 @@ const DEFAULT_PRICES: LivePrices = {
   silver: 30,
   timestamp: new Date().toISOString(),
   stocks: {},
+  forex: { USD: 1 },
+  forexTimestamp: new Date().toISOString(),
 };
 
 export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCryptoSymbols?: string[]) {
@@ -33,6 +37,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
   const { toast } = useToast();
   const hasFetchedRef = useRef(false);
   const hasFetchedAdditionalRef = useRef(false);
+  const hasFetchedForexRef = useRef(false);
   const previousSymbolsRef = useRef<string>('');
 
   // Add or update a stock price
@@ -62,6 +67,8 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
         setPrices((prev) => ({
           ...data.data,
           stocks: prev.stocks,
+          forex: prev.forex,
+          forexTimestamp: prev.forexTimestamp,
         }));
         setLastUpdated(new Date(data.data.timestamp));
         setIsCached(data.cached === true);
@@ -127,6 +134,31 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     }
   }, []);
 
+  // Fetch forex rates
+  const fetchForexRates = useCallback(async () => {
+    console.log('Fetching forex rates...');
+    
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('fetch-forex-rates');
+
+      if (fnError) {
+        console.error('Forex rate fetch error:', fnError);
+        return;
+      }
+
+      if (data?.success && data?.data) {
+        setPrices((prev) => ({
+          ...prev,
+          forex: data.data,
+          forexTimestamp: data.timestamp || new Date().toISOString(),
+        }));
+        console.log('Forex rates loaded:', Object.keys(data.data).length, 'currencies');
+      }
+    } catch (err) {
+      console.error('Failed to fetch forex rates:', err);
+    }
+  }, []);
+
   // Initial load: first try cache, then fetch live
   useEffect(() => {
     if (hasFetchedRef.current) return;
@@ -151,20 +183,33 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
           const silverPrice = cachedPrices.find(p => p.symbol === 'SILVER');
 
           const stocksMap: Record<string, { price: number; change: number; changePercent: number }> = {};
+          const forexMap: Record<string, number> = { USD: 1 };
+          
           cachedPrices.forEach(p => {
             // Keep our canonical spot symbols (BTC/ETH/LINK/GOLD/SILVER) out of the per-ticker map
             // so they don't override the dedicated livePrices fields.
             // Include crypto assets in the stocks map for dynamic crypto symbols
-            if ((p.asset_type === 'stock' || p.asset_type === 'commodity' || p.asset_type === 'crypto') && !RESERVED_SPOT_SYMBOLS.has(p.symbol)) {
+          if ((p.asset_type === 'stock' || p.asset_type === 'commodity' || p.asset_type === 'crypto') && !RESERVED_SPOT_SYMBOLS.has(p.symbol)) {
               stocksMap[p.symbol] = {
                 price: Number(p.price),
                 change: Number(p.change) || 0,
                 changePercent: Number(p.change_percent) || 0,
               };
             }
+            
+            // Also collect forex rates from cache
+            if (p.asset_type === 'forex') {
+              forexMap[p.symbol] = Number(p.price);
+            }
           });
 
           const oldestUpdate = Math.min(...cachedPrices.map(p => new Date(p.updated_at).getTime()));
+          
+          // Find the oldest forex update for forex-specific timestamp
+          const forexPrices = cachedPrices.filter(p => p.asset_type === 'forex');
+          const forexUpdate = forexPrices.length > 0 
+            ? Math.min(...forexPrices.map(p => new Date(p.updated_at).getTime()))
+            : oldestUpdate;
 
           setPrices({
             btc: btcPrice ? Number(btcPrice.price) : DEFAULT_PRICES.btc,
@@ -174,6 +219,8 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
             silver: silverPrice ? Number(silverPrice.price) : DEFAULT_PRICES.silver,
             timestamp: new Date(oldestUpdate).toISOString(),
             stocks: stocksMap,
+            forex: Object.keys(forexMap).length > 0 ? forexMap : { USD: 1 },
+            forexTimestamp: new Date(forexUpdate).toISOString(),
           });
           setLastUpdated(new Date(oldestUpdate));
           setIsCached(true);
@@ -185,11 +232,19 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
       }
     };
 
-    // Load cache first, then fetch live prices
+    // Load cache first, then fetch live prices and forex
     loadCachedPrices().then(() => {
       fetchPrices(false);
+      fetchForexRates();
     });
-  }, [fetchPrices]);
+  }, [fetchPrices, fetchForexRates]);
+
+  // Initial forex fetch
+  useEffect(() => {
+    if (hasFetchedForexRef.current) return;
+    hasFetchedForexRef.current = true;
+    // Forex is fetched in the main useEffect above
+  }, []);
 
   // Fetch additional crypto prices when symbols change
   useEffect(() => {
@@ -206,7 +261,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     fetchAdditionalCryptoPrices(additionalCryptoSymbols);
   }, [additionalCryptoSymbols, fetchAdditionalCryptoPrices]);
 
-  // Periodic refresh
+  // Periodic refresh for prices and crypto
   useEffect(() => {
     const interval = setInterval(() => {
       fetchPrices(true);
@@ -217,13 +272,32 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     return () => clearInterval(interval);
   }, [fetchPrices, fetchAdditionalCryptoPrices, additionalCryptoSymbols, refreshInterval]);
 
+  // Periodic refresh for forex (every hour)
+  useEffect(() => {
+    const forexInterval = setInterval(() => {
+      fetchForexRates();
+    }, 60 * 60 * 1000); // 1 hour
+    return () => clearInterval(forexInterval);
+  }, [fetchForexRates]);
+
+  // Manual refetch that includes forex
+  const refetchAll = useCallback(async (showToast = true) => {
+    await Promise.all([
+      fetchPrices(showToast),
+      fetchForexRates(),
+      additionalCryptoSymbols && additionalCryptoSymbols.length > 0 
+        ? fetchAdditionalCryptoPrices(additionalCryptoSymbols) 
+        : Promise.resolve(),
+    ]);
+  }, [fetchPrices, fetchForexRates, fetchAdditionalCryptoPrices, additionalCryptoSymbols]);
+
   return {
     prices,
     isLoading,
     lastUpdated,
     error,
     isCached,
-    refetch: fetchPrices,
+    refetch: refetchAll,
     addStockPrice,
   };
 }
