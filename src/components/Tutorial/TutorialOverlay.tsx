@@ -27,83 +27,119 @@ export function TutorialOverlay() {
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  // Find and return a visible element for the tutorial target
+  const findVisibleElement = useCallback((target: string): Element | null => {
+    const elements = document.querySelectorAll(`[data-tutorial="${target}"]`);
+    for (const el of elements) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        return el;
+      }
+    }
+    return null;
+  }, []);
+
   const updateTargetPosition = useCallback(() => {
     if (!currentStepData?.target) {
       setTargetRect(null);
       return;
     }
 
-    const findElement = (attempt = 0) => {
-      const element = document.querySelector(`[data-tutorial="${currentStepData.target}"]`);
+    const element = findVisibleElement(currentStepData.target);
+    if (!element) {
+      setTargetRect(null);
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const padding = 8;
+    
+    // Use viewport coordinates only (position: fixed)
+    setTargetRect({
+      top: rect.top - padding,
+      left: rect.left - padding,
+      width: rect.width + padding * 2,
+      height: rect.height + padding * 2,
+    });
+
+    // Calculate tooltip position using viewport coordinates
+    const tooltipWidth = 320;
+    const tooltipHeight = 200;
+    const margin = 16;
+
+    let top = rect.bottom + margin;
+    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+
+    // Adjust based on position preference
+    switch (currentStepData.position) {
+      case 'top':
+        top = rect.top - tooltipHeight - margin;
+        break;
+      case 'left':
+        top = rect.top + rect.height / 2 - tooltipHeight / 2;
+        left = rect.left - tooltipWidth - margin;
+        break;
+      case 'right':
+        top = rect.top + rect.height / 2 - tooltipHeight / 2;
+        left = rect.right + margin;
+        break;
+      default: // bottom
+        break;
+    }
+
+    // Keep tooltip within viewport (use innerWidth/innerHeight for fixed positioning)
+    left = Math.max(margin, Math.min(left, window.innerWidth - tooltipWidth - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - tooltipHeight - margin));
+
+    setTooltipPosition({ top, left });
+  }, [currentStepData, findVisibleElement]);
+
+  // Scroll element into view only when step changes (not on every scroll)
+  useEffect(() => {
+    if (!isActive || !currentStepData?.target) return;
+
+    const scrollToElement = (attempt = 0) => {
+      const element = findVisibleElement(currentStepData.target!);
       if (element) {
+        // Check if element is already visible in viewport
         const rect = element.getBoundingClientRect();
-        const padding = 8;
-        setTargetRect({
-          top: rect.top - padding + window.scrollY,
-          left: rect.left - padding,
-          width: rect.width + padding * 2,
-          height: rect.height + padding * 2,
-        });
-
-        // Calculate tooltip position
-        const tooltipWidth = 320;
-        const tooltipHeight = 200;
-        const margin = 16;
-
-        let top = rect.bottom + window.scrollY + margin;
-        let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-
-        // Adjust based on position preference
-        switch (currentStepData.position) {
-          case 'top':
-            top = rect.top + window.scrollY - tooltipHeight - margin;
-            break;
-          case 'left':
-            top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
-            left = rect.left - tooltipWidth - margin;
-            break;
-          case 'right':
-            top = rect.top + window.scrollY + rect.height / 2 - tooltipHeight / 2;
-            left = rect.right + margin;
-            break;
-          default: // bottom
-            break;
+        const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+        
+        if (!isVisible) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-
-        // Keep tooltip within viewport
-        left = Math.max(margin, Math.min(left, window.innerWidth - tooltipWidth - margin));
-        top = Math.max(margin, Math.min(top, document.documentElement.scrollHeight - tooltipHeight - margin));
-
-        setTooltipPosition({ top, left });
-
-        // Scroll element into view if needed
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else if (attempt < 3) {
-        // Retry after delay
-        setTimeout(() => findElement(attempt + 1), 200);
+        
+        // Update position immediately
+        updateTargetPosition();
+        
+        // Update again after scroll settles
+        setTimeout(updateTargetPosition, 300);
+      } else if (attempt < 5) {
+        // Retry with increasing delays for elements that render later
+        setTimeout(() => scrollToElement(attempt + 1), 200);
       } else {
         console.warn(`Tutorial element not found: ${currentStepData.target}`);
         setTargetRect(null);
       }
     };
 
-    findElement();
-  }, [currentStepData]);
+    // Small delay to let DOM update after step change
+    const timer = setTimeout(() => scrollToElement(0), 100);
+    return () => clearTimeout(timer);
+  }, [isActive, currentStepData?.target, findVisibleElement, updateTargetPosition]);
 
+  // Update position on resize and scroll (but don't trigger new scrolls)
   useEffect(() => {
-    if (isActive && currentStepData?.target) {
-      // Small delay to let DOM update
-      const timer = setTimeout(updateTargetPosition, 100);
-      window.addEventListener('resize', updateTargetPosition);
-      window.addEventListener('scroll', updateTargetPosition);
+    if (!isActive || !currentStepData?.target) return;
 
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('resize', updateTargetPosition);
-        window.removeEventListener('scroll', updateTargetPosition);
-      };
-    }
-  }, [isActive, currentStepData, updateTargetPosition]);
+    window.addEventListener('resize', updateTargetPosition);
+    window.addEventListener('scroll', updateTargetPosition);
+
+    return () => {
+      window.removeEventListener('resize', updateTargetPosition);
+      window.removeEventListener('scroll', updateTargetPosition);
+    };
+  }, [isActive, currentStepData?.target, updateTargetPosition]);
 
   // Handle keyboard navigation
   useEffect(() => {
