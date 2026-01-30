@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -35,7 +35,7 @@ import { ProBadge } from '@/components/ProBadge';
 import { PerformanceCard } from '@/components/PerformanceCard';
 import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
-import { SecuritySettings } from '@/components/security/SecuritySettings';
+
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory, DebtType } from '@/lib/types';
@@ -196,7 +196,17 @@ const IndexContent = () => {
                 <span className="hidden sm:inline">Tour</span>
               </Button>
             )}
-            {!isDemo && <SecuritySettings />}
+            {!isDemo && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/settings')}
+                className="rounded-full"
+                title="Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
+            )}
             {isDemo ? (
               <Button 
                 variant="default" 

@@ -25,7 +25,7 @@ import {
 interface SubscriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubscribe: (tier: SubscriptionTier) => void;
+  onSubscribe: (tier: SubscriptionTier, billingPeriod?: BillingPeriod) => void;
 }
 
 const tierIcons: Record<SubscriptionTier, typeof Crown> = {
@@ -64,7 +64,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
     
     // After showing success, close dialog and update state
     setTimeout(() => {
-      onSubscribe(selectedTier);
+      onSubscribe(selectedTier, billingPeriod);
       onOpenChange(false);
       setStep('pricing');
       setCardNumber('');
