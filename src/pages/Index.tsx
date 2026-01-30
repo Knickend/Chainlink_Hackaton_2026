@@ -23,8 +23,7 @@ import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { ViewAllAssetsDialog } from '@/components/ViewAllAssetsDialog';
 import { AddIncomeDialog } from '@/components/AddIncomeDialog';
-import { AddExpenseDialog } from '@/components/AddExpenseDialog';
-import { AddOneTimeExpenseDialog } from '@/components/AddOneTimeExpenseDialog';
+import { AddExpenseDropdown } from '@/components/AddExpenseDropdown';
 import { AddDebtDialog } from '@/components/AddDebtDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
 import { DemoBanner } from '@/components/DemoBanner';
@@ -406,10 +405,15 @@ const IndexContent = () => {
               items={expenses}
               total={formatValue(metrics.totalExpenses)}
               formatValue={formatValue}
-              actionButton={isDemo ? undefined : <AddExpenseDialog onAdd={(data: { name: string; amount: number; category: string }) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
-              secondaryActionButton={!isDemo && isPro ? (
-                <AddOneTimeExpenseDialog onAdd={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />
-              ) : undefined}
+              actionButton={isDemo ? undefined : (
+                <AddExpenseDropdown
+                  onAddRecurring={(data) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })}
+                  onAddOneTime={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })}
+                  displayUnit={displayUnit}
+                  isPro={isPro}
+                  onUpgrade={() => setShowSubscriptionDialog(true)}
+                />
+              )}
               onUpdateExpense={isDemo ? undefined : updateExpense}
               onDeleteExpense={isDemo ? undefined : deleteExpense}
               displayUnit={displayUnit}
