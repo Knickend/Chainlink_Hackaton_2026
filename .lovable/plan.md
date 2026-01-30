@@ -1,145 +1,106 @@
 
-# Consolidate Expense Buttons into Single Dropdown Menu
+# Fix Dashboard Card Alignment and Button Overflow
 
-## Overview
+## Problem Analysis
 
-Improve the alignment of the Income, Expenses, and Debt cards by consolidating the two expense buttons ("Add Recurring" and "Non-Recurring") into a single "Add Expense" button with a dropdown menu. This creates visual consistency across all three cards and provides a cleaner user experience.
+The "Add Expense" button is overflowing outside the Expenses card boundary. This creates visual misalignment compared to the Income and Debt cards.
 
-## Current State
+| Card | Button | Issue |
+|------|--------|-------|
+| Monthly Income | "Add Income" | Fits correctly |
+| Expenses | "Add Expense ▾" | Overflows card boundary |
+| Debts & Liabilities | "Add Debt" | Fits correctly |
 
-| Card | Buttons | Issue |
-|------|---------|-------|
-| Monthly Income | 1 button: "Add Income" | Aligned |
-| Expenses | 2 buttons: "Add Recurring" + "Non-Recurring" | Takes extra space, misaligned |
-| Debts & Liabilities | 1 button: "Add Debt" | Aligned |
+**Root Causes:**
+1. The `IncomeExpenseCard` header uses flexbox without proper constraints on child elements
+2. The left section (icon + title + stats) doesn't have a minimum width limit, pushing the button outside
+3. The card container lacks `overflow-hidden` to clip content
+4. The button section needs `flex-shrink-0` to maintain its size while allowing the middle section to compress
 
 ## Solution
 
-Replace the two separate expense buttons with a single "Add Expense" dropdown button that contains:
-- "Recurring Expense" option
-- "Non-Recurring Expense" option (with Pro badge for non-Pro users)
+Apply better flex constraints to the card header to ensure all content stays within the card boundaries.
 
-```text
-Before:                          After:
-+---------------+--------+       +---------------+
-| + Add Recurring | Non...       | + Add Expense ▾
-+---------------+--------+       +---------------+
-                                       |
-                                       ├─ Recurring Expense
-                                       └─ Non-Recurring (Pro)
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/IncomeExpenseCard.tsx` | Fix header flex layout with proper constraints |
+| `src/components/DebtOverviewCard.tsx` | Apply same fix for consistency |
+
+## Technical Changes
+
+### IncomeExpenseCard.tsx
+
+**Current header structure (lines 75-116):**
+```jsx
+<div className="flex items-center justify-between mb-4">
+  <div className="flex items-center gap-2">     {/* Left: icon + title */}
+  <div className="flex items-center gap-3">     {/* Right: total + button */}
 ```
 
-## Files to Create/Modify
+**Problems:**
+- No `min-w-0` on flex children = content can't shrink below intrinsic width
+- No `overflow-hidden` on container = content can overflow visibly
+- Middle content (totals) takes full space, pushing button outside
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/AddExpenseDropdown.tsx` | Create | New dropdown component combining both expense types |
-| `src/pages/Index.tsx` | Modify | Replace two buttons with single dropdown |
-| `src/components/IncomeExpenseCard.tsx` | Modify | Remove `secondaryActionButton` prop (no longer needed) |
-
-## Component Design
-
-### AddExpenseDropdown Component
-
-A single button that opens a dropdown menu with two options:
-
-```text
-+---------------------+
-| + Add Expense    ▾  |
-+---------------------+
-       ↓ (click)
-+---------------------+
-| ↻ Recurring         |
-|---------------------|
-| ⚡ Non-Recurring Pro |
-+---------------------+
+**Fixed structure:**
+```jsx
+<div className="flex items-center justify-between gap-3 mb-4">
+  {/* Left side: shrinkable */}
+  <div className="flex items-center gap-2 min-w-0 flex-shrink">
+    ...
+    <div className="min-w-0">
+      <h3 className="font-semibold capitalize truncate">...</h3>
+      <p className="text-xs text-muted-foreground truncate">...</p>
+    </div>
+  </div>
+  
+  {/* Right side: fixed width, won't shrink */}
+  <div className="flex items-center gap-3 flex-shrink-0">
+    ...
+  </div>
+</div>
 ```
 
-**Behavior:**
-- Click "Recurring" opens the recurring expense dialog (same form as current)
-- Click "Non-Recurring" opens the one-time expense dialog with date picker (same form as current)
-- For non-Pro users, clicking "Non-Recurring" prompts upgrade
+### DebtOverviewCard.tsx
 
-### Implementation Approach
+Apply the same pattern to the debt card header for consistency:
 
-The new component will:
-1. Use `DropdownMenu` from shadcn/ui for the menu structure
-2. Embed both expense forms in separate `Dialog` components
-3. Track which dialog is open via state
-4. Style consistently with the other "Add" buttons (red/danger color scheme)
+```jsx
+<div className="flex items-center justify-between gap-3 mb-4">
+  <div className="flex items-center gap-3 min-w-0 flex-shrink">
+    ...
+  </div>
+  <div className="flex-shrink-0">
+    {actionButton}
+  </div>
+</div>
+```
 
-## Visual Alignment Result
+### Card Container
 
-After implementation, all three cards will have matching single-button headers:
+Add `overflow-hidden` to the card containers to ensure nothing visually escapes:
+
+```jsx
+<motion.div
+  className="glass-card p-5 overflow-hidden"
+>
+```
+
+## Visual Result After Fix
+
+All three cards will have consistent alignment with buttons properly contained:
 
 ```text
 +-------------------+  +-------------------+  +----------------------+
 | Monthly Income    |  | Expenses          |  | Debts & Liabilities  |
-| + Add Income      |  | + Add Expense ▾   |  | + Add Debt           |
+| [+ Add Income]    |  | [+ Add Expense ▾] |  | [+ Add Debt]         |
 +-------------------+  +-------------------+  +----------------------+
 ```
 
-## Technical Details
-
-### AddExpenseDropdown Props
-
-```typescript
-interface AddExpenseDropdownProps {
-  onAddRecurring: (data: { name: string; amount: number; category: string }) => void;
-  onAddOneTime: (data: { name: string; amount: number; category: string; is_recurring: false; expense_date: string }) => void;
-  displayUnit: DisplayUnit;
-  isPro: boolean;
-  onUpgrade?: () => void;
-}
-```
-
-### Dropdown Menu Structure
-
-```typescript
-<DropdownMenu>
-  <DropdownMenuTrigger asChild>
-    <Button variant="outline" className="border-danger/30 text-danger">
-      <Plus /> Add Expense <ChevronDown />
-    </Button>
-  </DropdownMenuTrigger>
-  <DropdownMenuContent>
-    <DropdownMenuItem onClick={() => setRecurringOpen(true)}>
-      <Repeat /> Recurring Expense
-    </DropdownMenuItem>
-    <DropdownMenuItem onClick={handleOneTime}>
-      <Zap /> Non-Recurring {!isPro && <ProBadge />}
-    </DropdownMenuItem>
-  </DropdownMenuContent>
-</DropdownMenu>
-```
-
-### Index.tsx Changes
-
-Replace the current expense card buttons:
-
-```typescript
-// Before:
-actionButton={<AddExpenseDialog ... />}
-secondaryActionButton={isPro ? <AddOneTimeExpenseDialog ... /> : undefined}
-
-// After:
-actionButton={<AddExpenseDropdown 
-  onAddRecurring={...}
-  onAddOneTime={...}
-  displayUnit={displayUnit}
-  isPro={isPro}
-  onUpgrade={() => setShowSubscriptionDialog(true)}
-/>}
-// Remove secondaryActionButton entirely
-```
-
-## Pro Feature Handling
-
-- Non-recurring expense tracking remains a Pro feature
-- The dropdown shows both options to all users
-- Non-Pro users clicking "Non-Recurring" triggers the upgrade dialog
-- Pro badge displays next to "Non-Recurring" for visual indication
+The button will stay inside the card boundary, and if card width is very narrow, the title text will truncate rather than push the button out.
 
 ## Summary
 
-This change consolidates the two expense buttons into a single dropdown, creating visual harmony across the Income, Expenses, and Debt cards. The functionality remains identical - just accessed through a cleaner, more organized interface.
+This fix applies proper flexbox constraints (`min-w-0`, `flex-shrink-0`, `truncate`) to prevent the "Add Expense" dropdown button from overflowing the card. The same pattern is applied to the Debt card for visual consistency across all dashboard cards.
