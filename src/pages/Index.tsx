@@ -319,8 +319,8 @@ const IndexContent = () => {
         )}
 
         {/* Asset Categories */}
-        <div className="mb-8" data-tutorial="assets-section">
-          <div className="flex items-center justify-between mb-4">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
             <h2 className="text-xl font-semibold">Assets by Category</h2>
             <div className="flex items-center gap-2">
               <ViewAllAssetsDialog
@@ -330,7 +330,22 @@ const IndexContent = () => {
                 onDeleteAsset={isDemo ? undefined : deleteAsset}
                 livePrices={prices}
               />
-              {!isDemo && <div data-tutorial="add-asset-button"><AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} /></div>}
+              {isDemo ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/auth')}
+                  className="gap-2"
+                  data-tutorial="add-asset-button"
+                >
+                  <PiggyBank className="w-4 h-4" />
+                  Add Asset
+                </Button>
+              ) : (
+                <div data-tutorial="add-asset-button">
+                  <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />
+                </div>
+              )}
             </div>
           </div>
           {categoryTotals.length === 0 ? (
