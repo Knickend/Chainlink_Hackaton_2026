@@ -73,7 +73,7 @@ export function IncomeExpenseCard({
       className="glass-card p-5 overflow-hidden"
     >
       <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2 min-w-0 flex-shrink">
+        <div className="flex items-center gap-2">
           <div
             className={cn(
               'p-2 rounded-lg flex-shrink-0',
@@ -86,9 +86,9 @@ export function IncomeExpenseCard({
               <ArrowDownRight className="w-5 h-5 text-danger" />
             )}
           </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold capitalize truncate">{isIncome ? 'Monthly Income' : 'Expenses'}</h3>
-            <p className="text-xs text-muted-foreground truncate">
+          <div>
+            <h3 className="font-semibold capitalize">{isIncome ? 'Monthly Income' : 'Expenses'}</h3>
+            <p className="text-xs text-muted-foreground">
               {isIncome 
                 ? `${items.length} sources`
                 : `${recurringCount} recurring${oneTimeCount > 0 ? `, ${oneTimeCount} non-recurring` : ''}`
