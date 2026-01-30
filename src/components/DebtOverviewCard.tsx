@@ -73,21 +73,23 @@ export function DebtOverviewCard({
     const symbol = UNIT_SYMBOLS[displayUnit];
     return `${symbol}${converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="glass-card rounded-xl p-6 overflow-hidden"
+      className="glass-card rounded-xl p-5 overflow-hidden"
     >
-      <div className="flex items-center justify-between gap-3 mb-4">
+      {/* Row 1: Title + Action Button */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
             <CreditCard className="w-5 h-5 text-destructive" />
           </div>
           <div>
             <h3 className="font-semibold">Debts & Liabilities</h3>
-            <p className="text-sm text-muted-foreground">Track loans and interest</p>
+            <p className="text-xs text-muted-foreground">Track loans and interest</p>
           </div>
         </div>
         <div className="flex-shrink-0">
@@ -95,24 +97,24 @@ export function DebtOverviewCard({
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-4 p-3 bg-secondary/30 rounded-lg">
+      {/* Row 2: Stats Summary Grid */}
+      <div className="grid grid-cols-3 gap-2 p-3 bg-secondary/30 rounded-lg mb-4">
         <div className="text-center">
+          <p className="font-mono font-semibold text-lg text-destructive/90">{formatValue(totalDebt)}</p>
           <p className="text-xs text-muted-foreground">Total Debt</p>
-          <p className="font-semibold text-destructive/90">{formatValue(totalDebt)}</p>
         </div>
         <div className="text-center border-x border-border/50">
-          <p className="text-xs text-muted-foreground">Monthly Payments</p>
           <p className="font-semibold">{formatValue(monthlyPayments)}</p>
+          <p className="text-xs text-muted-foreground">Monthly</p>
         </div>
         <div className="text-center">
-          <p className="text-xs text-muted-foreground">Monthly Interest</p>
           <p className="font-semibold text-amber-500">{formatValue(monthlyInterest)}</p>
+          <p className="text-xs text-muted-foreground">Interest/mo</p>
         </div>
       </div>
 
-      {/* Debt List */}
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+      {/* Row 3: Debt List */}
+      <div className="space-y-2 max-h-[180px] overflow-y-auto">
         {debts.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
             No debts tracked yet
@@ -126,10 +128,10 @@ export function DebtOverviewCard({
             return (
               <div
                 key={debt.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 hover:bg-secondary/30 transition-colors group"
+                className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/20 hover:bg-secondary/30 transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
                     <Icon className="w-4 h-4 text-destructive" />
                   </div>
                   <div>
@@ -154,25 +156,23 @@ export function DebtOverviewCard({
                       </p>
                     )}
                   </div>
-                  {(onUpdateDebt || onDeleteDebt) && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {onUpdateDebt && (
-                        <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} displayUnit={displayUnit} />
-                      )}
-                      {onDeleteDebt && (
-                        <DeleteConfirmDialog
-                          title="Delete Debt"
-                          description={`Are you sure you want to delete "${debt.name}"? This action cannot be undone.`}
-                          onConfirm={() => onDeleteDebt(debt.id)}
-                          trigger={
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          }
-                        />
-                      )}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {onUpdateDebt && (
+                      <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} displayUnit={displayUnit} />
+                    )}
+                    {onDeleteDebt && (
+                      <DeleteConfirmDialog
+                        title="Delete Debt"
+                        description={`Are you sure you want to delete "${debt.name}"? This action cannot be undone.`}
+                        onConfirm={() => onDeleteDebt(debt.id)}
+                        trigger={
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        }
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             );
