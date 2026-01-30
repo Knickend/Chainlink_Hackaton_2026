@@ -1,204 +1,210 @@
 
 
-# Terms of Service & Privacy Policy Implementation
+# Implement Live Forex Rate Fetching
 
-## Overview
+## Problem Statement
 
-Implement a comprehensive legal compliance system that:
-1. Creates Terms of Service and Privacy Policy pages
-2. Links them from the footer
-3. Adds consent messaging to the pricing section
-4. Requires mandatory checkbox agreement before paid subscription checkout
-5. Tracks user consent in the database to block subscription upgrades without agreement
+Forex exchange rates are currently **hardcoded static values** in `src/lib/types.ts`:
 
-## Database Schema
-
-Add a new column to the `profiles` table to track ToS acceptance:
-
-```sql
-ALTER TABLE profiles 
-ADD COLUMN agreed_to_tos boolean DEFAULT false,
-ADD COLUMN agreed_to_tos_at timestamp with time zone;
+```typescript
+export const FOREX_RATES_TO_USD: Record<BankingCurrency, number> = {
+  USD: 1,
+  EUR: 1.08,  // Static - never updates
+  GBP: 1.27,  // Static - never updates
+  // ... 20 currencies total
+};
 ```
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `agreed_to_tos` | boolean | Whether user has accepted Terms |
-| `agreed_to_tos_at` | timestamp | When they accepted (for audit trail) |
+These rates are used across the app for:
+- Banking account USD conversions
+- Income/expense totals
+- Debt calculations
+- Display unit conversions (EUR, GBP)
+
+This means users see potentially outdated exchange rates without any indication that the values are approximate.
+
+## Solution Overview
+
+Implement live forex rate fetching following the same proven pattern used for crypto and commodities:
+
+1. **Edge Function**: Create `fetch-forex-rates` to fetch live rates with caching
+2. **Database**: Store forex rates in `price_cache` table (reuse existing infrastructure)
+3. **Frontend Hook**: Extend `useLivePrices` to include forex rates
+4. **Dynamic Rates**: Replace static `FOREX_RATES_TO_USD` with live data
+5. **Visual Indicator**: Show forex data freshness in PriceIndicator
+
+## Architecture
+
+```text
++------------------+     +--------------------+     +---------------+
+|  useLivePrices   | --> | fetch-forex-rates  | --> | ExchangeRate  |
+|  (frontend hook) |     | (edge function)    |     | API (free)    |
++------------------+     +--------------------+     +---------------+
+         |                        |
+         v                        v
++------------------+     +--------------------+
+| UI Components    |     | price_cache table  |
+| (DebtCard, etc)  |     | (existing)         |
++------------------+     +--------------------+
+```
+
+## API Selection
+
+**Recommended: Frankfurter API** (free, no API key required)
+- Base URL: `https://api.frankfurter.app`
+- Rate limits: Reasonable for our use case
+- Coverage: All 20 currencies we support
+- Endpoint: `/latest?from=USD&to=EUR,GBP,CHF,...`
+
+Alternative: exchangerate-api.com (requires free API key)
 
 ## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `src/pages/Terms.tsx` | Terms of Service page with all 11 sections |
-| `src/pages/Privacy.tsx` | Privacy Policy page |
+| `supabase/functions/fetch-forex-rates/index.ts` | Edge function to fetch and cache forex rates |
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/App.tsx` | Add routes for `/terms` and `/privacy` |
-| `src/components/landing/Footer.tsx` | Link to `/terms` and `/privacy` using React Router |
-| `src/components/landing/PricingSection.tsx` | Add "By subscribing, you agree to Terms" text |
-| `src/components/SubscriptionDialog.tsx` | Add mandatory ToS checkbox before payment |
-| `src/hooks/useSubscription.ts` | Add `hasAgreedToTos` state and update methods |
+| File | Changes |
+|------|---------|
+| `supabase/config.toml` | Add `fetch-forex-rates` function config |
+| `src/hooks/useLivePrices.ts` | Add forex rates to LivePrices interface and fetch logic |
+| `src/lib/types.ts` | Export forex rates as mutable or provide getter function |
+| `src/components/PriceIndicator.tsx` | Show forex update status in tooltip |
 
-## Implementation Details
+## Detailed Implementation
 
-### 1. Terms Page (`src/pages/Terms.tsx`)
+### 1. Edge Function: `fetch-forex-rates/index.ts`
 
-A well-formatted legal page containing all 11 sections from the provided content:
+```typescript
+// Structure
+const FOREX_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (forex updates less frequently)
+const SUPPORTED_CURRENCIES = ['EUR', 'GBP', 'CHF', 'JPY', 'CAD', ...];
 
-- **Header**: InControl logo + Back to Home button
-- **Critical sections highlighted**: Sections 3 (Not Financial Advice) and 4 (Limitation of Liability) in alert boxes with warning styling
-- **Consistent styling**: Uses prose classes for readability
-
-```text
-+--------------------------------------------------+
-| [InControl]                       [← Back Home]  |
-+--------------------------------------------------+
-|  Terms of Service - InControl.finance            |
-|  Effective: January 30, 2026                     |
-|                                                  |
-|  1. Acceptance of Terms                          |
-|  2. Service Description                          |
-|  ┌──────────────────────────────────────────┐   |
-|  │ ⚠️ 3. NOT FINANCIAL ADVICE               │   | <- Alert box
-|  │ InControl.finance IS NOT a financial...  │   |
-|  └──────────────────────────────────────────┘   |
-|  ┌──────────────────────────────────────────┐   |
-|  │ 4. Limitation of Liability               │   | <- Muted alert box
-|  │ To the fullest extent permitted by EU... │   |
-|  └──────────────────────────────────────────┘   |
-|  5-11. Other sections...                         |
-+--------------------------------------------------+
+// Flow:
+// 1. Check price_cache for forex rates with asset_type='forex'
+// 2. If cache valid (< 1 hour old), return cached rates
+// 3. If cache expired, fetch from Frankfurter API
+// 4. Validate response and update cache
+// 5. Return rates to frontend
 ```
 
-### 2. Privacy Policy Page (`src/pages/Privacy.tsx`)
-
-A placeholder privacy policy page with:
-- Data collection practices
-- Cookie usage (if applicable)
-- User rights under GDPR
-- Contact information
-
-### 3. Footer Updates
-
-Replace placeholder `#` hrefs with React Router Links:
-
-```tsx
-import { Link } from 'react-router-dom';
-
-<Link to="/privacy" className="...">Privacy Policy</Link>
-<Link to="/terms" className="...">Terms of Service</Link>
+Response format:
+```json
+{
+  "success": true,
+  "data": {
+    "EUR": 0.92,
+    "GBP": 0.79,
+    "CHF": 0.88,
+    ...
+  },
+  "timestamp": "2026-01-30T19:00:00Z",
+  "cached": false
+}
 ```
 
-### 4. Pricing Section Update
+### 2. Database: Reuse `price_cache` Table
 
-Add consent text below the "Cancel anytime" footer:
+Store forex rates with `asset_type = 'forex'`:
 
-```tsx
-<p className="text-center text-sm text-muted-foreground mt-4">
-  By subscribing, you agree to our{' '}
-  <Link to="/terms" className="underline hover:text-foreground">
-    Terms of Service
-  </Link>
-</p>
+| symbol | price | asset_type | updated_at |
+|--------|-------|------------|------------|
+| EUR | 0.92 | forex | 2026-01-30 |
+| GBP | 0.79 | forex | 2026-01-30 |
+
+No schema changes needed - existing table structure works perfectly.
+
+### 3. Frontend: Extend `useLivePrices`
+
+Update the `LivePrices` interface:
+
+```typescript
+export interface LivePrices {
+  btc: number;
+  eth: number;
+  link: number;
+  gold: number;
+  silver: number;
+  timestamp: string;
+  stocks?: Record<string, { price: number; change: number; changePercent: number }>;
+  forex?: Record<string, number>;  // NEW: { EUR: 0.92, GBP: 0.79, ... }
+}
 ```
 
-### 5. Subscription Dialog Checkbox
+Add `fetchForexRates()` function similar to `fetchAdditionalCryptoPrices()`.
 
-Add a mandatory checkbox in the payment step that must be checked before proceeding:
+### 4. Dynamic Forex Rates
 
-```tsx
-// State
-const [agreedToTerms, setAgreedToTerms] = useState(false);
+Create a function to get current forex rates (live or fallback to static):
 
-// UI (before Pay button)
-<div className="flex items-start gap-2">
-  <Checkbox 
-    id="terms" 
-    checked={agreedToTerms}
-    onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
-  />
-  <label htmlFor="terms" className="text-xs text-muted-foreground">
-    I agree to the{' '}
-    <Link to="/terms" target="_blank" className="underline">
-      Terms of Service
-    </Link>
-    {' '}and confirm this is not financial advice
-  </label>
-</div>
-
-// Button disabled state
-<Button
-  onClick={handlePayment}
-  disabled={isProcessing || !agreedToTerms}
->
-  ...
-</Button>
-```
-
-### 6. Database & Hook Updates
-
-**useSubscription.ts** modifications:
-
-1. Add `hasAgreedToTos` to the return type
-2. Fetch from `profiles` table on load
-3. Add `acceptTerms()` method to update database when checkbox is checked
-4. Block `upgradeTo()` if terms not accepted (fallback safety)
-
-```tsx
-// Additional return values
-hasAgreedToTos: boolean;
-acceptTerms: () => Promise<void>;
-
-// In upgradeTo() - add safety check
-const upgradeTo = async (tier, period) => {
-  if (!hasAgreedToTos) {
-    toast({
-      title: 'Terms Required',
-      description: 'Please accept the Terms of Service first',
-      variant: 'destructive',
-    });
-    return;
+```typescript
+// In types.ts or new forex.ts
+export function getForexRateToUSD(currency: string, liveRates?: Record<string, number>): number {
+  // Live rate takes priority
+  if (liveRates && liveRates[currency]) {
+    return 1 / liveRates[currency]; // API returns USD→X, we need X→USD
   }
-  // ... existing logic
-};
+  // Fallback to static rates
+  return FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+}
 ```
 
-## User Flow
+### 5. Update Components
+
+Components that use forex rates will receive them via props from the parent:
+
+```typescript
+// Example: DebtOverviewCard
+interface DebtOverviewCardProps {
+  // ... existing props
+  forexRates?: Record<string, number>;  // Pass from useLivePrices
+}
+
+// Use in conversion:
+const rate = forexRates?.[currency] ?? FOREX_RATES_TO_USD[currency];
+```
+
+### 6. PriceIndicator Enhancement
+
+Add forex status to the tooltip:
 
 ```text
-User Journey:
-1. User visits landing page
-2. Sees pricing section with "By subscribing, you agree to Terms" text
-3. Clicks "Start Standard" or "Go Pro"
-4. Redirected to auth (signup/login)
-5. After login, opens Subscription dialog
-6. Selects plan and clicks "Continue to Payment"
-7. On payment step, sees mandatory checkbox:
-   ☐ I agree to the Terms of Service and confirm this is not financial advice
-8. Must check box before "Pay" button is enabled
-9. On first successful payment, `agreed_to_tos` is set to true in database
-10. Future upgrades/changes don't require re-checking (already agreed)
+Live Prices Active
+├── Crypto: 5m ago
+├── Commodities: 15m ago
+└── Forex: 45m ago    <- NEW
 ```
 
-## Visual Summary
+## Cache TTL Strategy
 
-| Location | Element Added |
-|----------|--------------|
-| Footer | Links to `/terms` and `/privacy` |
-| Pricing cards | "By subscribing, you agree to Terms" text |
-| SubscriptionDialog (payment step) | Checkbox with Terms link |
-| Database | `agreed_to_tos` column on profiles |
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| Crypto | 15 min | Volatile, free API |
+| Commodities | 30 min | Paid API (Perplexity) |
+| **Forex** | **60 min** | **Stable, free API** |
 
-## Migration SQL
+Forex rates change slowly throughout the day, so hourly updates provide good accuracy without excessive API calls.
 
-```sql
--- Add ToS tracking columns to profiles
-ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS agreed_to_tos boolean DEFAULT false,
-ADD COLUMN IF NOT EXISTS agreed_to_tos_at timestamp with time zone;
-```
+## User Experience
+
+Before:
+- Users see static rates without knowing they're approximate
+- EUR/GBP display units use outdated conversions
+
+After:
+- Forex rates update automatically every hour
+- PriceIndicator shows when forex was last refreshed
+- Users can manually refresh all prices including forex
+- Fallback to static rates if API fails (graceful degradation)
+
+## Summary
+
+This implementation:
+1. Follows the existing price-fetching pattern (cache-first, edge function, graceful fallback)
+2. Reuses the `price_cache` infrastructure with no schema changes
+3. Uses a free API requiring no additional configuration
+4. Updates forex rates hourly for accuracy without excessive calls
+5. Provides visual feedback about data freshness
 
