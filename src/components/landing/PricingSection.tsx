@@ -87,7 +87,7 @@ export function PricingSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="glass-card rounded-2xl p-6 lg:p-8 border border-border/50 relative"
+            className="glass-card rounded-2xl p-6 lg:p-8 border border-border/50 relative transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/50"
           >
             <div className="mb-6">
               <h3 className="text-xl font-semibold mb-1">{freePlan.name}</h3>
@@ -131,31 +131,28 @@ export function PricingSection() {
                 transition={{ duration: 0.5, delay: (index + 1) * 0.1 }}
                 className={cn(
                   'glass-card rounded-2xl p-6 lg:p-8 border relative',
+                  'transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-primary/10',
                   plan.isPopular
                     ? 'border-primary gold-glow'
-                    : 'border-border/50'
+                    : 'border-border/50 hover:border-primary/50'
                 )}
               >
-                {/* Popular badge */}
-                {plan.isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                {/* Badges row - inside card */}
+                <div className="flex items-center justify-between mb-4 min-h-[28px]">
+                  {plan.isPopular && (
                     <span className="bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
                       Most Popular
                     </span>
-                  </div>
-                )}
-
-                {/* Discount badge */}
-                <div className="absolute -top-3 right-4">
+                  )}
                   <Badge 
                     variant="secondary" 
-                    className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] font-semibold"
+                    className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold ml-auto"
                   >
                     {isAnnual ? '2 MONTHS FREE' : '50% OFF 1ST MONTH'}
                   </Badge>
                 </div>
 
-                <div className="mb-6 pt-2">
+                <div className="mb-6">
                   <h3 className="text-xl font-semibold mb-1">{plan.name}</h3>
                   <p className="text-sm text-muted-foreground">
                     {plan.tier === 'standard' ? 'For serious wealth builders' : 'Maximum control over your wealth'}
@@ -170,12 +167,19 @@ export function PricingSection() {
                     {isAnnual ? '/year' : '/mo'}
                   </span>
                   
-                  {/* Sub-price info */}
-                  <div className="mt-1 text-sm text-muted-foreground">
+                  {/* Sub-price info with discount highlight */}
+                  <div className="mt-2">
                     {isAnnual ? (
-                      <span>€{monthlyEquivalent.toFixed(2)}/mo</span>
+                      <span className="text-sm text-muted-foreground">€{monthlyEquivalent.toFixed(2)}/mo</span>
                     ) : (
-                      <span>First month: €{firstMonthPrice.toFixed(2)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground line-through">
+                          €{plan.monthlyPrice.toFixed(2)}
+                        </span>
+                        <span className="text-sm font-semibold text-emerald-400">
+                          €{firstMonthPrice.toFixed(2)} first month
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
