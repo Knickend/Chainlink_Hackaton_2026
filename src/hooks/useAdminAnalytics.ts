@@ -65,34 +65,23 @@ export function useAdminAnalytics(options: UseAdminAnalyticsOptions = {}): Admin
     },
   });
 
-  // Fetch assets aggregate
-  const { data: assetsData, isLoading: assetsLoading, error: assetsError } = useQuery({
-    queryKey: ['admin-assets-analytics'],
+  // Fetch platform analytics via secure aggregate function (no individual data exposed)
+  const { data: platformData, isLoading: platformLoading, error: platformError } = useQuery({
+    queryKey: ['admin-platform-analytics'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('assets')
-        .select('value, user_id, updated_at');
+      const { data, error } = await supabase.rpc('get_platform_analytics');
       
       if (error) throw error;
-      return data || [];
+      return data as {
+        total_portfolio_value: number;
+        total_tracked_debt: number;
+        active_users: number;
+      } | null;
     },
   });
 
-  // Fetch debts aggregate
-  const { data: debtsData, isLoading: debtsLoading, error: debtsError } = useQuery({
-    queryKey: ['admin-debts-analytics'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('debts')
-        .select('principal_amount');
-      
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const isLoading = feedbackLoading || profilesLoading || assetsLoading || debtsLoading;
-  const error = feedbackError || profilesError || assetsError || debtsError;
+  const isLoading = feedbackLoading || profilesLoading || platformLoading;
+  const error = feedbackError || profilesError || platformError;
 
   // Filter data by date range if provided
   const filterByDateRange = <T extends { created_at?: string | null }>(data: T[]): T[] => {
@@ -114,10 +103,14 @@ export function useAdminAnalytics(options: UseAdminAnalyticsOptions = {}): Admin
   const feedback = processFeedbackAnalytics(filteredFeedback, dateRange);
 
   // Process user analytics (uses all profiles for total, filtered for trends)
-  const users = processUserAnalytics(profilesData || [], filteredProfiles, assetsData || [], dateRange);
+  // Active users now comes from the secure platform analytics function
+  const users = processUserAnalytics(profilesData || [], filteredProfiles, platformData?.active_users ?? 0, dateRange);
 
-  // Process platform analytics
-  const platform = processPlatformAnalytics(assetsData || [], debtsData || []);
+  // Process platform analytics from secure function
+  const platform = {
+    totalPortfolioValue: platformData?.total_portfolio_value ?? 0,
+    totalTrackedDebt: platformData?.total_tracked_debt ?? 0,
+  };
 
   return {
     feedback,
@@ -213,7 +206,7 @@ function generateWeeklyTrends(feedback: any[]) {
   return weeks;
 }
 
-function processUserAnalytics(allProfiles: any[], filteredProfiles: any[], assets: any[], dateRange?: DateRange) {
+function processUserAnalytics(allProfiles: any[], filteredProfiles: any[], activeUsers: number, dateRange?: DateRange) {
   const total = allProfiles.length;
   
   // New users calculation - use date range if provided, otherwise last 7 days
@@ -223,15 +216,6 @@ function processUserAnalytics(allProfiles: any[], filteredProfiles: any[], asset
         const created = parseISO(p.created_at);
         return created >= subDays(new Date(), 7);
       }).length;
-
-  // Active users = users with assets updated in last 30 days
-  const thirtyDaysAgo = subDays(new Date(), 30);
-  const activeUserIds = new Set(
-    assets
-      .filter(a => parseISO(a.updated_at) >= thirtyDaysAgo)
-      .map(a => a.user_id)
-  );
-  const activeUsers = activeUserIds.size;
 
   // Monthly growth (last 6 months)
   const growth = generateMonthlyGrowth(allProfiles);
@@ -265,12 +249,3 @@ function generateMonthlyGrowth(profiles: any[]) {
   return months;
 }
 
-function processPlatformAnalytics(assets: any[], debts: any[]) {
-  const totalPortfolioValue = assets.reduce((sum, a) => sum + (Number(a.value) || 0), 0);
-  const totalTrackedDebt = debts.reduce((sum, d) => sum + (Number(d.principal_amount) || 0), 0);
-
-  return {
-    totalPortfolioValue,
-    totalTrackedDebt,
-  };
-}
