@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -206,15 +206,21 @@ export function PricingSection() {
         </div>
 
         {/* Footer text */}
-        <motion.p
+        <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ delay: 0.4 }}
-          className="text-center text-sm text-muted-foreground mt-8"
+          className="text-center text-sm text-muted-foreground mt-8 space-y-2"
         >
-          Cancel anytime • No hidden fees
-        </motion.p>
+          <p>Cancel anytime • No hidden fees</p>
+          <p>
+            By subscribing, you agree to our{' '}
+            <Link to="/terms" className="underline hover:text-foreground transition-colors">
+              Terms of Service
+            </Link>
+          </p>
+        </motion.div>
       </div>
     </section>
   );

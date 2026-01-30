@@ -26,9 +26,11 @@ interface UseSubscriptionReturn {
   billingPeriod: BillingPeriod;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+  hasAgreedToTos: boolean;
   upgradeTo: (tier: SubscriptionTier, period: BillingPeriod) => Promise<void>;
   cancelSubscription: () => Promise<void>;
   resumeSubscription: () => Promise<void>;
+  acceptTerms: () => Promise<void>;
   refetch: () => Promise<void>;
 }
 
@@ -37,13 +39,28 @@ export function useSubscription(): UseSubscriptionReturn {
   const { toast } = useToast();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasAgreedToTos, setHasAgreedToTos] = useState(false);
 
   const fetchSubscription = useCallback(async () => {
     if (!user) {
       setSubscription(null);
       setIsLoading(false);
+      setHasAgreedToTos(false);
       return;
     }
+
+    // Fetch ToS status from profiles
+    const fetchTosStatus = async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('agreed_to_tos')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      setHasAgreedToTos(profile?.agreed_to_tos ?? false);
+    };
+    
+    fetchTosStatus();
 
     try {
       setIsLoading(true);
@@ -100,8 +117,43 @@ export function useSubscription(): UseSubscriptionReturn {
     fetchSubscription();
   }, [fetchSubscription]);
 
+  const acceptTerms = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          agreed_to_tos: true,
+          agreed_to_tos_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setHasAgreedToTos(true);
+    } catch (error) {
+      console.error('Error accepting terms:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save terms acceptance',
+        variant: 'destructive',
+      });
+    }
+  }, [user, toast]);
+
   const upgradeTo = useCallback(async (tier: SubscriptionTier, period: BillingPeriod) => {
     if (!user) return;
+
+    // Safety check - ensure terms are accepted before upgrade
+    if (!hasAgreedToTos) {
+      toast({
+        title: 'Terms Required',
+        description: 'Please accept the Terms of Service first',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       const periodEnd = new Date();
@@ -110,7 +162,6 @@ export function useSubscription(): UseSubscriptionReturn {
       } else {
         periodEnd.setFullYear(periodEnd.getFullYear() + 1);
       }
-
       const { error } = await supabase
         .from('user_subscriptions')
         .update({
@@ -138,7 +189,7 @@ export function useSubscription(): UseSubscriptionReturn {
         variant: 'destructive',
       });
     }
-  }, [user, fetchSubscription, toast]);
+  }, [user, hasAgreedToTos, fetchSubscription, toast]);
 
   const cancelSubscription = useCallback(async () => {
     if (!user) return;
@@ -209,9 +260,11 @@ export function useSubscription(): UseSubscriptionReturn {
       ? new Date(subscription.current_period_end) 
       : null,
     cancelAtPeriodEnd: subscription?.cancel_at_period_end || false,
+    hasAgreedToTos,
     upgradeTo,
     cancelSubscription,
     resumeSubscription,
+    acceptTerms,
     refetch: fetchSubscription,
   };
 }

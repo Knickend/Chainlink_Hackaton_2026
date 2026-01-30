@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -23,18 +24,18 @@ export function Footer() {
 
           {/* Links */}
           <div className="flex items-center gap-6 text-sm">
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Privacy Policy
-            </a>
-            <a
-              href="#"
+            <Link
+              to="/terms"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
               Terms of Service
-            </a>
+            </Link>
+            <Link
+              to="/privacy"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Privacy Policy
+            </Link>
             <a
               href="mailto:InControl.Finance@proton.me"
               className="text-muted-foreground hover:text-foreground transition-colors"
