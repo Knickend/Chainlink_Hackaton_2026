@@ -1,180 +1,229 @@
 
 
-# Expand Tutorial Tour with Pro Features & Feedback Button
+# Complete Subscription Tier Restructuring
 
 ## Overview
 
-Currently, the tutorial has **13 steps** covering core features. This plan expands the tour to include Pro features and the Feedback button, giving new users a complete picture of all capabilities—especially valuable since the tour runs in "Pro mode" to showcase premium features.
+This plan consolidates all pricing changes discussed:
+1. Change currency from USD ($) to EUR (€)
+2. Add 50% first-month discount for monthly plans
+3. Add annual billing option with ~17% discount (2 months free)
+4. Limit Standard tier to 30 assets (from "Unlimited")
+5. Remove 30-day money-back guarantee
 
-## Current Tutorial Steps (13 total)
+## Final Pricing Structure
 
-| # | ID | Target | Title |
-|---|-----|--------|-------|
-| 1 | welcome | (modal) | Welcome to InControl! |
-| 2 | key-metrics | key-metrics | Your Financial Snapshot |
-| 3 | net-worth | net-worth-card | Net Worth |
-| 4 | unit-selector | unit-selector | View in Different Currencies |
-| 5 | theme-toggle | theme-toggle | Light or Dark Mode |
-| 6 | charts | charts-section | Visualize Your Wealth |
-| 7 | assets | assets-section | Manage Your Assets |
-| 8 | add-asset | add-asset-button | Adding Assets is Easy |
-| 9 | income | income-card | Track Your Income |
-| 10 | expenses | expense-card | Monitor Expenses |
-| 11 | debts | debt-card | Manage Your Debt |
-| 12 | ai-advisor | ai-advisor-button | Your AI Financial Advisor |
-| 13 | completion | (modal) | You're All Set! |
+| Tier | Monthly | Annual | Savings |
+|------|---------|--------|---------|
+| Free | €0 | - | - |
+| Standard | €4.99/mo (first month €2.50) | €49.90/year (€4.16/mo) | 2 months free |
+| Pro | €9.99/mo (first month €5.00) | €99.90/year (€8.33/mo) | 2 months free |
 
-## Proposed New Steps
+**Note**: First-month 50% discount applies only to monthly billing; annual plans already have the 2-months-free discount.
 
-Add **4 new steps** for Pro features and the Feedback button:
+## Feature Limits by Tier
 
-| New # | ID | Target | Title | Content |
-|-------|-----|--------|-------|---------|
-| 7 | portfolio-history | portfolio-history-card | Track Your Progress (Pro) | See how your net worth changes month-over-month. Compare any two months side-by-side to understand your financial trajectory. |
-| 8 | investment-strategy | investment-strategy-card | Smart Investment Advice (Pro) | Get personalized recommendations on how to allocate your monthly surplus based on your debts and risk tolerance. |
-| 14 | debt-calculator | debt-payoff-calculator | Debt Freedom Calculator (Pro) | See exactly when you'll be debt-free with different payoff strategies. Compare avalanche vs. snowball methods to save the most interest. |
-| 15 | feedback-button | feedback-button | Help Us Improve | Found a bug or have an idea? Click here to submit feedback directly to our team. We read every submission! |
-
-## Updated Step Order (17 total)
-
-1. Welcome (modal)
-2. Key Metrics
-3. Net Worth
-4. Unit Selector
-5. Theme Toggle
-6. Charts Section
-7. **Portfolio History (Pro)** ← NEW
-8. **Investment Strategy (Pro)** ← NEW
-9. Assets Section
-10. Add Asset
-11. Income
-12. Expenses
-13. Debts
-14. **Debt Calculator (Pro)** ← NEW
-15. AI Advisor
-16. **Feedback Button** ← NEW
-17. Completion (modal)
+| Feature | Free | Standard | Pro |
+|---------|------|----------|-----|
+| Assets | Up to 10 | Up to 30 | Unlimited |
+| Real-time prices | Basic | Yes | Yes |
+| Income/Expense | No | Yes | Yes |
+| Allocation charts | No | Yes | Yes |
+| Performance tracking | No | No | Yes |
+| Debt calculator | No | No | Yes |
+| Investment strategy | No | No | Yes |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/Tutorial/tutorialSteps.ts` | Add 4 new step definitions |
-| `src/pages/Index.tsx` | Add `data-tutorial` attributes to Pro components and Feedback button |
-| `src/components/FeedbackButton.tsx` | Add `data-tutorial="feedback-button"` attribute |
+| `src/lib/subscription.ts` | Add billing period types, annual pricing, currency, discounts |
+| `src/components/landing/PricingSection.tsx` | EUR, billing toggle, discount badges, remove money-back |
+| `src/components/SubscriptionDialog.tsx` | EUR, billing toggle, discount display |
 
 ## Implementation Details
 
-### 1. Add Tutorial Targets to Components
+### 1. `src/lib/subscription.ts` - Central Configuration
 
-**`src/pages/Index.tsx`** - Add `data-tutorial` attributes:
-
-```tsx
-{/* Portfolio History Card - Pro feature */}
-<div data-tutorial="portfolio-history-card">
-  <PortfolioHistoryCard ... />
-</div>
-
-{/* Investment Strategy Card - Pro feature */}
-<div data-tutorial="investment-strategy-card">
-  <InvestmentStrategyCard ... />
-</div>
-
-{/* Debt Payoff Calculator - Pro feature */}
-<div data-tutorial="debt-payoff-calculator">
-  <DebtPayoffCalculator ... />
-</div>
-```
-
-**`src/components/FeedbackButton.tsx`** - Add attribute to FAB:
-
-```tsx
-<Button
-  onClick={() => setOpen(true)}
-  data-tutorial="feedback-button"
-  ...
->
-```
-
-### 2. Update Tutorial Steps
-
-**`src/components/Tutorial/tutorialSteps.ts`** - Add new steps:
+Add new types and update the plan structure:
 
 ```typescript
-// After 'charts' step (position 6)
-{
-  id: 'portfolio-history',
-  target: 'portfolio-history-card',
-  title: 'Track Your Progress',
-  content: 'See how your net worth changes month-over-month. Compare any two months side-by-side to understand your financial trajectory. (Pro feature)',
-  position: 'left',
-},
-{
-  id: 'investment-strategy',
-  target: 'investment-strategy-card',
-  title: 'Smart Investment Advice',
-  content: 'Get personalized recommendations on how to allocate your monthly surplus based on your debts and financial goals. (Pro feature)',
-  position: 'top',
-},
+export type SubscriptionTier = 'free' | 'standard' | 'pro';
+export type BillingPeriod = 'monthly' | 'annual';
 
-// After 'debts' step (before ai-advisor)
-{
-  id: 'debt-calculator',
-  target: 'debt-payoff-calculator',
-  title: 'Debt Freedom Calculator',
-  content: 'See exactly when you\'ll be debt-free with different payoff strategies. Compare avalanche vs. snowball methods to save the most interest. (Pro feature)',
-  position: 'top',
-},
+export interface SubscriptionPlan {
+  tier: SubscriptionTier;
+  name: string;
+  monthlyPrice: number;
+  annualPrice: number;          // Total annual price (10 months worth)
+  currency: string;             // 'EUR'
+  firstMonthDiscount: number;   // 0.50 = 50% off first month (monthly only)
+  features: string[];
+  assetLimit?: number;          // undefined = unlimited
+  isPopular?: boolean;
+}
 
-// After 'ai-advisor' step (before completion)
-{
-  id: 'feedback',
-  target: 'feedback-button',
-  title: 'Help Us Improve',
-  content: 'Found a bug or have an idea? Click here to submit feedback directly to our team. We read every submission!',
-  position: 'right',
-},
+export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    tier: 'standard',
+    name: 'Standard',
+    monthlyPrice: 4.99,
+    annualPrice: 49.90,         // 10 months (2 free)
+    currency: 'EUR',
+    firstMonthDiscount: 0.50,
+    assetLimit: 30,
+    features: [
+      'Up to 30 assets',
+      'Real-time price updates',
+      'Income & expense tracking',
+      'Asset allocation charts',
+    ],
+  },
+  {
+    tier: 'pro',
+    name: 'Pro',
+    monthlyPrice: 9.99,
+    annualPrice: 99.90,         // 10 months (2 free)
+    currency: 'EUR',
+    firstMonthDiscount: 0.50,
+    isPopular: true,
+    features: [
+      'Unlimited asset tracking',
+      'Everything in Standard',
+      'Monthly performance tracking',
+      'YTD overview & analytics',
+      'Non-recurring expense tracking',
+      'Debt payoff calculator',
+      'Investment strategy advisor',
+      'Priority support',
+      'Early access to features',
+    ],
+  },
+];
+
+// Helper functions
+export function getFirstMonthPrice(plan: SubscriptionPlan): number {
+  return plan.monthlyPrice * (1 - plan.firstMonthDiscount);
+}
+
+export function getMonthlyEquivalent(plan: SubscriptionPlan): number {
+  return Number((plan.annualPrice / 12).toFixed(2));
+}
+
+export function getAnnualSavings(plan: SubscriptionPlan): number {
+  return (plan.monthlyPrice * 12) - plan.annualPrice;
+}
 ```
 
-## Step Flow Diagram
+### 2. `src/components/landing/PricingSection.tsx` - Landing Page
+
+Key changes:
+- Add monthly/annual billing toggle
+- Update all prices to EUR (€)
+- Show "50% OFF FIRST MONTH" badge on monthly plans
+- Show "2 MONTHS FREE" badge on annual plans
+- Remove money-back guarantee, keep "Cancel anytime • No hidden fees"
+- Update Standard features to show "Up to 30 assets"
 
 ```text
-Welcome Modal
-     ↓
-Key Metrics → Net Worth → Unit Selector → Theme Toggle
-     ↓
-Charts Section
-     ↓
-Portfolio History (Pro) → Investment Strategy (Pro)
-     ↓
-Assets Section → Add Asset
-     ↓
-Income → Expenses → Debts
-     ↓
-Debt Calculator (Pro)
-     ↓
-AI Advisor → Feedback Button
-     ↓
-Completion Modal
+Layout with billing toggle:
+
+        [ Monthly ]  [ Annual - Save 17% ]
+                         ↑ toggle
+
++------------+  +----------------+  +------------+
+|   FREE     |  |   STANDARD     |  |    PRO     |
+|            |  | 50% OFF 1ST MO |  |  POPULAR   |
+|    €0      |  |                |  | 50% OFF    |
+|            |  |    €4.99/mo    |  |            |
+| 10 assets  |  |  First: €2.50  |  |  €9.99/mo  |
+|            |  |   30 assets    |  | First: €5  |
++------------+  +----------------+  +------------+
+
+When "Annual" is selected:
+
++------------+  +----------------+  +------------+
+|   FREE     |  |   STANDARD     |  |    PRO     |
+|            |  |  2 MONTHS FREE |  |  POPULAR   |
+|    €0      |  |                |  | 2 MO FREE  |
+|            |  |   €49.90/yr    |  |            |
+| 10 assets  |  |  (€4.16/mo)    |  | €99.90/yr  |
+|            |  |   30 assets    |  | (€8.33/mo) |
++------------+  +----------------+  +------------+
 ```
 
-## Considerations
+Footer update:
+```
+Before: "30-day money-back guarantee • Cancel anytime • No hidden fees"
+After:  "Cancel anytime • No hidden fees"
+```
 
-### Demo Mode Handling
-- The tour already enables Pro mode during the tutorial (`effectiveSubscriptionTier = 'pro'`), so all Pro features will be visible and targetable.
-- The Feedback button only shows for authenticated users currently. We'll need to ensure it renders during the tutorial even in demo mode, or skip that step for unauthenticated users.
+### 3. `src/components/SubscriptionDialog.tsx` - In-App Upgrade
 
-### Feedback Button in Demo Mode
-Two options:
-1. **Option A**: Make the Feedback button visible during the tutorial even in demo mode (simpler UX).
-2. **Option B**: Skip the feedback step for unauthenticated users (more accurate but less complete tour).
+Key changes:
+- Add billing period toggle (Monthly / Annual)
+- Update all prices to EUR (€)
+- Show appropriate discount based on billing period
+- Update payment summary to show price breakdown
 
-I recommend **Option A** for a more comprehensive tour experience.
+```text
+Pricing step with billing toggle:
 
-## Benefits
+   Choose Your Plan
+   
+   [ Monthly ]  [ Annual ]
+   
+   +------------------+  +------------------+
+   | STANDARD         |  | PRO      POPULAR |
+   | 50% OFF 1ST MO   |  | 50% OFF 1ST MO   |
+   |                  |  |                  |
+   | €4.99/mo         |  | €9.99/mo         |
+   | First mo: €2.50  |  | First mo: €5.00  |
+   +------------------+  +------------------+
 
-1. **Showcases Pro Value**: Users see premium features during onboarding, increasing conversion potential.
-2. **Feature Discovery**: Ensures users don't miss key capabilities like debt optimization and portfolio tracking.
-3. **Feedback Loop**: Introducing the feedback button encourages user engagement from day one.
-4. **Complete Experience**: The tour becomes a comprehensive product walkthrough.
+Payment step shows:
+
++--------------------------------+
+| 🛡 Standard Monthly            |
+|                                |
+| First month: €2.50 (50% off)   |
+| Then: €4.99/month              |
+|                                |
+| Total today: €2.50             |
++--------------------------------+
+
+OR for annual:
+
++--------------------------------+
+| 🛡 Standard Annual             |
+|                                |
+| €49.90/year (€4.16/mo)         |
+| Save €9.98 (2 months free)     |
+|                                |
+| Total today: €49.90            |
++--------------------------------+
+```
+
+## Data Model Considerations
+
+The `user_subscriptions` table may need a `billing_period` column to track whether users are on monthly or annual plans. This would be needed when implementing real payment processing with Stripe.
+
+```sql
+-- Future consideration (not part of this change)
+ALTER TABLE user_subscriptions 
+ADD COLUMN billing_period TEXT DEFAULT 'monthly' CHECK (billing_period IN ('monthly', 'annual'));
+```
+
+For now, since payment is still a mock UI, we'll track the billing period in component state.
+
+## Summary of All Changes
+
+| Change | Location |
+|--------|----------|
+| Currency USD → EUR | All 3 files |
+| Standard: 30 asset limit | subscription.ts, PricingSection.tsx |
+| 50% first month (monthly only) | All 3 files |
+| 17% annual discount (2 mo free) | All 3 files |
+| Billing period toggle | PricingSection.tsx, SubscriptionDialog.tsx |
+| Remove money-back guarantee | PricingSection.tsx |
 
