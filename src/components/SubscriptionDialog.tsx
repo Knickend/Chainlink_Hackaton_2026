@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Crown, CreditCard, Shield, Zap, Loader2, Sparkles, Calculator, Target } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { 
@@ -42,11 +44,21 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
   const [cvc, setCvc] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const selectedPlan = SUBSCRIPTION_PLANS.find(p => p.tier === selectedTier);
   const isAnnual = billingPeriod === 'annual';
 
   const handlePayment = async () => {
+    if (!agreedToTerms) {
+      toast({
+        title: 'Terms Required',
+        description: 'Please accept the Terms of Service to continue',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!cardNumber || !expiry || !cvc) {
       toast({
         title: 'Missing information',
@@ -71,6 +83,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
       setExpiry('');
       setCvc('');
       setBillingPeriod('monthly');
+      setAgreedToTerms(false);
     }, 2000);
   };
 
@@ -98,6 +111,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
       setStep('pricing');
       setSelectedTier('standard');
       setBillingPeriod('monthly');
+      setAgreedToTerms(false);
     }
     onOpenChange(isOpen);
   };
@@ -378,6 +392,28 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                 </div>
               </div>
 
+              {/* Terms of Service Checkbox */}
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                <Checkbox 
+                  id="terms-agree" 
+                  checked={agreedToTerms}
+                  onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="terms-agree" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
+                  I agree to the{' '}
+                  <Link 
+                    to="/terms" 
+                    target="_blank" 
+                    className="text-primary underline hover:text-primary/80"
+                  >
+                    Terms of Service
+                  </Link>
+                  {' '}and confirm that InControl.finance does not provide financial advice. 
+                  All investment decisions are my responsibility.
+                </label>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <Button
                   variant="outline"
@@ -390,7 +426,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                 <Button
                   onClick={handlePayment}
                   className="flex-1 gap-2"
-                  disabled={isProcessing}
+                  disabled={isProcessing || !agreedToTerms}
                 >
                   {isProcessing ? (
                     <>
