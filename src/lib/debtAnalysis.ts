@@ -299,33 +299,60 @@ export function generateNegativeIncomeTips(
 
 /**
  * Calculate debt-aware investment allocations
+ * Merges user-configured debt allocation with system-suggested priority allocation
  */
 export function calculateDebtAwareAllocations(
   freeMonthlyIncome: number,
   debtAnalysis: DebtAnalysis,
   investmentAllocations: { category: string; percentage: number; amount: number; color: string }[]
 ): DebtAwareAllocation[] {
-  if (!debtAnalysis.hasPriorityDebt || freeMonthlyIncome <= 0) {
+  if (freeMonthlyIncome <= 0) {
+    return investmentAllocations;
+  }
+
+  // Check for existing debt allocation from user preferences
+  const existingDebtAlloc = investmentAllocations.find(a => a.category === 'Debt Payoff');
+  const existingDebtPercent = existingDebtAlloc?.percentage || 0;
+  
+  // If no priority debt and no existing debt allocation, return as-is
+  if (!debtAnalysis.hasPriorityDebt && existingDebtPercent === 0) {
     return investmentAllocations;
   }
   
-  const debtAllocationPercent = debtAnalysis.suggestedDebtAllocation;
-  const investmentPercent = 100 - debtAllocationPercent;
+  // Use the HIGHER of user preference or system suggestion
+  const systemSuggestion = debtAnalysis.hasPriorityDebt ? debtAnalysis.suggestedDebtAllocation : 0;
+  const finalDebtPercent = Math.max(existingDebtPercent, systemSuggestion);
   
-  // Scale down investment allocations
-  const scaledInvestments = investmentAllocations.map(alloc => ({
+  // If no debt allocation needed, return non-debt allocations
+  if (finalDebtPercent === 0) {
+    return investmentAllocations.filter(a => a.category !== 'Debt Payoff');
+  }
+  
+  // Filter out existing debt allocation (we'll add the merged one)
+  const nonDebtAllocations = investmentAllocations.filter(a => a.category !== 'Debt Payoff');
+  
+  // Calculate remaining investment percentage
+  const investmentPercent = 100 - finalDebtPercent;
+  
+  // Calculate total of non-debt allocations to scale proportionally
+  const totalNonDebtPercent = nonDebtAllocations.reduce((sum, a) => sum + a.percentage, 0);
+  const scaleFactor = totalNonDebtPercent > 0 ? investmentPercent / totalNonDebtPercent : 0;
+  
+  // Scale down non-debt allocations proportionally
+  const scaledInvestments = nonDebtAllocations.map(alloc => ({
     ...alloc,
-    percentage: Math.round(alloc.percentage * (investmentPercent / 100)),
-    amount: Math.round(alloc.amount * (investmentPercent / 100)),
+    percentage: Math.round(alloc.percentage * scaleFactor),
+    amount: Math.round(freeMonthlyIncome * (alloc.percentage * scaleFactor / 100)),
   }));
   
-  // Add debt payoff allocation at the beginning
+  // Create single consolidated debt allocation
+  // Mark as priority if system suggested it (high-interest debt detected)
   const debtAllocation: DebtAwareAllocation = {
     category: 'Debt Payoff',
-    percentage: debtAllocationPercent,
-    amount: Math.round(freeMonthlyIncome * (debtAllocationPercent / 100)),
+    percentage: finalDebtPercent,
+    amount: Math.round(freeMonthlyIncome * (finalDebtPercent / 100)),
     color: 'hsl(var(--destructive))',
-    isPriority: true,
+    isPriority: debtAnalysis.hasPriorityDebt,
   };
   
   return [debtAllocation, ...scaledInvestments];
