@@ -87,9 +87,8 @@ export function ExchangeRatesDialog({
     { name: 'Bitcoin', symbol: 'BTC', price: prices.btc ?? 0, status: 'live' as RateStatus },
     { name: 'Ethereum', symbol: 'ETH', price: prices.eth ?? 0, status: 'live' as RateStatus },
     { name: 'Chainlink', symbol: 'LINK', price: prices.link ?? 0, status: 'live' as RateStatus },
-    ...(prices.stocks 
-      ? Object.entries(prices.stocks)
-          .filter(([symbol]) => !['GOLD', 'SILVER', 'XAU', 'XAG'].includes(symbol))
+    ...(prices.crypto 
+      ? Object.entries(prices.crypto)
           .map(([symbol, data]) => ({
             name: symbol,
             symbol,
@@ -104,6 +103,18 @@ export function ExchangeRatesDialog({
   const commodityAssets = prices ? [
     { name: 'Gold', symbol: 'XAU', price: prices.gold ?? 0, unit: '/oz' },
     { name: 'Silver', symbol: 'XAG', price: prices.silver ?? 0, unit: '/oz' },
+    ...(prices.commodities
+      ? Object.entries(prices.commodities)
+          .filter(([symbol]) => !['GOLD', 'SILVER', 'XAU', 'XAG'].includes(symbol))
+          .map(([symbol, data]) => ({
+            name: symbol,
+            symbol,
+            price: data.price,
+            unit: data.priceUnit || '',
+            change: data.changePercent,
+            status: 'live' as RateStatus,
+          }))
+      : []),
   ] : [];
 
   return (
