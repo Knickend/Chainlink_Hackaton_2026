@@ -1,106 +1,114 @@
 
-# Fix Dashboard Card Alignment and Button Overflow
+# Fix Text Truncation in Dashboard Cards
 
-## Problem Analysis
+## Problem
 
-The "Add Expense" button is overflowing outside the Expenses card boundary. This creates visual misalignment compared to the Income and Debt cards.
+The card header text ("Monthly Income", "Expenses", etc.) is being truncated too aggressively, showing only "M..." and "E" instead of the full text. This happens because:
 
-| Card | Button | Issue |
-|------|--------|-------|
-| Monthly Income | "Add Income" | Fits correctly |
-| Expenses | "Add Expense ▾" | Overflows card boundary |
-| Debts & Liabilities | "Add Debt" | Fits correctly |
+1. The right side of the header (total + button) has `flex-shrink-0`, making it take priority
+2. The left side with `min-w-0 flex-shrink` shrinks to almost nothing
+3. The `truncate` class cuts off text at whatever width remains
 
-**Root Causes:**
-1. The `IncomeExpenseCard` header uses flexbox without proper constraints on child elements
-2. The left section (icon + title + stats) doesn't have a minimum width limit, pushing the button outside
-3. The card container lacks `overflow-hidden` to clip content
-4. The button section needs `flex-shrink-0` to maintain its size while allowing the middle section to compress
+| Element | Current Behavior | Issue |
+|---------|-----------------|-------|
+| Left: Title text | Shrinks to ~0px | Text becomes "M..." |
+| Right: Total + Button | Fixed width, never shrinks | Takes most of card width |
 
 ## Solution
 
-Apply better flex constraints to the card header to ensure all content stays within the card boundaries.
+Restructure the header to give the title section a minimum width so it never shrinks below a readable size:
+
+1. Remove `flex-shrink` from the title container - let it maintain its natural width
+2. Remove `truncate` from title/subtitle - the full text should always be visible
+3. Wrap the header in a layout that stacks on smaller widths if needed, or ensure titles have enough space
+
+### Layout Strategy
+
+The header should prioritize showing the title fully, with the right section (total + button) being the flexible part that can wrap or compress if needed.
+
+```text
+Current (broken):
+[Icon][M...1...] [+$25,000.00 per month] [+ Add Income]
+       ↑ shrinks to nothing
+
+Fixed:
+[Icon][Monthly Income] [+$25,000.00] [+ Add Income]
+       [1 sources]      [per month]
+       ↑ maintains readable width
+```
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/IncomeExpenseCard.tsx` | Fix header flex layout with proper constraints |
+| `src/components/IncomeExpenseCard.tsx` | Remove aggressive shrinking, ensure title text is always visible |
 | `src/components/DebtOverviewCard.tsx` | Apply same fix for consistency |
 
 ## Technical Changes
 
-### IncomeExpenseCard.tsx
+### IncomeExpenseCard.tsx (lines 75-117)
 
-**Current header structure (lines 75-116):**
+**Remove shrinking from title, let content flow naturally:**
+
 ```jsx
-<div className="flex items-center justify-between mb-4">
-  <div className="flex items-center gap-2">     {/* Left: icon + title */}
-  <div className="flex items-center gap-3">     {/* Right: total + button */}
-```
-
-**Problems:**
-- No `min-w-0` on flex children = content can't shrink below intrinsic width
-- No `overflow-hidden` on container = content can overflow visibly
-- Middle content (totals) takes full space, pushing button outside
-
-**Fixed structure:**
-```jsx
+{/* Header - change from aggressive shrinking to balanced layout */}
 <div className="flex items-center justify-between gap-3 mb-4">
-  {/* Left side: shrinkable */}
+  {/* Left side: icon + title - remove flex-shrink, keep min-w-0 for safety */}
   <div className="flex items-center gap-2 min-w-0 flex-shrink">
-    ...
+    <div className={cn('p-2 rounded-lg flex-shrink-0', ...)}>
+      ...icon...
+    </div>
     <div className="min-w-0">
-      <h3 className="font-semibold capitalize truncate">...</h3>
-      <p className="text-xs text-muted-foreground truncate">...</p>
+      {/* REMOVE truncate - title should always be fully visible */}
+      <h3 className="font-semibold capitalize truncate">...</h3>  // Remove truncate
+      <p className="text-xs text-muted-foreground truncate">...</p>  // Remove truncate
     </div>
   </div>
   
-  {/* Right side: fixed width, won't shrink */}
+  {/* Right side: keep flex-shrink-0 but let items wrap */}
   <div className="flex items-center gap-3 flex-shrink-0">
     ...
   </div>
 </div>
 ```
 
-### DebtOverviewCard.tsx
+**Wait - the issue is that the right side takes too much space. Let me reconsider.**
 
-Apply the same pattern to the debt card header for consistency:
+The real fix is to:
+1. Keep `truncate` on titles as a safety fallback
+2. But give the left section a guaranteed minimum width so it doesn't shrink below readability
+
+```jsx
+{/* Left side: give minimum width */}
+<div className="flex items-center gap-2 min-w-0" style={{ minWidth: '120px' }}>
+```
+
+Or better, restructure so titles don't compete with the button:
 
 ```jsx
 <div className="flex items-center justify-between gap-3 mb-4">
-  <div className="flex items-center gap-3 min-w-0 flex-shrink">
-    ...
+  {/* Left: icon + title - don't shrink */}
+  <div className="flex items-center gap-2">
+    ...icon...
+    <div>
+      <h3 className="font-semibold capitalize">{title}</h3>
+      <p className="text-xs text-muted-foreground">{subtitle}</p>
+    </div>
   </div>
-  <div className="flex-shrink-0">
-    {actionButton}
+  
+  {/* Right: total + button - allow wrapping if needed */}
+  <div className="flex items-center gap-3 flex-shrink-0">
+    ...
   </div>
 </div>
 ```
 
-### Card Container
+The key insight: Remove `min-w-0` and `flex-shrink` from the left section entirely - let it maintain its natural width. The right section will wrap or the card will expand slightly if needed.
 
-Add `overflow-hidden` to the card containers to ensure nothing visually escapes:
+### DebtOverviewCard.tsx
 
-```jsx
-<motion.div
-  className="glass-card p-5 overflow-hidden"
->
-```
-
-## Visual Result After Fix
-
-All three cards will have consistent alignment with buttons properly contained:
-
-```text
-+-------------------+  +-------------------+  +----------------------+
-| Monthly Income    |  | Expenses          |  | Debts & Liabilities  |
-| [+ Add Income]    |  | [+ Add Expense ▾] |  | [+ Add Debt]         |
-+-------------------+  +-------------------+  +----------------------+
-```
-
-The button will stay inside the card boundary, and if card width is very narrow, the title text will truncate rather than push the button out.
+Apply the same pattern - remove the aggressive shrinking classes from the title section.
 
 ## Summary
 
-This fix applies proper flexbox constraints (`min-w-0`, `flex-shrink-0`, `truncate`) to prevent the "Add Expense" dropdown button from overflowing the card. The same pattern is applied to the Debt card for visual consistency across all dashboard cards.
+The fix removes `flex-shrink` and the `truncate` class from title elements, allowing them to display at their natural width. The `min-w-0` class can stay as a safety for edge cases, but without `truncate`, text will wrap instead of being cut off. This ensures "Monthly Income" and "Expenses" are always fully readable.
