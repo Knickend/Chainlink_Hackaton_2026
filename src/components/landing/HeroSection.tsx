@@ -7,7 +7,7 @@ export function HeroSection() {
   const navigate = useNavigate();
 
   return (
-    <section className="relative min-h-[90vh] flex items-center justify-center px-4 overflow-hidden">
+    <section className="relative min-h-[90vh] flex items-center justify-center px-4 pt-16 overflow-hidden">
       {/* Ambient glow effects */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] animate-pulse" />
