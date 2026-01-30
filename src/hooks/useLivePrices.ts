@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+export interface PriceData {
+  price: number;
+  change: number;
+  changePercent: number;
+}
+
+export interface CommodityPriceData extends PriceData {
+  priceUnit?: string;
+}
+
 export interface LivePrices {
   btc: number;
   eth: number;
@@ -9,9 +19,11 @@ export interface LivePrices {
   gold: number;
   silver: number;
   timestamp: string;
-  stocks?: Record<string, { price: number; change: number; changePercent: number }>;
-  forex?: Record<string, number>; // USD to other currencies (e.g., { EUR: 0.92, GBP: 0.79 })
-  forexTimestamp?: string; // Separate timestamp for forex data freshness
+  stocks?: Record<string, PriceData>;
+  crypto?: Record<string, PriceData>;
+  commodities?: Record<string, CommodityPriceData>;
+  forex?: Record<string, number>;
+  forexTimestamp?: string;
 }
 
 const RESERVED_SPOT_SYMBOLS = new Set(['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER', 'XAU', 'XAG']);
@@ -24,6 +36,8 @@ const DEFAULT_PRICES: LivePrices = {
   silver: 30,
   timestamp: new Date().toISOString(),
   stocks: {},
+  crypto: {},
+  commodities: {},
   forex: { USD: 1 },
   forexTimestamp: new Date().toISOString(),
 };
@@ -182,23 +196,29 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
           const goldPrice = cachedPrices.find(p => p.symbol === 'GOLD');
           const silverPrice = cachedPrices.find(p => p.symbol === 'SILVER');
 
-          const stocksMap: Record<string, { price: number; change: number; changePercent: number }> = {};
+          const stocksMap: Record<string, PriceData> = {};
+          const cryptoMap: Record<string, PriceData> = {};
+          const commoditiesMap: Record<string, CommodityPriceData> = {};
           const forexMap: Record<string, number> = { USD: 1 };
           
           cachedPrices.forEach(p => {
-            // Keep our canonical spot symbols (BTC/ETH/LINK/GOLD/SILVER) out of the per-ticker map
-            // so they don't override the dedicated livePrices fields.
-            // Include crypto assets in the stocks map for dynamic crypto symbols
-          if ((p.asset_type === 'stock' || p.asset_type === 'commodity' || p.asset_type === 'crypto') && !RESERVED_SPOT_SYMBOLS.has(p.symbol)) {
-              stocksMap[p.symbol] = {
-                price: Number(p.price),
-                change: Number(p.change) || 0,
-                changePercent: Number(p.change_percent) || 0,
-              };
-            }
+            // Skip reserved spot symbols - they have dedicated fields
+            if (RESERVED_SPOT_SYMBOLS.has(p.symbol)) return;
             
-            // Also collect forex rates from cache
-            if (p.asset_type === 'forex') {
+            const priceData: PriceData = {
+              price: Number(p.price),
+              change: Number(p.change) || 0,
+              changePercent: Number(p.change_percent) || 0,
+            };
+            
+            // Route to appropriate map based on asset_type
+            if (p.asset_type === 'stock') {
+              stocksMap[p.symbol] = priceData;
+            } else if (p.asset_type === 'crypto') {
+              cryptoMap[p.symbol] = priceData;
+            } else if (p.asset_type === 'commodity') {
+              commoditiesMap[p.symbol] = { ...priceData, priceUnit: p.price_unit || undefined };
+            } else if (p.asset_type === 'forex') {
               forexMap[p.symbol] = Number(p.price);
             }
           });
@@ -219,6 +239,8 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
             silver: silverPrice ? Number(silverPrice.price) : DEFAULT_PRICES.silver,
             timestamp: new Date(oldestUpdate).toISOString(),
             stocks: stocksMap,
+            crypto: cryptoMap,
+            commodities: commoditiesMap,
             forex: Object.keys(forexMap).length > 0 ? forexMap : { USD: 1 },
             forexTimestamp: new Date(forexUpdate).toISOString(),
           });
