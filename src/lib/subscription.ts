@@ -1,12 +1,17 @@
 // Subscription tier types and utilities
 
 export type SubscriptionTier = 'free' | 'standard' | 'pro';
+export type BillingPeriod = 'monthly' | 'annual';
 
 export interface SubscriptionPlan {
   tier: SubscriptionTier;
   name: string;
-  price: number;
+  monthlyPrice: number;
+  annualPrice: number;
+  currency: string;
+  firstMonthDiscount: number;
   features: string[];
+  assetLimit?: number;
   isPopular?: boolean;
 }
 
@@ -14,9 +19,13 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     tier: 'standard',
     name: 'Standard',
-    price: 4.99,
+    monthlyPrice: 4.99,
+    annualPrice: 49.90,
+    currency: 'EUR',
+    firstMonthDiscount: 0.50,
+    assetLimit: 30,
     features: [
-      'Unlimited asset tracking',
+      'Up to 30 assets',
       'Real-time price updates',
       'Income & expense tracking',
       'Asset allocation charts',
@@ -25,9 +34,13 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     tier: 'pro',
     name: 'Pro',
-    price: 9.99,
+    monthlyPrice: 9.99,
+    annualPrice: 99.90,
+    currency: 'EUR',
+    firstMonthDiscount: 0.50,
     isPopular: true,
     features: [
+      'Unlimited asset tracking',
       'Everything in Standard',
       'Monthly performance tracking',
       'YTD overview & analytics',
@@ -42,6 +55,18 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
 
 export function getPlanByTier(tier: SubscriptionTier): SubscriptionPlan | undefined {
   return SUBSCRIPTION_PLANS.find(p => p.tier === tier);
+}
+
+export function getFirstMonthPrice(plan: SubscriptionPlan): number {
+  return Number((plan.monthlyPrice * (1 - plan.firstMonthDiscount)).toFixed(2));
+}
+
+export function getMonthlyEquivalent(plan: SubscriptionPlan): number {
+  return Number((plan.annualPrice / 12).toFixed(2));
+}
+
+export function getAnnualSavings(plan: SubscriptionPlan): number {
+  return Number(((plan.monthlyPrice * 12) - plan.annualPrice).toFixed(2));
 }
 
 export function isProFeature(feature: 'performance' | 'oneTimeExpense'): boolean {
