@@ -81,13 +81,13 @@ export function DebtOverviewCard({
       className="glass-card rounded-xl p-6 overflow-hidden"
     >
       <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3 min-w-0 flex-shrink">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
             <CreditCard className="w-5 h-5 text-destructive" />
           </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold truncate">Debts & Liabilities</h3>
-            <p className="text-sm text-muted-foreground truncate">Track loans and interest</p>
+          <div>
+            <h3 className="font-semibold">Debts & Liabilities</h3>
+            <p className="text-sm text-muted-foreground">Track loans and interest</p>
           </div>
         </div>
         <div className="flex-shrink-0">
