@@ -1,68 +1,62 @@
 
 
-# Redesign Header Section
+## Convert UnitSelector to Compact Dropdown
 
-## The Issue
+### The Problem
+The current UnitSelector displays 5 horizontal buttons (USD, BTC, Gold, EUR, GBP), taking up approximately 250-300px of width. This contributes to the header overlap issue because the controls section is too wide.
 
-The description text "Track your assets across all markets" is overlapping with the UnitSelector (currency buttons) because:
-1. Both sections are trying to occupy the same horizontal space
-2. The right section with all controls (UnitSelector, ThemeToggle, Tour, Security, Sign out) takes up significant width
-3. There's no proper constraint to prevent overlap on medium-to-large screens
+### Solution
+Replace the horizontal button group with a compact dropdown that:
+- Shows only the selected currency icon and label (approximately 80px width)
+- Expands to show all currency options when clicked
+- Reduces the controls section width by approximately 200px
 
-## Solution
-
-Restructure the header to cleanly separate the logo/branding from the controls, ensuring no overlap occurs. The description text will only show when there's genuinely enough room.
-
-## File to Modify
+### File to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Restructure header layout with proper flex constraints |
+| `src/components/UnitSelector.tsx` | Convert from horizontal button group to dropdown |
 
-## Implementation Details
+### Implementation Details
 
-### Updated Header Structure
+**Current width**: ~250-300px (5 buttons side by side)
+**New width**: ~80px (single dropdown trigger)
 
-```tsx
-<motion.header
-  initial={{ opacity: 0, y: -20 }}
-  animate={{ opacity: 1, y: 0 }}
-  className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
->
-  {/* Left section: Logo + Description */}
-  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-    <div className="flex items-center gap-2 flex-shrink-0">
-      <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-        <span className="gradient-text">In</span>
-        <span className="text-foreground">Control</span>
-      </h1>
-      {isPro && <ProBadge />}
-    </div>
-    <p className="text-muted-foreground whitespace-nowrap hidden md:block">
-      Track your assets across all markets
-    </p>
-  </div>
-  
-  {/* Right section: Controls - all aligned in a row */}
-  <div className="flex items-center gap-3 flex-shrink-0">
-    {/* Controls here */}
-  </div>
-</motion.header>
+The new component will use the existing `Select` component from shadcn/ui to create a dropdown with:
+
+1. A trigger button showing the selected currency's icon and label
+2. A dropdown content with all 5 currency options
+3. Each option displays the currency icon and label
+4. Maintains the same `data-tutorial` attribute for the tutorial system
+
+```text
+Current Layout:
++------------------------------------------------------+
+| [$USD] [₿BTC] [🥇Gold] [€EUR] [£GBP]                |
++------------------------------------------------------+
+
+New Layout:
++-------------+
+| $ USD    ▼  |
++-------------+
+     |
+     v (when clicked)
++-------------+
+| $ USD    ✓  |
+| ₿ BTC       |
+| 🥇 Gold     |
+| € EUR       |
+| £ GBP       |
++-------------+
 ```
 
-### Key Changes
+### Technical Changes
 
-1. **Add `flex-shrink-0`** to the right controls section - prevents the controls from shrinking and causing overlap
-2. **Keep `min-w-0`** on the left section - allows the left section to shrink gracefully when needed
-3. **Keep `whitespace-nowrap hidden md:block`** on description - ensures it only shows when there's room and doesn't wrap awkwardly
+1. Import the `Select` components from `@/components/ui/select`
+2. Replace the flex button group with a `Select` component
+3. Map the `units` array to `SelectItem` components
+4. Style the trigger to be compact but readable
+5. Keep the same interface (`value`, `onChange`) for seamless integration
 
-The root issue is that both sections need `flex-shrink-0` to prevent shrinking, but when both refuse to shrink, they overlap. The fix is to let the left section (with description) shrink by removing content at smaller breakpoints while the controls stay fixed.
-
-### Responsive Behavior
-
-- **Large screens (lg+)**: Logo, PRO badge, description, and all controls visible in one row
-- **Medium screens (md)**: Description hidden to make room for controls
-- **Small screens (sm)**: Header wraps to two rows - logo on top, controls below
-
-This ensures the header remains clean and readable at all viewport sizes without any overlapping elements.
+This change alone should free up enough horizontal space to prevent the header overlap, potentially allowing the tagline to be visible at smaller breakpoints again.
 
