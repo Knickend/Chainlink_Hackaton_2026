@@ -1,125 +1,180 @@
 
-Goal
-- Fix the onboarding tour so:
-  - Step 6 (“Manage Your Assets” / target: `assets-section`) spotlights the correct UI consistently.
-  - Step 7 (“Adding Assets is Easy” / target: `add-asset-button`) always finds a valid element and spotlights it correctly.
-- Make the solution robust across scrolling, different viewport sizes, and zoom levels.
 
-What’s happening (root cause analysis)
-1) Spotlight coordinate system mismatch (main cause of “highlights partly the incorrect part”)
-- `TutorialOverlay` uses `element.getBoundingClientRect()` (viewport coordinates) but then adds `window.scrollY` to the `top` and tooltip positions.
-- The spotlight/tooltip are rendered with `position: fixed`, which expects viewport coordinates, not document coordinates.
-- Result: when the page scrolls (which begins around steps 6–7), the spotlight/tooltip can drift or appear offset, partially highlighting the wrong area.
+# Expand Tutorial Tour with Pro Features & Feedback Button
 
-2) The tour triggers scrolling at the wrong time and too often
-- `updateTargetPosition()` currently does:
-  - measure rect
-  - set spotlight
-  - then call `element.scrollIntoView({ behavior: 'smooth' ... })`
-- Additionally, `updateTargetPosition` is attached to `scroll` events, so the `scrollIntoView` can fire repeatedly during scrolling, producing unstable measurements and jumpy/incorrect spotlight placement.
+## Overview
 
-3) Step 7 can legitimately fail if the “Add Asset” control isn’t rendered (likely in demo mode)
-- In `src/pages/Index.tsx`, the element containing `data-tutorial="add-asset-button"` is only rendered when `!isDemo`.
-- If the user runs the tour while not signed in (demo mode), step 7’s element doesn’t exist, so the tour appears “broken” on that step.
+Currently, the tutorial has **13 steps** covering core features. This plan expands the tour to include Pro features and the Feedback button, giving new users a complete picture of all capabilities—especially valuable since the tour runs in "Pro mode" to showcase premium features.
 
-Key changes (high level)
-A) Fix spotlight measurement + positioning to use one coordinate system (viewport/fixed)
-- Remove all `window.scrollY` usage from spotlight and tooltip calculations.
-- Clamp tooltip position using `window.innerWidth` / `window.innerHeight` (viewport), not `document.documentElement.scrollHeight`.
+## Current Tutorial Steps (13 total)
 
-B) Decouple “scroll the element into view” from “measure the element”
-- Only call `scrollIntoView` when the step changes (not on every scroll event).
-- Measure after scrolling begins/settles (simple approach: measure immediately, then measure again after a short delay; or use a small requestAnimationFrame loop).
+| # | ID | Target | Title |
+|---|-----|--------|-------|
+| 1 | welcome | (modal) | Welcome to InControl! |
+| 2 | key-metrics | key-metrics | Your Financial Snapshot |
+| 3 | net-worth | net-worth-card | Net Worth |
+| 4 | unit-selector | unit-selector | View in Different Currencies |
+| 5 | theme-toggle | theme-toggle | Light or Dark Mode |
+| 6 | charts | charts-section | Visualize Your Wealth |
+| 7 | assets | assets-section | Manage Your Assets |
+| 8 | add-asset | add-asset-button | Adding Assets is Easy |
+| 9 | income | income-card | Track Your Income |
+| 10 | expenses | expense-card | Monitor Expenses |
+| 11 | debts | debt-card | Manage Your Debt |
+| 12 | ai-advisor | ai-advisor-button | Your AI Financial Advisor |
+| 13 | completion | (modal) | You're All Set! |
 
-C) Make step 6 target a smaller, unambiguous element
-- Currently `data-tutorial="assets-section"` is on the whole section container, which can be very tall. That makes the spotlight huge and can look “partly wrong” (especially on smaller screens).
-- Move `data-tutorial="assets-section"` to the assets header row (title + action buttons) so the spotlight always highlights a clear, correct “anchor” element.
+## Proposed New Steps
 
-D) Ensure step 7 always has a target
-- Ensure there is always an element with `data-tutorial="add-asset-button"`:
-  - If logged in: wrap the real `AddAssetDialog` trigger area.
-  - If demo mode: render a compact “Add Asset” CTA button in the same location that routes to `/auth` (or shows a “Sign in to add assets” message), but still provides a stable tutorial target.
+Add **4 new steps** for Pro features and the Feedback button:
 
-Files to modify
-1) `src/components/Tutorial/TutorialOverlay.tsx`
-2) `src/pages/Index.tsx`
+| New # | ID | Target | Title | Content |
+|-------|-----|--------|-------|---------|
+| 7 | portfolio-history | portfolio-history-card | Track Your Progress (Pro) | See how your net worth changes month-over-month. Compare any two months side-by-side to understand your financial trajectory. |
+| 8 | investment-strategy | investment-strategy-card | Smart Investment Advice (Pro) | Get personalized recommendations on how to allocate your monthly surplus based on your debts and risk tolerance. |
+| 14 | debt-calculator | debt-payoff-calculator | Debt Freedom Calculator (Pro) | See exactly when you'll be debt-free with different payoff strategies. Compare avalanche vs. snowball methods to save the most interest. |
+| 15 | feedback-button | feedback-button | Help Us Improve | Found a bug or have an idea? Click here to submit feedback directly to our team. We read every submission! |
 
-Detailed implementation steps
+## Updated Step Order (17 total)
 
-1) Update `TutorialOverlay` spotlight/tooltip math (viewport coordinates only)
-- In `setTargetRect`:
-  - Change:
-    - `top: rect.top - padding + window.scrollY`
-  - To:
-    - `top: rect.top - padding`
-  - Keep:
-    - `left: rect.left - padding`
-- In tooltip calculation:
-  - Remove all `+ window.scrollY`.
-  - Compute `top/left` entirely from rect values.
-- Clamp tooltip within viewport:
-  - Replace:
-    - `top = Math.min(top, document.documentElement.scrollHeight - tooltipHeight - margin)`
-  - With:
-    - `top = Math.min(top, window.innerHeight - tooltipHeight - margin)`
-  - Keep left clamp similarly using `window.innerWidth`.
+1. Welcome (modal)
+2. Key Metrics
+3. Net Worth
+4. Unit Selector
+5. Theme Toggle
+6. Charts Section
+7. **Portfolio History (Pro)** ← NEW
+8. **Investment Strategy (Pro)** ← NEW
+9. Assets Section
+10. Add Asset
+11. Income
+12. Expenses
+13. Debts
+14. **Debt Calculator (Pro)** ← NEW
+15. AI Advisor
+16. **Feedback Button** ← NEW
+17. Completion (modal)
 
-2) Stop calling `scrollIntoView` inside `updateTargetPosition`
-- Remove `element.scrollIntoView(...)` from inside the measure/update function.
-- Reason: This function is also invoked by scroll events; it should never trigger scrolling, only measure and update.
+## Files to Modify
 
-3) Add a “scroll on step change” effect (runs once per step)
-- Add a `useEffect` keyed to `isActive` and `currentStepData?.target`:
-  - Find the element with the same retry logic.
-  - If found, only scroll it into view if needed (e.g., if it’s partially off screen).
-  - After initiating scroll:
-    - call `updateTargetPosition()` immediately
-    - call it again after ~250–400ms (to allow smooth scroll to progress and layout to settle)
-- This makes the overlay stable and fixes “step 6/7 are offset” cases.
+| File | Changes |
+|------|---------|
+| `src/components/Tutorial/tutorialSteps.ts` | Add 4 new step definitions |
+| `src/pages/Index.tsx` | Add `data-tutorial` attributes to Pro components and Feedback button |
+| `src/components/FeedbackButton.tsx` | Add `data-tutorial="feedback-button"` attribute |
 
-4) Improve element selection reliability (optional but recommended)
-- If `querySelector` returns an element that has `rect.width === 0 || rect.height === 0` (hidden), retry and/or select the first visible match from `querySelectorAll`.
-- This prevents accidentally measuring a hidden wrapper.
+## Implementation Details
 
-5) Make step 6 spotlight smaller/clearer in `Index.tsx`
-- Move `data-tutorial="assets-section"` from:
-  - the outer `<div className="mb-8" ...>`
-- To:
-  - the header row `<div className="flex items-center justify-between mb-4">`
-- This ensures the spotlight matches “Assets by Category” area precisely and doesn’t include a huge grid region.
+### 1. Add Tutorial Targets to Components
 
-6) Ensure step 7 always has a target in `Index.tsx`
-- Replace the current:
-  - `{!isDemo && <div data-tutorial="add-asset-button"><AddAssetDialog ... /></div>}`
-- With logic that always renders a `data-tutorial="add-asset-button"` wrapper:
-  - Logged in: show the real `AddAssetDialog`.
-  - Demo: show a button in the same place that navigates to `/auth` (or opens the auth page) with label like “Add Asset” or “Sign in to add”.
-- This prevents step 7 from ever being “missing”, even when the user runs the tour in demo mode.
+**`src/pages/Index.tsx`** - Add `data-tutorial` attributes:
 
-Acceptance criteria (how we’ll know it’s fixed)
-- Step 6:
-  - Spotlights the “Assets by Category” header row cleanly (not partially offset, not covering unrelated areas).
-- Step 7:
-  - Always shows a spotlight:
-    - Logged in: highlights the actual “Add Asset” button.
-    - Demo: highlights the “Sign in to add” (or similar) CTA in the same position.
-- During steps 6–7, the spotlight stays attached to the target while scrolling occurs (no drifting due to scroll offset issues).
-- Tooltip stays inside the viewport and doesn’t jump to odd places on long pages.
+```tsx
+{/* Portfolio History Card - Pro feature */}
+<div data-tutorial="portfolio-history-card">
+  <PortfolioHistoryCard ... />
+</div>
 
-Test plan (end-to-end)
-- Desktop:
-  - Run the tour from start through step 7 at 100% zoom.
-  - Repeat at 125% zoom (this often reproduces offset/layout edge cases).
-  - Resize the window so steps 6–7 require scrolling; verify spotlight stays accurate.
-- Mobile-sized viewport (or narrow desktop window):
-  - Run through step 7 and confirm tooltip placement remains readable.
-- Demo mode vs logged-in mode:
-  - Verify step 7 still works in demo mode (CTA exists and is highlighted).
-  - Verify step 7 works in logged-in mode (real AddAssetDialog is highlighted).
+{/* Investment Strategy Card - Pro feature */}
+<div data-tutorial="investment-strategy-card">
+  <InvestmentStrategyCard ... />
+</div>
 
-Risks / tradeoffs
-- If we keep smooth scrolling, measurement timing can vary slightly per device. The “measure immediately + re-measure after delay” approach mitigates this without adding heavy complexity.
-- Changing `assets-section` target to the header row is a UX change (smaller spotlight), but it directly addresses the “partly incorrect” perception and makes the tour clearer.
+{/* Debt Payoff Calculator - Pro feature */}
+<div data-tutorial="debt-payoff-calculator">
+  <DebtPayoffCalculator ... />
+</div>
+```
 
-After this fix
-- If you still see any step highlighting the wrong element, we can add a small debug log in the overlay (step id + rect values) to quickly pinpoint whether the wrong DOM node is being selected or if a layout transform is affecting coordinates.
+**`src/components/FeedbackButton.tsx`** - Add attribute to FAB:
+
+```tsx
+<Button
+  onClick={() => setOpen(true)}
+  data-tutorial="feedback-button"
+  ...
+>
+```
+
+### 2. Update Tutorial Steps
+
+**`src/components/Tutorial/tutorialSteps.ts`** - Add new steps:
+
+```typescript
+// After 'charts' step (position 6)
+{
+  id: 'portfolio-history',
+  target: 'portfolio-history-card',
+  title: 'Track Your Progress',
+  content: 'See how your net worth changes month-over-month. Compare any two months side-by-side to understand your financial trajectory. (Pro feature)',
+  position: 'left',
+},
+{
+  id: 'investment-strategy',
+  target: 'investment-strategy-card',
+  title: 'Smart Investment Advice',
+  content: 'Get personalized recommendations on how to allocate your monthly surplus based on your debts and financial goals. (Pro feature)',
+  position: 'top',
+},
+
+// After 'debts' step (before ai-advisor)
+{
+  id: 'debt-calculator',
+  target: 'debt-payoff-calculator',
+  title: 'Debt Freedom Calculator',
+  content: 'See exactly when you\'ll be debt-free with different payoff strategies. Compare avalanche vs. snowball methods to save the most interest. (Pro feature)',
+  position: 'top',
+},
+
+// After 'ai-advisor' step (before completion)
+{
+  id: 'feedback',
+  target: 'feedback-button',
+  title: 'Help Us Improve',
+  content: 'Found a bug or have an idea? Click here to submit feedback directly to our team. We read every submission!',
+  position: 'right',
+},
+```
+
+## Step Flow Diagram
+
+```text
+Welcome Modal
+     ↓
+Key Metrics → Net Worth → Unit Selector → Theme Toggle
+     ↓
+Charts Section
+     ↓
+Portfolio History (Pro) → Investment Strategy (Pro)
+     ↓
+Assets Section → Add Asset
+     ↓
+Income → Expenses → Debts
+     ↓
+Debt Calculator (Pro)
+     ↓
+AI Advisor → Feedback Button
+     ↓
+Completion Modal
+```
+
+## Considerations
+
+### Demo Mode Handling
+- The tour already enables Pro mode during the tutorial (`effectiveSubscriptionTier = 'pro'`), so all Pro features will be visible and targetable.
+- The Feedback button only shows for authenticated users currently. We'll need to ensure it renders during the tutorial even in demo mode, or skip that step for unauthenticated users.
+
+### Feedback Button in Demo Mode
+Two options:
+1. **Option A**: Make the Feedback button visible during the tutorial even in demo mode (simpler UX).
+2. **Option B**: Skip the feedback step for unauthenticated users (more accurate but less complete tour).
+
+I recommend **Option A** for a more comprehensive tour experience.
+
+## Benefits
+
+1. **Showcases Pro Value**: Users see premium features during onboarding, increasing conversion potential.
+2. **Feature Discovery**: Ensures users don't miss key capabilities like debt optimization and portfolio tracking.
+3. **Feedback Loop**: Introducing the feedback button encourages user engagement from day one.
+4. **Complete Experience**: The tour becomes a comprehensive product walkthrough.
+
