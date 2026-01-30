@@ -180,6 +180,7 @@ const IndexContent = () => {
               error={pricesError}
               isCached={isCached}
               forexTimestamp={prices.forexTimestamp}
+              prices={prices}
               onRefresh={refetchPrices}
             />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />

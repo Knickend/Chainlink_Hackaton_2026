@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Wifi, WifiOff, Database, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { ExchangeRatesDialog } from '@/components/ExchangeRatesDialog';
+import { LivePrices } from '@/hooks/useLivePrices';
 
 interface PriceIndicatorProps {
   isLoading: boolean;
@@ -10,10 +13,12 @@ interface PriceIndicatorProps {
   error: string | null;
   isCached?: boolean;
   forexTimestamp?: string;
+  prices: LivePrices;
   onRefresh: () => void;
 }
 
-export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexTimestamp, onRefresh }: PriceIndicatorProps) {
+export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexTimestamp, prices, onRefresh }: PriceIndicatorProps) {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const formatLastUpdated = (date: Date | null) => {
     if (!date) return 'Never';
     const now = new Date();
@@ -49,14 +54,17 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexT
       <div className="flex items-center gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
-              getStatusColor()
-            )}>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer hover:opacity-80',
+                getStatusColor()
+              )}
+            >
               {getStatusIcon()}
               <span className="hidden sm:inline">{getStatusLabel()}</span>
               <span className="text-[10px] opacity-75">• {formatLastUpdated(lastUpdated)}</span>
-            </div>
+            </button>
           </TooltipTrigger>
           <TooltipContent>
             <div className="space-y-1">
@@ -81,6 +89,7 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexT
                   Forex rates: {formatLastUpdated(forexDate)}
                 </p>
               )}
+              <p className="text-xs text-primary mt-2">Click to view all rates</p>
             </div>
           </TooltipContent>
         </Tooltip>
@@ -107,6 +116,16 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexT
           </TooltipContent>
         </Tooltip>
       </div>
+
+      <ExchangeRatesDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        prices={prices}
+        lastUpdated={lastUpdated}
+        forexTimestamp={forexTimestamp}
+        isLoading={isLoading}
+        onRefresh={onRefresh}
+      />
     </TooltipProvider>
   );
 }
