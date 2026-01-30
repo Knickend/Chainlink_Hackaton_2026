@@ -70,13 +70,13 @@ export function IncomeExpenseCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.3 }}
-      className="glass-card p-5"
+      className="glass-card p-5 overflow-hidden"
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2 min-w-0 flex-shrink">
           <div
             className={cn(
-              'p-2 rounded-lg',
+              'p-2 rounded-lg flex-shrink-0',
               isIncome ? 'bg-success/20' : 'bg-danger/20'
             )}
           >
@@ -86,9 +86,9 @@ export function IncomeExpenseCard({
               <ArrowDownRight className="w-5 h-5 text-danger" />
             )}
           </div>
-          <div>
-            <h3 className="font-semibold capitalize">{isIncome ? 'Monthly Income' : 'Expenses'}</h3>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0">
+            <h3 className="font-semibold capitalize truncate">{isIncome ? 'Monthly Income' : 'Expenses'}</h3>
+            <p className="text-xs text-muted-foreground truncate">
               {isIncome 
                 ? `${items.length} sources`
                 : `${recurringCount} recurring${oneTimeCount > 0 ? `, ${oneTimeCount} non-recurring` : ''}`
@@ -96,7 +96,7 @@ export function IncomeExpenseCard({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <div className="text-right">
             <p
               className={cn(

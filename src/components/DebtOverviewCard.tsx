@@ -78,19 +78,21 @@ export function DebtOverviewCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="glass-card rounded-xl p-6"
+      className="glass-card rounded-xl p-6 overflow-hidden"
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0 flex-shrink">
+          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
             <CreditCard className="w-5 h-5 text-destructive" />
           </div>
-          <div>
-            <h3 className="font-semibold">Debts & Liabilities</h3>
-            <p className="text-sm text-muted-foreground">Track loans and interest</p>
+          <div className="min-w-0">
+            <h3 className="font-semibold truncate">Debts & Liabilities</h3>
+            <p className="text-sm text-muted-foreground truncate">Track loans and interest</p>
           </div>
         </div>
-        {actionButton}
+        <div className="flex-shrink-0">
+          {actionButton}
+        </div>
       </div>
 
       {/* Summary Stats */}
