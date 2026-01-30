@@ -177,7 +177,7 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                       )}
                     >
                       {/* Unified badge row */}
-                      <div className="absolute -top-3 left-0 right-0 flex items-center justify-center gap-1.5">
+                      <div className="absolute -top-3 left-4 flex items-center gap-1.5">
                         {plan.isPopular && (
                           <span className="px-2 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full uppercase tracking-wide">
                             Popular
