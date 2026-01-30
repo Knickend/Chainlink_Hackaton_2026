@@ -14,7 +14,6 @@ interface IncomeExpenseCardProps {
   total: string;
   formatValue: (value: number) => string;
   actionButton?: ReactNode;
-  secondaryActionButton?: ReactNode;
   onUpdateIncome?: (id: string, data: Partial<Omit<Income, 'id'>>) => void;
   onDeleteIncome?: (id: string) => void;
   onUpdateExpense?: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
@@ -28,7 +27,6 @@ export function IncomeExpenseCard({
   total,
   formatValue,
   actionButton,
-  secondaryActionButton,
   onUpdateIncome,
   onDeleteIncome,
   onUpdateExpense,
@@ -114,7 +112,6 @@ export function IncomeExpenseCard({
           </div>
           <div className="flex items-center gap-1">
             {actionButton}
-            {secondaryActionButton}
           </div>
         </div>
       </div>
