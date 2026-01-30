@@ -1,202 +1,204 @@
 
 
-# Redesign Income, Expenses, and Debt Cards
+# Terms of Service & Privacy Policy Implementation
 
-## Problem Analysis
+## Overview
 
-The current cards have inconsistent layouts causing visual misalignment:
+Implement a comprehensive legal compliance system that:
+1. Creates Terms of Service and Privacy Policy pages
+2. Links them from the footer
+3. Adds consent messaging to the pricing section
+4. Requires mandatory checkbox agreement before paid subscription checkout
+5. Tracks user consent in the database to block subscription upgrades without agreement
 
-| Card | Header Structure | Issues |
-|------|-----------------|--------|
-| Monthly Income | Icon + Title + Large Total + Button (all in one row) | Total and button compete for space |
-| Expenses | Icon + Title + Large Total + Button (all in one row) | Button gets pushed outside |
-| Debts & Liabilities | Icon + Title + Button (row) + Stats Grid below | Different structure entirely |
+## Database Schema
 
-The root cause is trying to fit too much horizontal content into a single row, especially on medium-width viewports.
+Add a new column to the `profiles` table to track ToS acceptance:
 
-## Solution: Clean Two-Row Header Design
-
-Adopt a consistent two-section layout for all three cards:
-
-```text
-+--------------------------------------------------+
-| [Icon] Title              [+ Action Button]      |  <- Row 1: Title + Button
-|        Subtitle                                  |
-+--------------------------------------------------+
-| [Total Value]    [Metric 2]     [Metric 3]       |  <- Row 2: Stats Grid
-| label            label          label            |
-+--------------------------------------------------+
-| List items...                                    |
-+--------------------------------------------------+
+```sql
+ALTER TABLE profiles 
+ADD COLUMN agreed_to_tos boolean DEFAULT false,
+ADD COLUMN agreed_to_tos_at timestamp with time zone;
 ```
 
-This separates the title/action row from the summary stats row, preventing overflow.
+| Column | Type | Purpose |
+|--------|------|---------|
+| `agreed_to_tos` | boolean | Whether user has accepted Terms |
+| `agreed_to_tos_at` | timestamp | When they accepted (for audit trail) |
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/pages/Terms.tsx` | Terms of Service page with all 11 sections |
+| `src/pages/Privacy.tsx` | Privacy Policy page |
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/IncomeExpenseCard.tsx` | Complete redesign with two-row header and stats grid |
-| `src/components/DebtOverviewCard.tsx` | Apply same consistent structure |
+| `src/App.tsx` | Add routes for `/terms` and `/privacy` |
+| `src/components/landing/Footer.tsx` | Link to `/terms` and `/privacy` using React Router |
+| `src/components/landing/PricingSection.tsx` | Add "By subscribing, you agree to Terms" text |
+| `src/components/SubscriptionDialog.tsx` | Add mandatory ToS checkbox before payment |
+| `src/hooks/useSubscription.ts` | Add `hasAgreedToTos` state and update methods |
 
-## Detailed Design
+## Implementation Details
 
-### Row 1: Title Row (consistent across all cards)
+### 1. Terms Page (`src/pages/Terms.tsx`)
 
-```jsx
-<div className="flex items-center justify-between mb-3">
-  <div className="flex items-center gap-3">
-    <div className="icon-container">...</div>
-    <div>
-      <h3>Card Title</h3>
-      <p className="subtitle">X items</p>
-    </div>
-  </div>
-  <div className="flex-shrink-0">
-    {actionButton}
-  </div>
-</div>
-```
+A well-formatted legal page containing all 11 sections from the provided content:
 
-Key changes:
-- Button is ONLY in the right corner
-- No totals in this row
-- Simple, predictable width
-
-### Row 2: Stats Summary (below title, before list)
-
-All three cards get a 3-column stats grid:
-
-**Monthly Income card:**
-| Total Income | Sources | Per Month |
-|--------------|---------|-----------|
-| +$25,000.00  | 1       | recurring |
-
-**Expenses card:**
-| Total Expenses | Recurring | Non-Recurring |
-|----------------|-----------|---------------|
-| -$1,660.00     | 2         | 1             |
-
-**Debt card (existing - keep as is):**
-| Total Debt     | Monthly Payments | Monthly Interest |
-|----------------|------------------|------------------|
-| $420,000.00    | $1,800.00        | $1,166.67        |
-
-### Component Structure
-
-```jsx
-// Unified card layout
-<motion.div className="glass-card rounded-xl p-5 overflow-hidden">
-  {/* Row 1: Title + Action */}
-  <div className="flex items-center justify-between mb-3">
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-lg {color}/10 flex items-center justify-center flex-shrink-0">
-        <Icon className="w-5 h-5 {color}" />
-      </div>
-      <div>
-        <h3 className="font-semibold">{title}</h3>
-        <p className="text-xs text-muted-foreground">{subtitle}</p>
-      </div>
-    </div>
-    <div className="flex-shrink-0">
-      {actionButton}
-    </div>
-  </div>
-
-  {/* Row 2: Stats Summary Grid */}
-  <div className="grid grid-cols-3 gap-2 p-3 bg-secondary/30 rounded-lg mb-4">
-    <div className="text-center">
-      <p className="font-semibold {color}">{total}</p>
-      <p className="text-xs text-muted-foreground">Total</p>
-    </div>
-    <div className="text-center border-x border-border/50">
-      <p className="font-semibold">{metric2}</p>
-      <p className="text-xs text-muted-foreground">{label2}</p>
-    </div>
-    <div className="text-center">
-      <p className="font-semibold">{metric3}</p>
-      <p className="text-xs text-muted-foreground">{label3}</p>
-    </div>
-  </div>
-
-  {/* Row 3: List Items */}
-  <div className="space-y-2 max-h-[180px] overflow-y-auto">
-    ...
-  </div>
-</motion.div>
-```
-
-## Technical Implementation
-
-### IncomeExpenseCard.tsx Changes
-
-1. **Remove total from header row** - Move it to stats grid
-2. **Add stats grid section** matching Debt card style
-3. **Income stats:** Total | Sources count | Type label
-4. **Expense stats:** Total | Recurring count | Non-recurring count
-
-```tsx
-// Stats for Income
-<div className="grid grid-cols-3 gap-2 p-3 bg-secondary/30 rounded-lg mb-4">
-  <div className="text-center">
-    <p className="font-mono font-semibold text-lg text-success">+{total}</p>
-    <p className="text-xs text-muted-foreground">per month</p>
-  </div>
-  <div className="text-center border-x border-border/50">
-    <p className="font-semibold">{items.length}</p>
-    <p className="text-xs text-muted-foreground">sources</p>
-  </div>
-  <div className="text-center">
-    <p className="font-semibold">{workCount}</p>
-    <p className="text-xs text-muted-foreground">work income</p>
-  </div>
-</div>
-
-// Stats for Expenses
-<div className="grid grid-cols-3 gap-2 p-3 bg-secondary/30 rounded-lg mb-4">
-  <div className="text-center">
-    <p className="font-mono font-semibold text-lg text-danger">-{total}</p>
-    <p className="text-xs text-muted-foreground">total</p>
-  </div>
-  <div className="text-center border-x border-border/50">
-    <p className="font-semibold">{recurringCount}</p>
-    <p className="text-xs text-muted-foreground">recurring</p>
-  </div>
-  <div className="text-center">
-    <p className="font-semibold">{oneTimeCount}</p>
-    <p className="text-xs text-muted-foreground">non-recurring</p>
-  </div>
-</div>
-```
-
-### DebtOverviewCard.tsx Changes
-
-1. Keep existing layout (already has stats grid)
-2. Ensure header row matches Income/Expenses exactly
-3. Align padding/margins for visual consistency
-
-## Visual Result
-
-All three cards will have identical structure:
+- **Header**: InControl logo + Back to Home button
+- **Critical sections highlighted**: Sections 3 (Not Financial Advice) and 4 (Limitation of Liability) in alert boxes with warning styling
+- **Consistent styling**: Uses prose classes for readability
 
 ```text
-+------------------+  +------------------+  +------------------+
-| [Icon] Title [+] |  | [Icon] Title [+] |  | [Icon] Title [+] |
-|        sub       |  |        sub       |  |        sub       |
-+------------------+  +------------------+  +------------------+
-| Total | X  | Y   |  | Total | X  | Y   |  | Total | X  | Y   |
-+------------------+  +------------------+  +------------------+
-| Item 1           |  | Item 1           |  | Item 1           |
-| Item 2           |  | Item 2           |  | Item 2           |
-+------------------+  +------------------+  +------------------+
++--------------------------------------------------+
+| [InControl]                       [← Back Home]  |
++--------------------------------------------------+
+|  Terms of Service - InControl.finance            |
+|  Effective: January 30, 2026                     |
+|                                                  |
+|  1. Acceptance of Terms                          |
+|  2. Service Description                          |
+|  ┌──────────────────────────────────────────┐   |
+|  │ ⚠️ 3. NOT FINANCIAL ADVICE               │   | <- Alert box
+|  │ InControl.finance IS NOT a financial...  │   |
+|  └──────────────────────────────────────────┘   |
+|  ┌──────────────────────────────────────────┐   |
+|  │ 4. Limitation of Liability               │   | <- Muted alert box
+|  │ To the fullest extent permitted by EU... │   |
+|  └──────────────────────────────────────────┘   |
+|  5-11. Other sections...                         |
++--------------------------------------------------+
 ```
 
-The button stays within the card boundary because:
-- Title row only contains Icon + Title + Button (no large numbers)
-- Stats are in their own dedicated row below
-- Consistent `flex-shrink-0` on button container
+### 2. Privacy Policy Page (`src/pages/Privacy.tsx`)
 
-## Summary
+A placeholder privacy policy page with:
+- Data collection practices
+- Cookie usage (if applicable)
+- User rights under GDPR
+- Contact information
 
-This redesign moves the large total values from the crowded header row into a dedicated stats grid below, matching the existing Debt card pattern. All three cards will have identical visual structure, preventing overflow issues and creating a clean, professional dashboard layout.
+### 3. Footer Updates
+
+Replace placeholder `#` hrefs with React Router Links:
+
+```tsx
+import { Link } from 'react-router-dom';
+
+<Link to="/privacy" className="...">Privacy Policy</Link>
+<Link to="/terms" className="...">Terms of Service</Link>
+```
+
+### 4. Pricing Section Update
+
+Add consent text below the "Cancel anytime" footer:
+
+```tsx
+<p className="text-center text-sm text-muted-foreground mt-4">
+  By subscribing, you agree to our{' '}
+  <Link to="/terms" className="underline hover:text-foreground">
+    Terms of Service
+  </Link>
+</p>
+```
+
+### 5. Subscription Dialog Checkbox
+
+Add a mandatory checkbox in the payment step that must be checked before proceeding:
+
+```tsx
+// State
+const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+// UI (before Pay button)
+<div className="flex items-start gap-2">
+  <Checkbox 
+    id="terms" 
+    checked={agreedToTerms}
+    onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+  />
+  <label htmlFor="terms" className="text-xs text-muted-foreground">
+    I agree to the{' '}
+    <Link to="/terms" target="_blank" className="underline">
+      Terms of Service
+    </Link>
+    {' '}and confirm this is not financial advice
+  </label>
+</div>
+
+// Button disabled state
+<Button
+  onClick={handlePayment}
+  disabled={isProcessing || !agreedToTerms}
+>
+  ...
+</Button>
+```
+
+### 6. Database & Hook Updates
+
+**useSubscription.ts** modifications:
+
+1. Add `hasAgreedToTos` to the return type
+2. Fetch from `profiles` table on load
+3. Add `acceptTerms()` method to update database when checkbox is checked
+4. Block `upgradeTo()` if terms not accepted (fallback safety)
+
+```tsx
+// Additional return values
+hasAgreedToTos: boolean;
+acceptTerms: () => Promise<void>;
+
+// In upgradeTo() - add safety check
+const upgradeTo = async (tier, period) => {
+  if (!hasAgreedToTos) {
+    toast({
+      title: 'Terms Required',
+      description: 'Please accept the Terms of Service first',
+      variant: 'destructive',
+    });
+    return;
+  }
+  // ... existing logic
+};
+```
+
+## User Flow
+
+```text
+User Journey:
+1. User visits landing page
+2. Sees pricing section with "By subscribing, you agree to Terms" text
+3. Clicks "Start Standard" or "Go Pro"
+4. Redirected to auth (signup/login)
+5. After login, opens Subscription dialog
+6. Selects plan and clicks "Continue to Payment"
+7. On payment step, sees mandatory checkbox:
+   ☐ I agree to the Terms of Service and confirm this is not financial advice
+8. Must check box before "Pay" button is enabled
+9. On first successful payment, `agreed_to_tos` is set to true in database
+10. Future upgrades/changes don't require re-checking (already agreed)
+```
+
+## Visual Summary
+
+| Location | Element Added |
+|----------|--------------|
+| Footer | Links to `/terms` and `/privacy` |
+| Pricing cards | "By subscribing, you agree to Terms" text |
+| SubscriptionDialog (payment step) | Checkbox with Terms link |
+| Database | `agreed_to_tos` column on profiles |
+
+## Migration SQL
+
+```sql
+-- Add ToS tracking columns to profiles
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS agreed_to_tos boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS agreed_to_tos_at timestamp with time zone;
+```
 
