@@ -1,132 +1,108 @@
 
 
-# Fix Duplicate Debt Payoff Allocations
+# Polish Subscription Dialog Plan Cards
 
-## Problem
+## Problem Analysis
 
-The Investment Strategy card shows **two separate "Debt Payoff" rows**:
+The current badge positioning has alignment issues:
 
-1. **User-configured Debt Payoff (33%)** - from investment preferences
-2. **Priority Debt Payoff (40%)** - auto-added when high-interest debt is detected
+1. **Standard card**: The "50% OFF" badge at `-top-2.5 right-2` conflicts with the selection checkmark at `top-3 right-3`
+2. **Pro card**: Both "POPULAR" (centered) and "50% OFF" (right-aligned) badges appear, creating visual clutter and misalignment
+3. **Inconsistent spacing**: Badges have different positioning strategies
 
-This happens because `calculateDebtAwareAllocations()` adds a new debt row without checking if one already exists from user preferences.
+## Solution
 
-## Solution: Merge Allocations
+Restructure badge positioning with a unified approach:
 
-Consolidate into a single "Debt Payoff" row by taking the **higher** of:
-- User's configured debt allocation percentage
-- System's recommended allocation for priority debt
+1. Create a **single badge container** at the top of each card that holds all badges in a row
+2. Position badges **inline** rather than absolutely scattered
+3. Move the selection checkmark **outside** the badge area to prevent overlap
+4. Use consistent sizing and spacing for all badges
 
 ## File to Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/debtAnalysis.ts` | Rewrite `calculateDebtAwareAllocations()` to merge debt rows |
+| `src/components/SubscriptionDialog.tsx` | Restructure badge positioning for better alignment |
 
 ## Technical Changes
 
-### `src/lib/debtAnalysis.ts` - Lines 300-332
+### Current Structure (lines 179-195, 238-245)
+```tsx
+{/* POPULAR badge - centered */}
+{plan.isPopular && (
+  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
+    <span className="...">POPULAR</span>
+  </div>
+)}
 
-Replace the current `calculateDebtAwareAllocations()` function:
+{/* Discount badge - right aligned */}
+<div className="absolute -top-2.5 right-2">
+  <Badge>50% OFF</Badge>
+</div>
 
-```typescript
-/**
- * Calculate debt-aware investment allocations
- * Merges user-configured debt allocation with system-suggested priority allocation
- */
-export function calculateDebtAwareAllocations(
-  freeMonthlyIncome: number,
-  debtAnalysis: DebtAnalysis,
-  investmentAllocations: { category: string; percentage: number; amount: number; color: string }[]
-): DebtAwareAllocation[] {
-  if (freeMonthlyIncome <= 0) {
-    return investmentAllocations;
-  }
-
-  // Check for existing debt allocation from user preferences
-  const existingDebtAlloc = investmentAllocations.find(a => a.category === 'Debt Payoff');
-  const existingDebtPercent = existingDebtAlloc?.percentage || 0;
-  
-  // If no priority debt and no existing debt allocation, return as-is
-  if (!debtAnalysis.hasPriorityDebt && existingDebtPercent === 0) {
-    return investmentAllocations;
-  }
-  
-  // Use the HIGHER of user preference or system suggestion
-  const systemSuggestion = debtAnalysis.hasPriorityDebt ? debtAnalysis.suggestedDebtAllocation : 0;
-  const finalDebtPercent = Math.max(existingDebtPercent, systemSuggestion);
-  
-  // If no debt allocation needed, return non-debt allocations
-  if (finalDebtPercent === 0) {
-    return investmentAllocations.filter(a => a.category !== 'Debt Payoff');
-  }
-  
-  // Filter out existing debt allocation (we'll add the merged one)
-  const nonDebtAllocations = investmentAllocations.filter(a => a.category !== 'Debt Payoff');
-  
-  // Calculate remaining investment percentage
-  const investmentPercent = 100 - finalDebtPercent;
-  
-  // Calculate total of non-debt allocations to scale proportionally
-  const totalNonDebtPercent = nonDebtAllocations.reduce((sum, a) => sum + a.percentage, 0);
-  const scaleFactor = totalNonDebtPercent > 0 ? investmentPercent / totalNonDebtPercent : 0;
-  
-  // Scale down non-debt allocations proportionally
-  const scaledInvestments = nonDebtAllocations.map(alloc => ({
-    ...alloc,
-    percentage: Math.round(alloc.percentage * scaleFactor),
-    amount: Math.round(freeMonthlyIncome * (alloc.percentage * scaleFactor / 100)),
-  }));
-  
-  // Create single consolidated debt allocation
-  // Mark as priority if system suggested it (high-interest debt detected)
-  const debtAllocation: DebtAwareAllocation = {
-    category: 'Debt Payoff',
-    percentage: finalDebtPercent,
-    amount: Math.round(freeMonthlyIncome * (finalDebtPercent / 100)),
-    color: 'hsl(var(--destructive))',
-    isPriority: debtAnalysis.hasPriorityDebt,
-  };
-  
-  return [debtAllocation, ...scaledInvestments];
-}
+{/* Selection checkmark - also right, causes overlap */}
+{isSelected && (
+  <motion.div className="absolute top-3 right-3">
+    <Check />
+  </motion.div>
+)}
 ```
 
-## Logic Flow
+### Proposed Structure
+```tsx
+{/* Unified badge row - positioned above card content */}
+<div className="absolute -top-3 left-0 right-0 flex items-center justify-center gap-2 px-4">
+  {plan.isPopular && (
+    <span className="px-2.5 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full uppercase tracking-wide">
+      Popular
+    </span>
+  )}
+  <Badge 
+    variant="secondary" 
+    className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5"
+  >
+    {isAnnual ? '2 MO FREE' : '50% OFF'}
+  </Badge>
+</div>
 
+{/* Selection checkmark - moved inside card padding area */}
+{isSelected && (
+  <motion.div className="absolute top-4 right-4 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+    <Check className="w-3 h-3 text-primary-foreground" />
+  </motion.div>
+)}
+```
+
+## Visual Comparison
+
+**Before**:
 ```text
-User set 33% debt + System suggests 40% (credit card detected)
-                          ↓
-              Max(33%, 40%) = 40%
-                          ↓
-         Single "Debt Payoff [Priority]" at 40%
-                          ↓
-       Remaining 60% scaled across other categories
+     [POPULAR]              [50% OFF]  [checkmark overlaps here]
++------------------+   +------------------+
+|  Standard        |   |  Pro             |
+|  €4.99/mo        |   |  €9.99/mo        |
 ```
 
-## Edge Cases Handled
-
-| Scenario | Result |
-|----------|--------|
-| User: 50%, System: 40% | 50% (respect user's aggressive payoff) |
-| User: 20%, System: 40% | 40% (upgrade to recommendation) |
-| User: 0%, System: 40% | 40% with Priority badge |
-| User: 33%, No priority debt | 33% without Priority badge |
-
-## Visual Result
-
-**Before (confusing)**:
+**After**:
 ```text
-Debt Payoff [Priority]    40%  €96.00
-Debt Payoff               33%  €79.00  <- duplicate!
-Stocks/ETFs                9%  €25.00
+   [POPULAR] [50% OFF]      [50% OFF]
++------------------+   +------------------+
+|  Standard    [✓] |   |  Pro         [✓] |
+|  €4.99/mo        |   |  €9.99/mo        |
 ```
 
-**After (clear)**:
-```text
-Debt Payoff [Priority]    40%  €96.00  <- single merged row
-Stocks/ETFs               15%  €36.00  <- proportionally scaled
-Commodities               20%  €48.00
-Emergency Fund            10%  €24.00
-```
+## Specific Changes
+
+| Change | Details |
+|--------|---------|
+| Unified badge container | Single row with `flex justify-center gap-2` for all badges |
+| Consistent badge sizing | Both badges use `text-[10px]` and similar padding |
+| Checkmark repositioned | Moved to `top-4 right-4` inside the card, clear of badges |
+| Add top padding | Add `pt-3` to card content to make room for the badge row |
+| Remove duplicate positioning | Eliminate separate absolute positions for each badge |
+
+## Summary
+
+This change consolidates badges into a unified, centered row above each card, eliminates overlap with the selection checkmark, and provides consistent visual alignment across both Standard and Pro plans.
 
