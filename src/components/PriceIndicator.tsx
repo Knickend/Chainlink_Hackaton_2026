@@ -9,19 +9,22 @@ interface PriceIndicatorProps {
   lastUpdated: Date | null;
   error: string | null;
   isCached?: boolean;
+  forexTimestamp?: string;
   onRefresh: () => void;
 }
 
-export function PriceIndicator({ isLoading, lastUpdated, error, isCached, onRefresh }: PriceIndicatorProps) {
-  const formatLastUpdated = () => {
-    if (!lastUpdated) return 'Never';
+export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexTimestamp, onRefresh }: PriceIndicatorProps) {
+  const formatLastUpdated = (date: Date | null) => {
+    if (!date) return 'Never';
     const now = new Date();
-    const diff = Math.floor((now.getTime() - lastUpdated.getTime()) / 1000);
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
     
     if (diff < 60) return 'Just now';
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     return `${Math.floor(diff / 3600)}h ago`;
   };
+
+  const forexDate = forexTimestamp ? new Date(forexTimestamp) : null;
 
   const getStatusColor = () => {
     if (error) return 'bg-destructive/20 text-destructive';
@@ -52,7 +55,7 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, onRefr
             )}>
               {getStatusIcon()}
               <span className="hidden sm:inline">{getStatusLabel()}</span>
-              <span className="text-[10px] opacity-75">• {formatLastUpdated()}</span>
+              <span className="text-[10px] opacity-75">• {formatLastUpdated(lastUpdated)}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
@@ -70,7 +73,12 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, onRefr
               </p>
               {lastUpdated && (
                 <p className="text-xs text-muted-foreground">
-                  Last updated: {lastUpdated.toLocaleTimeString()}
+                  Crypto/Commodities: {formatLastUpdated(lastUpdated)}
+                </p>
+              )}
+              {forexDate && (
+                <p className="text-xs text-muted-foreground">
+                  Forex rates: {formatLastUpdated(forexDate)}
                 </p>
               )}
             </div>

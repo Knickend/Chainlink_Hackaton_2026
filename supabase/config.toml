@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.financial-advisor]
 verify_jwt = false
+
+[functions.fetch-forex-rates]
+verify_jwt = false
