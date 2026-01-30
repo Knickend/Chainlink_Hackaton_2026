@@ -1,89 +1,145 @@
 
+# Consolidate Expense Buttons into Single Dropdown Menu
 
-# Fix: Pro Features Not Unlocking After Upgrade
+## Overview
 
-## Problem Analysis
+Improve the alignment of the Income, Expenses, and Debt cards by consolidating the two expense buttons ("Add Recurring" and "Non-Recurring") into a single "Add Expense" button with a dropdown menu. This creates visual consistency across all three cards and provides a cleaner user experience.
 
-After upgrading to Pro via Settings > Subscription, the dashboard (Index page) still shows the free tier features. The network requests confirm the database was updated correctly to `tier: "pro"`.
+## Current State
 
-**Root Cause**: The Index page uses local React state for subscription tier:
-
-```typescript
-// Index.tsx line 57
-const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
-```
-
-This state:
-- Initializes to `'free'` for logged-in users
-- Never syncs with the database
-- Resets on page navigation or refresh
-
-The Settings page correctly uses `useSubscription` hook which reads from the database, but Index doesn't.
+| Card | Buttons | Issue |
+|------|---------|-------|
+| Monthly Income | 1 button: "Add Income" | Aligned |
+| Expenses | 2 buttons: "Add Recurring" + "Non-Recurring" | Takes extra space, misaligned |
+| Debts & Liabilities | 1 button: "Add Debt" | Aligned |
 
 ## Solution
 
-Replace the local `subscriptionTier` state in `Index.tsx` with the `useSubscription` hook that reads from the database.
-
-## File to Modify
-
-| File | Change |
-|------|--------|
-| `src/pages/Index.tsx` | Use `useSubscription` hook instead of local state |
-
-## Technical Changes
-
-### Remove local state and import hook
-
-```typescript
-// Remove this:
-const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
-
-// Add this import:
-import { useSubscription } from '@/hooks/useSubscription';
-
-// Add hook usage:
-const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo } = useSubscription();
-```
-
-### Update the effective tier logic
-
-```typescript
-// Before:
-const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
-const isPro = effectiveSubscriptionTier === 'pro';
-const isSubscribed = effectiveSubscriptionTier !== 'free';
-
-// After:
-const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
-const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
-const isSubscribed = (isDemo || isTutorialActive) ? true : subscriptionIsSubscribed;
-```
-
-### Update SubscriptionDialog callback
-
-```typescript
-// Before:
-onSubscribe={(tier) => setSubscriptionTier(tier)}
-
-// After:
-onSubscribe={(tier, billingPeriod) => upgradeTo(tier, billingPeriod || 'monthly')}
-```
-
-## Data Flow After Fix
+Replace the two separate expense buttons with a single "Add Expense" dropdown button that contains:
+- "Recurring Expense" option
+- "Non-Recurring Expense" option (with Pro badge for non-Pro users)
 
 ```text
-User upgrades in Settings
-        ↓
-useSubscription.upgradeTo() updates database
-        ↓
-Returns to Index page
-        ↓
-useSubscription fetches tier from database
-        ↓
-tier === 'pro' → Pro features unlocked
+Before:                          After:
++---------------+--------+       +---------------+
+| + Add Recurring | Non...       | + Add Expense ▾
++---------------+--------+       +---------------+
+                                       |
+                                       ├─ Recurring Expense
+                                       └─ Non-Recurring (Pro)
 ```
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/components/AddExpenseDropdown.tsx` | Create | New dropdown component combining both expense types |
+| `src/pages/Index.tsx` | Modify | Replace two buttons with single dropdown |
+| `src/components/IncomeExpenseCard.tsx` | Modify | Remove `secondaryActionButton` prop (no longer needed) |
+
+## Component Design
+
+### AddExpenseDropdown Component
+
+A single button that opens a dropdown menu with two options:
+
+```text
++---------------------+
+| + Add Expense    ▾  |
++---------------------+
+       ↓ (click)
++---------------------+
+| ↻ Recurring         |
+|---------------------|
+| ⚡ Non-Recurring Pro |
++---------------------+
+```
+
+**Behavior:**
+- Click "Recurring" opens the recurring expense dialog (same form as current)
+- Click "Non-Recurring" opens the one-time expense dialog with date picker (same form as current)
+- For non-Pro users, clicking "Non-Recurring" prompts upgrade
+
+### Implementation Approach
+
+The new component will:
+1. Use `DropdownMenu` from shadcn/ui for the menu structure
+2. Embed both expense forms in separate `Dialog` components
+3. Track which dialog is open via state
+4. Style consistently with the other "Add" buttons (red/danger color scheme)
+
+## Visual Alignment Result
+
+After implementation, all three cards will have matching single-button headers:
+
+```text
++-------------------+  +-------------------+  +----------------------+
+| Monthly Income    |  | Expenses          |  | Debts & Liabilities  |
+| + Add Income      |  | + Add Expense ▾   |  | + Add Debt           |
++-------------------+  +-------------------+  +----------------------+
+```
+
+## Technical Details
+
+### AddExpenseDropdown Props
+
+```typescript
+interface AddExpenseDropdownProps {
+  onAddRecurring: (data: { name: string; amount: number; category: string }) => void;
+  onAddOneTime: (data: { name: string; amount: number; category: string; is_recurring: false; expense_date: string }) => void;
+  displayUnit: DisplayUnit;
+  isPro: boolean;
+  onUpgrade?: () => void;
+}
+```
+
+### Dropdown Menu Structure
+
+```typescript
+<DropdownMenu>
+  <DropdownMenuTrigger asChild>
+    <Button variant="outline" className="border-danger/30 text-danger">
+      <Plus /> Add Expense <ChevronDown />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem onClick={() => setRecurringOpen(true)}>
+      <Repeat /> Recurring Expense
+    </DropdownMenuItem>
+    <DropdownMenuItem onClick={handleOneTime}>
+      <Zap /> Non-Recurring {!isPro && <ProBadge />}
+    </DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+### Index.tsx Changes
+
+Replace the current expense card buttons:
+
+```typescript
+// Before:
+actionButton={<AddExpenseDialog ... />}
+secondaryActionButton={isPro ? <AddOneTimeExpenseDialog ... /> : undefined}
+
+// After:
+actionButton={<AddExpenseDropdown 
+  onAddRecurring={...}
+  onAddOneTime={...}
+  displayUnit={displayUnit}
+  isPro={isPro}
+  onUpgrade={() => setShowSubscriptionDialog(true)}
+/>}
+// Remove secondaryActionButton entirely
+```
+
+## Pro Feature Handling
+
+- Non-recurring expense tracking remains a Pro feature
+- The dropdown shows both options to all users
+- Non-Pro users clicking "Non-Recurring" triggers the upgrade dialog
+- Pro badge displays next to "Non-Recurring" for visual indication
 
 ## Summary
 
-The fix ensures the Index page reads the subscription tier from the database via `useSubscription` hook, so changes made in Settings are reflected immediately when returning to the dashboard.
-
+This change consolidates the two expense buttons into a single dropdown, creating visual harmony across the Income, Expenses, and Debt cards. The functionality remains identical - just accessed through a cleaner, more organized interface.
