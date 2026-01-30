@@ -275,18 +275,22 @@ const IndexContent = () => {
           </div>
           {/* Third column - Pro features, excluded from tutorial */}
           {isPro && !isDemo && (
-            <PortfolioHistoryCard 
-              currentNetWorth={adjustedNetWorth} 
-              formatValue={formatValue} 
-              delay={0.2}
-            />
+            <div data-tutorial="portfolio-history-card">
+              <PortfolioHistoryCard 
+                currentNetWorth={adjustedNetWorth} 
+                formatValue={formatValue} 
+                delay={0.2}
+              />
+            </div>
           )}
           {isPro && isDemo && (
-            <PerformanceCard 
-              currentNetWorth={metrics.totalNetWorth} 
-              formatValue={formatValue} 
-              delay={0.2}
-            />
+            <div data-tutorial="portfolio-history-card">
+              <PerformanceCard 
+                currentNetWorth={metrics.totalNetWorth} 
+                formatValue={formatValue} 
+                delay={0.2}
+              />
+            </div>
           )}
           {!isPro && !isDemo && (
             <PortfolioHistoryTeaser 
@@ -298,7 +302,7 @@ const IndexContent = () => {
 
         {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}
         {(!isDemo || isPro) && (
-          <div className="mb-8">
+          <div className="mb-8" data-tutorial="investment-strategy-card">
             {isPro ? (
               <InvestmentStrategyCard
                 freeMonthlyIncome={adjustedMonthlyNet}
@@ -419,7 +423,7 @@ const IndexContent = () => {
 
         {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
         {demoDebts.length > 0 && (
-          <div className="mt-8">
+          <div className="mt-8" data-tutorial="debt-payoff-calculator">
             {isPro ? (
               <DebtPayoffCalculator
                 debts={demoDebts}

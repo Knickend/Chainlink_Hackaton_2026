@@ -22,9 +22,11 @@ import { Label } from '@/components/ui/label';
 import { useFeedback } from '@/hooks/useFeedback';
 import { useAuth } from '@/contexts/AuthContext';
 import { FeedbackType, FeedbackPriority } from '@/lib/feedback.types';
+import { useTutorialContext } from '@/components/Tutorial/TutorialProvider';
 
 export function FeedbackButton() {
   const { user } = useAuth();
+  const { isActive: isTutorialActive } = useTutorialContext();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>('bug');
   const [title, setTitle] = useState('');
@@ -32,8 +34,8 @@ export function FeedbackButton() {
   const [priority, setPriority] = useState<FeedbackPriority>('medium');
   const { submitFeedback, isSubmitting } = useFeedback();
 
-  // Don't show for non-authenticated users
-  if (!user) return null;
+  // Show for authenticated users OR during tutorial (to be targetable)
+  if (!user && !isTutorialActive) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +74,7 @@ export function FeedbackButton() {
           onClick={() => setOpen(true)}
           size="lg"
           className="rounded-full w-14 h-14 shadow-lg hover:shadow-xl transition-shadow bg-secondary hover:bg-secondary/90"
+          data-tutorial="feedback-button"
         >
           <MessageSquarePlus className="w-6 h-6" />
         </Button>
