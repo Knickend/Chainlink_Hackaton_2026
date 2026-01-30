@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AssetCategory, DebtType } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
+import { useSubscription } from '@/hooks/useSubscription';
 import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal, useTutorialContext } from '@/components/Tutorial';
 
 // Inner component that has access to tutorial context
@@ -52,15 +53,14 @@ const IndexContent = () => {
   // Demo mode when user is not logged in
   const isDemo = !user;
   
-  // Subscription state (mockup) - 'free' | 'standard' | 'pro'
-  // Demo mode shows Pro features to showcase full capabilities
-  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>(isDemo ? 'pro' : 'free');
+  // Subscription state from database
+  const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo } = useSubscription();
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
   // Show Pro during tutorial OR in demo mode so users see all features
   const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
-  const isPro = effectiveSubscriptionTier === 'pro';
-  const isSubscribed = effectiveSubscriptionTier !== 'free';
+  const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
+  const isSubscribed = (isDemo || isTutorialActive) ? true : subscriptionIsSubscribed;
   
   // First call to usePortfolio with undefined prices to get assets for symbol extraction
   const portfolioInitial = usePortfolio(undefined, isDemo);
@@ -150,7 +150,7 @@ const IndexContent = () => {
         <SubscriptionDialog
           open={showSubscriptionDialog}
           onOpenChange={setShowSubscriptionDialog}
-          onSubscribe={(tier) => setSubscriptionTier(tier)}
+          onSubscribe={(tier, billingPeriod) => upgradeTo(tier, billingPeriod || 'monthly')}
         />
 
         {/* Header */}
