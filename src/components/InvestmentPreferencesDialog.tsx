@@ -199,34 +199,39 @@ export function InvestmentPreferencesDialog({
 
           {/* Pie Chart Preview */}
           <div className="flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => {
-                    // Find the correct color based on category name
-                    const colorIndex = ['Debt Payoff', 'Stocks/ETFs', 'Crypto', 'Commodities', 'Emergency Fund'].indexOf(entry.name);
-                    return <Cell key={`cell-${index}`} fill={COLORS[colorIndex >= 0 ? colorIndex : index]} />;
-                  })}
-                </Pie>
-                <Tooltip
-                  formatter={(value: number) => `${value}%`}
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--popover))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="40%"
+                innerRadius={50}
+                outerRadius={80}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {chartData.map((entry, index) => {
+                  // Find the correct color based on category name
+                  const colorIndex = ['Debt Payoff', 'Stocks/ETFs', 'Crypto', 'Commodities', 'Emergency Fund'].indexOf(entry.name);
+                  return <Cell key={`cell-${index}`} fill={COLORS[colorIndex >= 0 ? colorIndex : index]} />;
+                })}
+              </Pie>
+              <Tooltip
+                formatter={(value: number) => `${value}%`}
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--popover))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                }}
+                itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
+              />
+              <Legend 
+                verticalAlign="bottom"
+                wrapperStyle={{ paddingTop: '20px' }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
           </div>
         </div>
 
