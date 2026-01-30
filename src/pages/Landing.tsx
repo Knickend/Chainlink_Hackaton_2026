@@ -7,7 +7,7 @@ import { HeroSection } from '@/components/landing/HeroSection';
 import { FeaturesSection } from '@/components/landing/FeaturesSection';
 import { PricingSection } from '@/components/landing/PricingSection';
 import { Footer } from '@/components/landing/Footer';
-
+import { SalesChatBot } from '@/components/landing/SalesChatBot';
 const Landing = () => {
   const navigate = useNavigate();
 
@@ -72,6 +72,8 @@ const Landing = () => {
       </main>
 
       <Footer />
+
+      <SalesChatBot />
     </div>
   );
 };
