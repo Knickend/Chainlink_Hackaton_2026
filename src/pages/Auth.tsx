@@ -77,6 +77,8 @@ const Auth = () => {
           message = 'This email is already registered. Please sign in instead.';
         } else if (error.message.includes('Invalid login credentials')) {
           message = 'Invalid email or password. Please try again.';
+        } else if (error.message.includes('Email not confirmed')) {
+          message = 'Please check your email and click the confirmation link before signing in.';
         }
         toast({
           variant: 'destructive',
@@ -85,8 +87,8 @@ const Auth = () => {
         });
       } else if (isSignUp) {
         toast({
-          title: 'Account created!',
-          description: 'You can now sign in with your credentials.',
+          title: 'Check your email! 📧',
+          description: "We've sent a confirmation link to verify your account.",
         });
         setIsSignUp(false);
         form.reset();
