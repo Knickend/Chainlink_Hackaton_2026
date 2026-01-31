@@ -84,14 +84,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl
       }
     });
-    return { error };
+    
+    if (error) {
+      return { error };
+    }
+
+    // Send custom confirmation email via Resend
+    if (data.user && !data.user.email_confirmed_at) {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        
+        // Note: Supabase sends its own confirmation email by default.
+        // We call our custom edge function to send a branded email as well.
+        // The confirmation link in the branded email uses Supabase's built-in verify endpoint.
+        const { error: emailError } = await supabase.functions.invoke('send-confirmation-email', {
+          body: {
+            email,
+            confirmationUrl: `${supabaseUrl}/auth/v1/verify?type=signup&redirect_to=${encodeURIComponent(redirectUrl)}`
+          }
+        });
+        
+        if (emailError) {
+          console.error('Failed to send confirmation email:', emailError);
+          // Don't return error - user is still created, they can use Supabase's default email
+        }
+      } catch (emailError) {
+        console.error('Error sending confirmation email:', emailError);
+      }
+    }
+    
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {
