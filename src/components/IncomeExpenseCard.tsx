@@ -1,7 +1,7 @@
 import { ReactNode, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight, Repeat, Zap } from 'lucide-react';
-import { Income, Expense, DisplayUnit, convertCurrency, UNIT_SYMBOLS, FOREX_RATES_TO_USD, BankingCurrency, DEFAULT_CONVERSION_RATES } from '@/lib/types';
+import { Income, Expense, DisplayUnit, convertCurrency, UNIT_SYMBOLS, FOREX_RATES_TO_USD, BankingCurrency, DEFAULT_CONVERSION_RATES, isBitcoinCurrency, getBitcoinCurrencySymbol, BitcoinCurrency } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditIncomeDialog } from './EditIncomeDialog';
 import { EditExpenseDialog } from './EditExpenseDialog';
@@ -44,8 +44,18 @@ export function IncomeExpenseCard({
   const incomeItems = isIncome ? (items as Income[]) : [];
   const workIncomeCount = incomeItems.filter(i => i.type === 'work').length;
   
-  // Helper to format a value with its stored currency
-  const formatItemValue = useCallback((amount: number, itemCurrency: string): string => {
+  // Helper to format a value with its stored currency (for display in native currency)
+  const formatNativeValue = useCallback((amount: number, itemCurrency: string): string => {
+    // For Bitcoin currencies, format with appropriate symbol and precision
+    if (isBitcoinCurrency(itemCurrency)) {
+      const symbol = getBitcoinCurrencySymbol(itemCurrency as BitcoinCurrency);
+      if (itemCurrency === 'BTC') {
+        return `${symbol}${amount.toFixed(8)}`;
+      }
+      // SATS - whole numbers
+      return `${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} ${symbol}`;
+    }
+    
     // For BTC and GOLD display units, convert via USD
     if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
       const amountInUSD = amount * (FOREX_RATES_TO_USD[itemCurrency as BankingCurrency] || 1);
@@ -173,7 +183,7 @@ export function IncomeExpenseCard({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{formatItemValue(item.amount, (item as any).currency || 'USD')}</span>
+                <span className="font-mono text-sm">{formatNativeValue(item.amount, (item as any).currency || 'USD')}</span>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {isIncome && 'source' in item && onUpdateIncome && (
                     <EditIncomeDialog income={item as Income} onUpdate={onUpdateIncome} displayUnit={displayUnit} />

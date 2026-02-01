@@ -34,6 +34,7 @@ export const mockIncome: Income[] = [
   { id: '4', source: 'Rental Property', amount: 1800, type: 'passive', currency: 'USD' },
   { id: '5', source: 'Interest Income', amount: 285, type: 'passive', currency: 'USD' },
   { id: '6', source: 'Staking Rewards', amount: 120, type: 'investment', currency: 'USD' },
+  { id: '7', source: 'Bitcoin Mining Pool', amount: 150000, type: 'mining', currency: 'SATS' },
 ];
 
 export const mockExpenses: Expense[] = [
