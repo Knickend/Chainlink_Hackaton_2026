@@ -368,6 +368,36 @@ export type Database = {
         }
         Relationships: []
       }
+      sales_bot_interactions: {
+        Row: {
+          created_at: string
+          cta_type: string | null
+          event_type: string
+          id: string
+          message_role: string | null
+          session_id: string
+          visitor_ip_hash: string | null
+        }
+        Insert: {
+          created_at?: string
+          cta_type?: string | null
+          event_type: string
+          id?: string
+          message_role?: string | null
+          session_id: string
+          visitor_ip_hash?: string | null
+        }
+        Update: {
+          created_at?: string
+          cta_type?: string | null
+          event_type?: string
+          id?: string
+          message_role?: string | null
+          session_id?: string
+          visitor_ip_hash?: string | null
+        }
+        Relationships: []
+      }
       user_investment_preferences: {
         Row: {
           commodities_allocation: number
