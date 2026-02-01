@@ -440,7 +440,7 @@ const IndexContent = () => {
               items={income}
               total={formatValue(metrics.totalIncome)}
               formatValue={formatValue}
-              actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' }) => addIncome({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
+              actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining'; currency: string }) => addIncome(data)} displayUnit={displayUnit} />}
               displayUnit={displayUnit}
               onUpdateIncome={isDemo ? undefined : updateIncome}
               onDeleteIncome={isDemo ? undefined : deleteIncome}
