@@ -45,29 +45,31 @@ export function StatCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay }}
-      className={cn('glass-card p-6', variantStyles[variant])}
+      className={cn('glass-card p-6 h-full flex flex-col', variantStyles[variant])}
     >
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-4 min-h-[40px]">
         <div className={cn('p-2.5 rounded-xl', iconVariantStyles[variant])}>
           <Icon className="w-5 h-5" />
         </div>
-        {trend && (
-          <div
-            className={cn(
-              'flex items-center gap-1 text-sm font-medium',
-              trend.isPositive ? 'text-success' : 'text-danger'
-            )}
-          >
-            <span>{trend.isPositive ? '↑' : '↓'}</span>
-            <span>{Math.abs(trend.value).toFixed(1)}%</span>
-          </div>
-        )}
+        <div className="min-w-[60px] text-right">
+          {trend && (
+            <div
+              className={cn(
+                'flex items-center justify-end gap-1 text-sm font-medium',
+                trend.isPositive ? 'text-success' : 'text-danger'
+              )}
+            >
+              <span>{trend.isPositive ? '↑' : '↓'}</span>
+              <span>{Math.abs(trend.value).toFixed(1)}%</span>
+            </div>
+          )}
+        </div>
       </div>
-      <p className="stat-label mb-1">{title}</p>
-      <p className="stat-value gradient-text">{value}</p>
-      {subtitle && (
-        <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
-      )}
+      <div className="flex-1">
+        <p className="stat-label mb-1">{title}</p>
+        <p className="stat-value gradient-text">{value}</p>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2 min-h-[20px]">{subtitle || '\u00A0'}</p>
     </motion.div>
   );
 }
