@@ -1,122 +1,84 @@
 
 
-# Add Mandatory Terms Agreement Dialog
+# Update Privacy Policy Page
 
 ## Overview
 
-Implement a mandatory Terms of Service agreement modal that appears when authenticated users first access the app. Users must accept the terms before they can use any features. This leverages the existing database columns (`agreed_to_tos`, `agreed_to_tos_at` in the profiles table) and the `acceptTerms` function.
+Update the Privacy Policy page to reflect new content emphasizing that InControl is a standalone portfolio tracker with NO financial data stored on servers. The update includes restructured sections, a third-party services table, GDPR legal basis references, and updated company information (Estonia instead of Spain).
 
-## User Experience Flow
+## Key Changes Summary
 
-```text
-User logs in
-     |
-     v
-+------------------+
-| Has agreed to    |-----> YES ----> Normal app access
-| Terms of Service?|
-+------------------+
-     |
-     NO
-     v
-+----------------------------------+
-|      Terms Agreement Dialog      |
-|  ____________________________    |
-| |                            |   |
-| |  [Terms summary + link]    |   |
-| |____________________________|   |
-|                                  |
-|  [ ] I agree to the Terms of    |
-|      Service and Privacy Policy  |
-|                                  |
-|      [Accept & Continue]         |
-|           (disabled until        |
-|            checkbox checked)     |
-+----------------------------------+
-     |
-     v
-Agreement saved to database
-     |
-     v
-Normal app access
-```
+| Section | Current | Updated |
+|---------|---------|---------|
+| Effective Date | January 30, 2026 | February 1, 2026 |
+| Introduction | Generic privacy commitment | Emphasizes NO financial data on servers |
+| Data We Collect | Basic list | Highlights manual entry, NO bank/exchange integrations, LOCAL storage |
+| How We Use Data | Bullet list | Concise with GDPR Article references |
+| Data Storage | Detailed list | Simplified: EU servers, TLS, local data |
+| Third Parties | Bullet list | Formatted table with privacy links |
+| GDPR Rights | Detailed explanations | Concise single line |
+| Cookies | No opt-out mention | Mentions analytics opt-out |
+| Data Controller | Madrid, Spain | Estonia e-Business Registry |
+| Section Order | 10 sections + controller box | 10 sections (controller integrated as section 9) |
 
-## Files to Create
+## Detailed Section Updates
 
-| File | Purpose |
-|------|---------|
-| `src/components/TermsAgreementDialog.tsx` | Modal component for terms acceptance |
+### Section 1: Introduction
+- Add emphasis: "NO financial data stored on servers"
+- Describe as "Standalone portfolio tracker"
 
-## Files to Modify
+### Section 2: Data We Collect  
+- Emphasize data is "manually entered"
+- Add prominent callouts:
+  - NO integrations with financial APIs, banks, or exchanges
+  - Data stored LOCALLY in browser/device only
+  - We NEVER receive financial account information
 
-| File | Changes |
-|------|---------|
-| `src/pages/Index.tsx` | Add TermsAgreementDialog that blocks access until terms accepted |
+### Section 3: How We Use Data
+- Simplify to single line: "Provide service, process payments, improve product"
+- Add GDPR legal basis: Contract (Art. 6(1)(b)), Legitimate interest (Art. 6(1)(f))
 
-## Implementation Details
+### Section 4: Data Storage & Security
+- Simplify to: "EU servers (Supabase). TLS encrypted. Local portfolio data."
 
-### TermsAgreementDialog Component
+### Section 5: Third Parties
+- Convert to styled table with 3 columns: Service, Purpose, Privacy Link
+- Include: Supabase (Auth/DB), Stripe (Payments), CoinGecko (Prices)
+- Add actual clickable links to each service's privacy policy
 
-A modal dialog that:
-- Cannot be dismissed without accepting (no close button, no backdrop click to close)
-- Displays a summary of key terms (especially the "Not Financial Advice" disclaimer)
-- Links to full Terms of Service and Privacy Policy pages
-- Includes a required checkbox: "I agree to the Terms of Service and Privacy Policy"
-- Has an "Accept & Continue" button that is disabled until the checkbox is checked
-- Calls `acceptTerms()` from useSubscription hook when submitted
-- Shows loading state during submission
+### Section 6: Your GDPR Rights
+- Condense to single line listing rights
+- Keep contact email
 
-### Index.tsx Integration
+### Section 7: Cookies
+- Add mention of analytics opt-out availability
 
-- Import the useSubscription hook's `hasAgreedToTos` and `acceptTerms`
-- Show the TermsAgreementDialog when user is authenticated AND `hasAgreedToTos` is false
-- The dialog blocks all interaction with the app until accepted
+### Section 8: Retention
+- Reformat: "Account active: Indefinite. Deletion: 30 days permanent."
 
-## Technical Details
+### Section 9: Data Controller (moved from bottom box)
+- Update to: InControl.finance OU, Estonia e-Business Register
+- Keep contact email
+- Note: User may need to add registry number
 
-### Database (Already Exists)
+### Section 10: Changes
+- Keep: "30 days email notice"
 
-The profiles table already has:
-- `agreed_to_tos` (boolean, default false)
-- `agreed_to_tos_at` (timestamp, nullable)
+## Technical Implementation
 
-### Existing Functions to Use
+### File to Modify
+- `src/pages/Privacy.tsx`
 
-From `useSubscription` hook:
-- `hasAgreedToTos`: boolean indicating if user has agreed
-- `acceptTerms()`: async function that updates the profile with agreement
+### Changes Required
+1. Update effective date from "January 30, 2026" to "February 1, 2026"
+2. Rewrite all 10 sections with new condensed content
+3. Add HTML table styling for third-party services section
+4. Remove the separate "Data Controller" box at the bottom (integrated into section 9)
+5. Update company location from "Madrid, Spain" to "Estonia e-Business Register"
 
-### Component Structure
-
-```typescript
-// TermsAgreementDialog.tsx
-interface TermsAgreementDialogProps {
-  open: boolean;
-  onAccept: () => Promise<void>;
-}
-```
-
-The dialog will:
-1. Use Dialog component from shadcn/ui
-2. Set `modal={true}` to prevent interaction with background
-3. Not include a close button in the header
-4. Include a prominent disclaimer about "Not Financial Advice"
-5. Link to /terms and /privacy pages in new tabs
-6. Use Checkbox component for the agreement
-7. Disable the accept button until checkbox is checked
-8. Show loading spinner during acceptance
-
-### Visual Design
-
-- Glass-card styling consistent with app design
-- Warning/amber styling for the financial advice disclaimer (matching Terms page)
-- Primary button for acceptance
-- Clear typography hierarchy
-
-## Edge Cases Handled
-
-1. **Loading state**: Don't show dialog until we know ToS status (wait for isLoading to complete)
-2. **Already agreed**: Dialog never appears for users who have already agreed
-3. **Demo mode**: Dialog should NOT appear for demo/unauthenticated users (they don't have profiles)
-4. **Accept failure**: Show toast error and keep dialog open if save fails
+### Styling Considerations
+- Use existing Tailwind classes for consistency
+- Add a proper table component for third-party services with borders and padding
+- Keep bold/emphasis styling for important disclaimers (NO financial data, LOCAL storage)
+- External links will open in new tabs with proper security attributes
 
