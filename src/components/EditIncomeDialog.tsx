@@ -29,7 +29,7 @@ const incomeTypes = [
   { value: 'work', label: 'Work Income' },
   { value: 'passive', label: 'Passive Income' },
   { value: 'investment', label: 'Investment Income' },
-  { value: 'mining', label: 'Mining Income' },
+  { value: 'mining', label: 'Bitcoin Mining' },
 ];
 
 // Combine fiat and bitcoin currencies for the selector
