@@ -10,6 +10,9 @@ interface FeedbackFilters {
   userId?: string;
 }
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
 export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -62,11 +65,48 @@ export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
         return (data ?? []).map(item => ({
           ...item,
           admin_notes: null,
+          attachments: (item as any).attachments || [],
         })) as Feedback[];
       }
     },
     enabled: !!user?.id,
   });
+
+  // Upload attachment to storage
+  const uploadAttachment = async (file: File): Promise<string> => {
+    if (!user?.id) throw new Error('Must be logged in');
+
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      throw new Error('Invalid file type. Only PNG, JPG, and WEBP are allowed.');
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error('File too large. Maximum size is 5MB.');
+    }
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from('feedback-attachments')
+      .upload(fileName, file);
+
+    if (error) throw error;
+
+    return fileName;
+  };
+
+  // Get signed URL for viewing attachment
+  const getAttachmentUrl = async (path: string): Promise<string> => {
+    const { data, error } = await supabase.storage
+      .from('feedback-attachments')
+      .createSignedUrl(path, 3600); // 1 hour expiry
+
+    if (error) throw error;
+    return data.signedUrl;
+  };
 
   // Submit new feedback
   const submitMutation = useMutation({
@@ -81,6 +121,7 @@ export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
           title: input.title,
           description: input.description,
           priority: input.priority || 'medium',
+          attachments: input.attachments || [],
         })
         .select()
         .single();
@@ -141,6 +182,8 @@ export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
     error,
     submitFeedback: submitMutation.mutateAsync,
     updateFeedback: updateMutation.mutateAsync,
+    uploadAttachment,
+    getAttachmentUrl,
     isSubmitting: submitMutation.isPending,
     isUpdating: updateMutation.isPending,
   };

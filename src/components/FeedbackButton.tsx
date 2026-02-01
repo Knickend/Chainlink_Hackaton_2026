@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquarePlus, Bug, Lightbulb, X } from 'lucide-react';
+import { MessageSquarePlus, Bug, Lightbulb, X, Paperclip, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,6 +23,16 @@ import { useFeedback } from '@/hooks/useFeedback';
 import { useAuth } from '@/contexts/AuthContext';
 import { FeedbackType, FeedbackPriority } from '@/lib/feedback.types';
 import { useTutorialContext } from '@/components/Tutorial/TutorialProvider';
+import { useToast } from '@/hooks/use-toast';
+
+const MAX_ATTACHMENTS = 3;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+interface AttachmentPreview {
+  file: File;
+  preview: string;
+}
 
 export function FeedbackButton() {
   const { user } = useAuth();
@@ -32,26 +42,109 @@ export function FeedbackButton() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<FeedbackPriority>('medium');
-  const { submitFeedback, isSubmitting } = useFeedback();
+  const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { submitFeedback, uploadAttachment, isSubmitting } = useFeedback();
+  const { toast } = useToast();
 
   // Show for authenticated users OR during tutorial (to be targetable)
   if (!user && !isTutorialActive) return null;
 
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files) return;
+
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
+    if (remainingSlots <= 0) {
+      toast({
+        title: 'Maximum attachments reached',
+        description: `You can only attach up to ${MAX_ATTACHMENTS} images.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const newFiles: AttachmentPreview[] = [];
+    
+    for (let i = 0; i < Math.min(files.length, remainingSlots); i++) {
+      const file = files[i];
+      
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast({
+          title: 'Invalid file type',
+          description: `${file.name} is not a valid image. Only PNG, JPG, and WEBP are allowed.`,
+          variant: 'destructive',
+        });
+        continue;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: 'File too large',
+          description: `${file.name} exceeds the 5MB limit.`,
+          variant: 'destructive',
+        });
+        continue;
+      }
+
+      newFiles.push({
+        file,
+        preview: URL.createObjectURL(file),
+      });
+    }
+
+    setAttachments(prev => [...prev, ...newFiles]);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => {
+      const removed = prev[index];
+      URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    await submitFeedback({
-      type,
-      title,
-      description,
-      priority: type === 'bug' ? priority : undefined,
-    });
+    try {
+      setIsUploading(true);
+      
+      // Upload all attachments first
+      const uploadedPaths: string[] = [];
+      for (const attachment of attachments) {
+        const path = await uploadAttachment(attachment.file);
+        uploadedPaths.push(path);
+      }
 
-    // Reset form
-    setTitle('');
-    setDescription('');
-    setPriority('medium');
-    setOpen(false);
+      // Submit feedback with attachment paths
+      await submitFeedback({
+        type,
+        title,
+        description,
+        priority: type === 'bug' ? priority : undefined,
+        attachments: uploadedPaths,
+      });
+
+      // Cleanup previews
+      attachments.forEach(a => URL.revokeObjectURL(a.preview));
+
+      // Reset form
+      setTitle('');
+      setDescription('');
+      setPriority('medium');
+      setAttachments([]);
+      setOpen(false);
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to submit feedback. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const resetForm = () => {
@@ -59,6 +152,17 @@ export function FeedbackButton() {
     setDescription('');
     setPriority('medium');
     setType('bug');
+    attachments.forEach(a => URL.revokeObjectURL(a.preview));
+    setAttachments([]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    handleFileSelect(e.dataTransfer.files);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   return (
@@ -152,6 +256,57 @@ export function FeedbackButton() {
               />
             </div>
 
+            {/* Attachments */}
+            <div className="space-y-2">
+              <Label>Screenshots (optional)</Label>
+              <div
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e.target.files)}
+                />
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <ImageIcon className="w-8 h-8" />
+                  <p className="text-sm">
+                    Click or drag images here
+                  </p>
+                  <p className="text-xs">
+                    PNG, JPG, WEBP up to 5MB ({attachments.length}/{MAX_ATTACHMENTS})
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview Grid */}
+              {attachments.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {attachments.map((attachment, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={attachment.preview}
+                        alt={`Attachment ${index + 1}`}
+                        className="w-full h-20 object-cover rounded-md"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Priority (only for bugs) */}
             <AnimatePresence>
               {type === 'bug' && (
@@ -182,8 +337,8 @@ export function FeedbackButton() {
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting || !title || !description}>
-                {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
+              <Button type="submit" disabled={isSubmitting || isUploading || !title || !description}>
+                {isSubmitting || isUploading ? 'Submitting...' : 'Submit Feedback'}
               </Button>
             </div>
           </form>
