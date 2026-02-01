@@ -1,39 +1,39 @@
 
-# Fix: Bitcoin Mining Income Currency Display
+# Fix: Auto-Switch Currency to SATS When Selecting Bitcoin Mining
 
-## Problem Identified
-When adding Bitcoin mining income, the currency is being saved as USD instead of SATS/BTC. The database shows `currency: USD` for the mining income entry, causing it to display as "$250,000.00" instead of "250,000 sats".
+## Problem
+When selecting "Bitcoin Mining" as the income type, the currency dropdown does not automatically switch to SATS. The user has to manually change it from USD to SATS.
 
 ## Root Cause
-In `AddIncomeDialog.tsx`, the income type Select component uses `defaultValue={field.value}` instead of `value={field.value}`. This prevents the component from properly re-rendering when the type changes, which may cause the `useEffect` that auto-switches to SATS to not trigger correctly or have timing issues.
+The `form.setValue('currency', 'SATS')` call on line 59 doesn't trigger a UI re-render of the currency Select component. React Hook Form's `setValue` doesn't automatically update the UI unless specific options are passed.
 
+## Current Code (Line 57-61)
 ```tsx
-// Current (problematic)
-<Select onValueChange={field.onChange} defaultValue={field.value}>
-
-// Should be
-<Select onValueChange={field.onChange} value={field.value}>
+useEffect(() => {
+  if (selectedType === 'mining' && !isBitcoinCurrency(selectedCurrency)) {
+    form.setValue('currency', 'SATS');
+  }
+}, [selectedType, selectedCurrency, form]);
 ```
 
 ## Solution
-Change the type Select component to use controlled mode (`value` instead of `defaultValue`) to ensure the form state is properly synced and the auto-switch effect works reliably.
+Update the `setValue` call to include options that force the form to re-render and update the Select component's displayed value.
 
 ## File Changes
 
-**`src/components/AddIncomeDialog.tsx`**:
-- Line 123: Change `defaultValue={field.value}` to `value={field.value}` for the income type Select
+**`src/components/AddIncomeDialog.tsx`** (Line 59):
+```tsx
+// Before
+form.setValue('currency', 'SATS');
+
+// After
+form.setValue('currency', 'SATS', { shouldValidate: true, shouldDirty: true });
+```
 
 ## Technical Details
-| Location | Current | Fixed |
-|----------|---------|-------|
-| Line 123 | `defaultValue={field.value}` | `value={field.value}` |
+| Option | Purpose |
+|--------|---------|
+| `shouldValidate: true` | Triggers form validation, which causes the field to re-render |
+| `shouldDirty: true` | Marks the field as dirty, ensuring form state is updated |
 
-This ensures the Select component is fully controlled and re-renders properly when the type changes, allowing the `useEffect` on lines 57-61 to correctly auto-switch the currency to SATS when "Bitcoin Mining" is selected.
-
-## Testing
-After the fix:
-1. Open Add Income dialog
-2. Select "Bitcoin Mining" as the type
-3. Verify the currency automatically switches to "sats - Satoshis (sats)"
-4. Enter an amount and save
-5. The income should display with "sats" suffix (e.g., "250,000 sats")
+These options ensure that when the type changes to "mining", the currency dropdown UI immediately updates to show "sats - Satoshis (sats)" instead of remaining on "USD".
