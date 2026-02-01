@@ -1,52 +1,69 @@
 
+# Add Beta Disclaimer Banner
 
-# Fix Toast Message & Add Spam Folder Reminder
+## Overview
 
-## Issue Identified
+Add a prominent but non-intrusive beta disclaimer banner to inform visitors that InControl is currently in beta testing. The banner will be positioned at the very top of the page, above the navigation bar.
 
-The code already contains the correct toast message ("Check your email!") at `src/pages/Auth.tsx` lines 89-92, but you're still seeing the old message. This indicates a **caching issue** where the preview is serving a stale version of the code.
+## Design Approach
 
-## Solution
+The beta banner will feature:
+- Fixed position at the top of the viewport
+- Eye-catching amber/warning color scheme to stand out
+- A "BETA" badge followed by a clear message
+- Compact height so it doesn't overwhelm the page
+- Smooth fade-in animation consistent with existing page elements
 
-### 1. Force Preview Refresh
+## Visual Preview
 
-The latest code changes need to be deployed. Sometimes the preview caches old JavaScript bundles.
-
-### 2. Update Toast Message with Spam Reminder
-
-Enhance the existing toast message to include a helpful reminder about checking the spam folder.
-
-## Changes Required
-
-### File: `src/pages/Auth.tsx`
-
-Update the success toast (lines 89-92) to include the spam folder reminder:
-
-**Before:**
-```typescript
-toast({
-  title: 'Check your email! 📧',
-  description: "We've sent a confirmation link to verify your account.",
-});
+```text
++------------------------------------------------------------------+
+|  [BETA]  This app is in beta testing. Features may change.      |
++------------------------------------------------------------------+
+|                     [Navigation Bar]                              |
++------------------------------------------------------------------+
+|                                                                   |
+|                     [Hero Section]                                |
+|                                                                   |
 ```
 
-**After:**
-```typescript
-toast({
-  title: 'Check your email! 📧',
-  description: "We've sent a confirmation link to verify your account. Don't forget to check your spam folder!",
-});
-```
+## Files to Create
 
-## Expected Result
+| File | Purpose |
+|------|---------|
+| `src/components/landing/BetaBanner.tsx` | New component for the beta disclaimer |
 
-After signup, users will see:
-- **Title:** Check your email! 📧
-- **Description:** We've sent a confirmation link to verify your account. Don't forget to check your spam folder!
+## Files to Modify
 
-## Implementation Steps
+| File | Changes |
+|------|---------|
+| `src/pages/Landing.tsx` | Import and render BetaBanner at top of page, adjust nav positioning |
 
-1. Modify the toast description in `src/pages/Auth.tsx` line 91
-2. The updated code will deploy automatically
-3. Hard refresh the preview to ensure you see the latest version
+## Implementation Details
 
+### BetaBanner Component
+
+- Uses amber/warning color scheme for visibility
+- Includes a pulsing "BETA" badge similar to existing badge patterns
+- Compact single-line design with centered text
+- Animated entrance using Framer Motion
+- Fixed position at viewport top
+
+### Landing Page Adjustments
+
+- Insert BetaBanner before the navigation
+- Adjust `pt-16` padding on main content to account for the additional banner height
+- Update nav's `top-0` positioning to `top-8` (or similar) to sit below the banner
+
+## Color Scheme
+
+The banner will use the existing warning color variables:
+- Background: `warning/10` (amber with low opacity)
+- Border: `warning/30`
+- Badge: Solid `warning` background
+- Text: `warning` colored for emphasis
+
+## Mobile Responsiveness
+
+- Text will be slightly smaller on mobile devices
+- Banner remains visible and readable across all screen sizes
