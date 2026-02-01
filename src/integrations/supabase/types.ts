@@ -286,7 +286,6 @@ export type Database = {
           agreed_to_tos: boolean | null
           agreed_to_tos_at: string | null
           created_at: string
-          email: string | null
           has_completed_tutorial: boolean | null
           id: string
           updated_at: string
@@ -296,7 +295,6 @@ export type Database = {
           agreed_to_tos?: boolean | null
           agreed_to_tos_at?: string | null
           created_at?: string
-          email?: string | null
           has_completed_tutorial?: boolean | null
           id?: string
           updated_at?: string
@@ -306,7 +304,6 @@ export type Database = {
           agreed_to_tos?: boolean | null
           agreed_to_tos_at?: string | null
           created_at?: string
-          email?: string | null
           has_completed_tutorial?: boolean | null
           id?: string
           updated_at?: string
