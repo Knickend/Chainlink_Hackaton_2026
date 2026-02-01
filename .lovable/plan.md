@@ -1,74 +1,87 @@
 
-# Fix: Income Currency Not Saving & Wrong Monthly Total
+# Add Sales Bot Analytics to Admin Dashboard
 
-## Problems Identified
+## Overview
+Add tracking for the AI sales assistant ("Alex") on the landing page so you can see engagement metrics like total conversations, messages sent, peak usage times, and conversion actions.
 
-### Problem 1: Currency from Form is Being Ignored
-When you add income in the dialog, the form correctly captures the currency (e.g., SATS, EUR), but it gets **overwritten** in `Index.tsx`. 
+## What You'll Be Able to See
+- Total conversations started
+- Total messages exchanged
+- Unique visitors who interacted
+- Conversations over time (trend chart)
+- Peak usage hours
+- Sign-up button clicks from the chat
 
-The current code on line 443:
-```tsx
-onAdd={(data) => addIncome({ 
-  ...data, 
-  currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit 
-})}
+---
+
+## Technical Implementation
+
+### Step 1: Create Database Table
+Create a `sales_bot_interactions` table to log each conversation event:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | uuid | Primary key |
+| session_id | text | Groups messages in same conversation |
+| event_type | text | 'conversation_start', 'message', 'cta_click' |
+| visitor_ip_hash | text | Anonymized visitor identifier |
+| message_role | text | 'user' or 'assistant' |
+| created_at | timestamp | When the event occurred |
+
+### Step 2: Update Edge Function
+Modify `supabase/functions/sales-bot/index.ts` to:
+- Generate a session ID for each conversation
+- Log each message exchange to the database
+- Track using hashed IP for privacy (no PII stored)
+
+### Step 3: Track CTA Clicks (Frontend)
+Update `SalesChatBot.tsx` to call a logging endpoint when users click:
+- "Sign Up Free" button
+- "View Demo" button
+
+### Step 4: Add Admin Dashboard Section
+Create a new "Sales Bot" tab or section in the admin dashboard showing:
+- **Stat cards**: Total conversations, Total messages, Unique visitors, CTA clicks
+- **Trend chart**: Conversations per day over the last 30 days
+- **Hourly heatmap**: Peak engagement times
+
+### Step 5: Analytics Hook
+Create `useAdminSalesBotAnalytics.ts` to fetch and aggregate the data.
+
+---
+
+## File Changes Summary
+
+| File | Action |
+|------|--------|
+| `supabase/migrations/` | Create `sales_bot_interactions` table |
+| `supabase/functions/sales-bot/index.ts` | Add logging to database |
+| `src/components/landing/SalesChatBot.tsx` | Track CTA button clicks |
+| `src/hooks/useAdminSalesBotAnalytics.ts` | New hook for fetching analytics |
+| `src/components/admin/SalesBotAnalytics.tsx` | New component for displaying stats |
+| `src/pages/Admin.tsx` | Add new tab for Sales Bot analytics |
+
+---
+
+## Privacy Considerations
+- Visitor IPs are hashed (not stored in plain text)
+- No message content is stored (only metadata)
+- Data is only accessible to admins
+
+---
+
+## Expected Dashboard Preview
+
+```text
++------------------+------------------+------------------+------------------+
+|  Conversations   |    Messages      |   Unique Users   |   CTA Clicks     |
+|       47         |       234        |       38         |       12         |
++------------------+------------------+------------------+------------------+
+
+[======== Conversations Over Time (Line Chart) ========]
+
+| Hour | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+|------|-----|-----|-----|-----|-----|-----|-----|
+|  9AM |  2  |  3  |  1  |  4  |  2  |  1  |  0  |
+|  ...                                            |
 ```
-
-This **ignores** the currency you selected in the form and always uses the dashboard's display unit instead.
-
-### Problem 2: Type Definition Missing 'mining'
-The type signature only allows `'work' | 'passive' | 'investment'` but not `'mining'`, which means mining income isn't handled correctly.
-
-### Problem 3: Wrong Monthly Income Total
-Once the data fix is applied, the monthly income total should calculate correctly. Currently, 250,000 SATS is being treated as $250,000 USD because the database stores `currency: USD`.
-
----
-
-## Solution
-
-### Step 1: Fix the Index.tsx Income Handler
-Update line 443 to:
-- Include 'mining' in the type definition
-- Use the currency **from the form data** instead of overwriting it
-- Only fallback to display unit if no currency is provided
-
-### Step 2: Re-enter the Income Data
-After the fix is deployed, delete the existing income entries and re-add them:
-- "antminer" with Bitcoin Mining type (will auto-select SATS)
-- "Rental income" with EUR currency selected
-
----
-
-## Technical Changes
-
-| File | Line | Change |
-|------|------|--------|
-| `src/pages/Index.tsx` | 443 | Update `onAdd` handler to preserve form currency |
-
-### Code Change
-```tsx
-// Before (line 443)
-actionButton={isDemo ? undefined : <AddIncomeDialog 
-  onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' }) => 
-    addIncome({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} 
-  displayUnit={displayUnit} />}
-
-// After
-actionButton={isDemo ? undefined : <AddIncomeDialog 
-  onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining'; currency: string }) => 
-    addIncome(data)} 
-  displayUnit={displayUnit} />}
-```
-
-This change:
-1. Adds 'mining' to the type definition
-2. Adds 'currency' to the type definition  
-3. Passes the form data directly without overwriting the currency
-
----
-
-## Expected Result
-After deploying the fix and re-entering your income:
-- Mining income of 250,000 SATS will display as "250,000 sats"
-- Rental income of 2,020 EUR will display as "€2,020.00"
-- Monthly Income total will correctly convert all currencies to the selected display unit
