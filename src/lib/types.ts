@@ -99,12 +99,42 @@ export function getUnitLabel(unit: CommodityUnit): string {
   return unitConfig?.label ?? unit;
 }
 
+// Bitcoin currency types for mining income
+export type BitcoinCurrency = 'BTC' | 'SATS';
+
+export const BITCOIN_CURRENCIES: { value: BitcoinCurrency; label: string; symbol: string }[] = [
+  { value: 'BTC', label: 'Bitcoin (BTC)', symbol: '₿' },
+  { value: 'SATS', label: 'Satoshis (sats)', symbol: 'sats' },
+];
+
+// Helper to convert BTC/SATS to USD
+export function convertBtcToUSD(amount: number, currency: BitcoinCurrency, btcPrice: number): number {
+  if (currency === 'SATS') {
+    // Convert sats to BTC first (1 BTC = 100,000,000 sats)
+    const btcAmount = amount / 100_000_000;
+    return btcAmount * btcPrice;
+  }
+  // Direct BTC to USD
+  return amount * btcPrice;
+}
+
+// Check if a currency is a Bitcoin denomination
+export function isBitcoinCurrency(currency: string): currency is BitcoinCurrency {
+  return currency === 'BTC' || currency === 'SATS';
+}
+
+// Get Bitcoin currency symbol
+export function getBitcoinCurrencySymbol(currency: BitcoinCurrency): string {
+  const curr = BITCOIN_CURRENCIES.find(c => c.value === currency);
+  return curr?.symbol || currency;
+}
+
 export interface Income {
   id: string;
   source: string;
-  amount: number; // in original currency
-  type: 'work' | 'passive' | 'investment';
-  currency: string; // 'USD', 'EUR', 'GBP', etc.
+  amount: number; // in original currency (can be BTC, SATS, or fiat)
+  type: 'work' | 'passive' | 'investment' | 'mining';
+  currency: string; // 'USD', 'EUR', 'GBP', 'BTC', 'SATS', etc.
 }
 
 export interface Expense {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+import { DisplayUnit, UNIT_SYMBOLS, BANKING_CURRENCIES, BITCOIN_CURRENCIES, isBitcoinCurrency } from '@/lib/types';
 
 const incomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
-  amount: z.number().min(0.01, 'Amount must be positive'),
-  type: z.enum(['work', 'passive', 'investment'] as const),
+  amount: z.number().min(0.00000001, 'Amount must be positive'),
+  type: z.enum(['work', 'passive', 'investment', 'mining'] as const),
+  currency: z.string().min(1, 'Currency is required'),
 });
 
 type IncomeFormData = z.infer<typeof incomeSchema>;
@@ -27,6 +28,13 @@ const incomeTypes = [
   { value: 'work', label: 'Work Income' },
   { value: 'passive', label: 'Passive Income' },
   { value: 'investment', label: 'Investment Income' },
+  { value: 'mining', label: 'Mining Income' },
+];
+
+// Combine fiat and bitcoin currencies for the selector
+const allCurrencies = [
+  ...BITCOIN_CURRENCIES.map(c => ({ value: c.value, label: c.label, symbol: c.symbol })),
+  ...BANKING_CURRENCIES.map(c => ({ value: c.value, label: c.label, symbol: c.symbol })),
 ];
 
 export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
@@ -37,8 +45,36 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
       source: '',
       amount: undefined,
       type: 'work',
+      currency: 'USD',
     },
   });
+
+  // Watch the type and currency fields to react to changes
+  const selectedType = useWatch({ control: form.control, name: 'type' });
+  const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+
+  // Auto-switch to SATS when Mining is selected (if not already a bitcoin currency)
+  useEffect(() => {
+    if (selectedType === 'mining' && !isBitcoinCurrency(selectedCurrency)) {
+      form.setValue('currency', 'SATS');
+    }
+  }, [selectedType, selectedCurrency, form]);
+
+  const isBtcCurrency = isBitcoinCurrency(selectedCurrency);
+  const currencySymbol = allCurrencies.find(c => c.value === selectedCurrency)?.symbol || selectedCurrency;
+
+  // Get appropriate step and placeholder based on currency
+  const getInputStep = () => {
+    if (selectedCurrency === 'BTC') return '0.00000001';
+    if (selectedCurrency === 'SATS') return '1';
+    return '0.01';
+  };
+
+  const getPlaceholder = () => {
+    if (selectedCurrency === 'BTC') return '0.00150000';
+    if (selectedCurrency === 'SATS') return '150000';
+    return '5000';
+  };
 
   const onSubmit = (data: IncomeFormData) => {
     onAdd(data);
@@ -67,27 +103,10 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
                 <FormItem>
                   <FormLabel>Income Source</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Salary, Rental Income" {...field} className="bg-secondary/50" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="5000"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      className="bg-secondary/50"
+                    <Input 
+                      placeholder={selectedType === 'mining' ? 'e.g., Bitcoin Mining Pool' : 'e.g., Salary, Rental Income'} 
+                      {...field} 
+                      className="bg-secondary/50" 
                     />
                   </FormControl>
                   <FormMessage />
@@ -115,6 +134,75 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      {selectedType === 'mining' && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Bitcoin</div>
+                          {BITCOIN_CURRENCIES.map((currency) => (
+                            <SelectItem key={currency.value} value={currency.value}>
+                              {currency.symbol} - {currency.label}
+                            </SelectItem>
+                          ))}
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">Fiat Currencies</div>
+                        </>
+                      )}
+                      {BANKING_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          {currency.symbol} - {currency.label}
+                        </SelectItem>
+                      ))}
+                      {selectedType !== 'mining' && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">Bitcoin</div>
+                          {BITCOIN_CURRENCIES.map((currency) => (
+                            <SelectItem key={currency.value} value={currency.value}>
+                              {currency.symbol} - {currency.label}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Monthly Amount ({currencySymbol})
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step={getInputStep()}
+                      placeholder={getPlaceholder()}
+                      {...field}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      className="bg-secondary/50"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

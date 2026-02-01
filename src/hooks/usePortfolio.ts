@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit, convertCurrency, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
+import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit, convertCurrency, FOREX_RATES_TO_USD, BankingCurrency, isBitcoinCurrency, convertBtcToUSD, BitcoinCurrency } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
@@ -85,12 +85,22 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return DEFAULT_CONVERSION_RATES;
   }, [livePrices]);
 
+  // Get the current BTC price for income conversion
+  const btcPrice = livePrices?.btc || 96000; // fallback to ~96k if not available
+
   const metrics: PortfolioMetrics = useMemo(() => {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
     
     // Convert income/expenses to USD for totals (they may have different currencies)
     const totalIncome = income.reduce((sum, inc) => {
       const currency = inc.currency || 'USD';
+      
+      // Handle Bitcoin currencies (BTC and SATS)
+      if (isBitcoinCurrency(currency)) {
+        return sum + convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
+      }
+      
+      // Handle fiat currencies
       const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
       return sum + (inc.amount * rate);
     }, 0);
@@ -125,7 +135,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
       monthlyNetIncome,
       yearlyYield,
     };
-  }, [assets, income, expenses]);
+  }, [assets, income, expenses, btcPrice]);
 
   const assetsByCategory = useMemo(() => {
     return assets.reduce((acc, asset) => {
