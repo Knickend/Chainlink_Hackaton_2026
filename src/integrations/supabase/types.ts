@@ -137,6 +137,7 @@ export type Database = {
       feedback: {
         Row: {
           admin_notes: string | null
+          attachments: string[] | null
           created_at: string | null
           description: string
           id: string
@@ -149,6 +150,7 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          attachments?: string[] | null
           created_at?: string | null
           description: string
           id?: string
@@ -161,6 +163,7 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          attachments?: string[] | null
           created_at?: string | null
           description?: string
           id?: string
@@ -411,6 +414,7 @@ export type Database = {
     Views: {
       feedback_user_view: {
         Row: {
+          attachments: string[] | null
           created_at: string | null
           description: string | null
           id: string | null
@@ -422,6 +426,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          attachments?: string[] | null
           created_at?: string | null
           description?: string | null
           id?: string | null
@@ -433,6 +438,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          attachments?: string[] | null
           created_at?: string | null
           description?: string | null
           id?: string | null

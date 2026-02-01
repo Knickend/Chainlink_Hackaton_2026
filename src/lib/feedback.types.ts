@@ -12,6 +12,7 @@ export interface Feedback {
   priority: FeedbackPriority;
   status: FeedbackStatus;
   admin_notes: string | null;
+  attachments: string[];
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +22,7 @@ export interface FeedbackInsert {
   title: string;
   description: string;
   priority?: FeedbackPriority;
+  attachments?: string[];
 }
 
 export interface FeedbackUpdate {
