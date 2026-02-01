@@ -8,16 +8,20 @@ import { FeaturesSection } from '@/components/landing/FeaturesSection';
 import { PricingSection } from '@/components/landing/PricingSection';
 import { Footer } from '@/components/landing/Footer';
 import { SalesChatBot } from '@/components/landing/SalesChatBot';
+import { BetaBanner } from '@/components/landing/BetaBanner';
 const Landing = () => {
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Beta Banner */}
+      <BetaBanner />
+
       {/* Navigation */}
       <motion.nav
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50"
+        className="fixed top-8 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50"
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -65,7 +69,7 @@ const Landing = () => {
       </motion.nav>
 
       {/* Main content */}
-      <main className="pt-16">
+      <main className="pt-24">
         <HeroSection />
         <FeaturesSection />
         <PricingSection />
