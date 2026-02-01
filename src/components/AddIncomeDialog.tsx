@@ -120,7 +120,7 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Income Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-secondary/50">
                         <SelectValue placeholder="Select type" />
