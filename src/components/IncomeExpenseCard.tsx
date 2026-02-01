@@ -56,28 +56,34 @@ export function IncomeExpenseCard({
       return `${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} ${symbol}`;
     }
     
-    // For BTC and GOLD display units, convert via USD
-    if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
-      const amountInUSD = amount * (FOREX_RATES_TO_USD[itemCurrency as BankingCurrency] || 1);
-      const converted = amountInUSD * DEFAULT_CONVERSION_RATES[displayUnit];
-      const symbol = UNIT_SYMBOLS[displayUnit];
-      if (displayUnit === 'GOLD') {
-        return `${converted.toFixed(4)} ${symbol}`;
-      }
-      return `${symbol}${converted.toFixed(6)}`;
-    }
+    // For fiat currencies, always show in native currency (the currency it was entered in)
+    // This preserves the user's original entry: €2,300 stays as €2,300
+    const currencySymbols: Record<string, string> = {
+      USD: '$',
+      EUR: '€',
+      GBP: '£',
+      CHF: 'CHF ',
+      JPY: '¥',
+      CAD: 'C$',
+      AUD: 'A$',
+      CNY: '¥',
+      INR: '₹',
+      SEK: 'kr ',
+      NOK: 'kr ',
+      DKK: 'kr ',
+      PLN: 'zł ',
+      CZK: 'Kč ',
+      HUF: 'Ft ',
+      RON: 'lei ',
+      BGN: 'лв ',
+      HRK: 'kn ',
+      RUB: '₽',
+      TRY: '₺',
+    };
     
-    // For fiat display units - if same currency, show original amount
-    if (itemCurrency === displayUnit) {
-      const symbol = UNIT_SYMBOLS[displayUnit];
-      return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    
-    // Otherwise, convert from stored currency to display currency
-    const converted = convertCurrency(amount, itemCurrency, displayUnit);
-    const symbol = UNIT_SYMBOLS[displayUnit];
-    return `${symbol}${converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }, [displayUnit]);
+    const symbol = currencySymbols[itemCurrency] || '$';
+    return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, []);
 
   return (
     <motion.div
