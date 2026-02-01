@@ -88,7 +88,7 @@ const Auth = () => {
       } else if (isSignUp) {
         toast({
           title: 'Check your email! 📧',
-          description: "We've sent a confirmation link to verify your account.",
+          description: "We've sent a confirmation link to verify your account. Don't forget to check your spam folder!",
         });
         setIsSignUp(false);
         form.reset();
