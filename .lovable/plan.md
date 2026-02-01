@@ -1,104 +1,52 @@
 
-# Implement Email Confirmation System
 
-## Overview
+# Fix Toast Message & Add Spam Folder Reminder
 
-This plan implements a complete email confirmation flow for new user signups using Resend with your verified domain `incontrol.finance`.
+## Issue Identified
 
-## What Will Be Built
+The code already contains the correct toast message ("Check your email!") at `src/pages/Auth.tsx` lines 89-92, but you're still seeing the old message. This indicates a **caching issue** where the preview is serving a stale version of the code.
 
-### 1. Edge Function: `send-confirmation-email`
+## Solution
 
-A new backend function that sends branded confirmation emails when users sign up.
+### 1. Force Preview Refresh
 
-**Email Details:**
-- From: `InControl <noreply@incontrol.finance>`
-- Subject: "Confirm your InControl account"
-- Content: Professional HTML email with confirmation link
+The latest code changes need to be deployed. Sometimes the preview caches old JavaScript bundles.
 
-### 2. Updated Authentication Flow
+### 2. Update Toast Message with Spam Reminder
 
-The signup process will be enhanced to:
-- Create the user account via Supabase Auth
-- Trigger the edge function to send a branded confirmation email
-- Display accurate messaging to the user
+Enhance the existing toast message to include a helpful reminder about checking the spam folder.
 
-### 3. Improved Frontend Messaging
+## Changes Required
 
-Update the Auth page to:
-- Show "Check your email!" instead of "You can now sign in"
-- Handle the "Email not confirmed" error with a helpful message
+### File: `src/pages/Auth.tsx`
 
-## User Experience
+Update the success toast (lines 89-92) to include the spam folder reminder:
 
-```text
-+------------------+     +-------------------+     +------------------+
-|   User Signs Up  | --> |  Email Sent via   | --> | User Clicks Link |
-|  (email + pass)  |     |     Resend        |     |   in Email       |
-+------------------+     +-------------------+     +------------------+
-         |                        |                        |
-         v                        v                        v
-  "Check your email!"     Branded email with      Redirected to app
-   toast message          confirmation link        and signed in
-```
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `supabase/functions/send-confirmation-email/index.ts` | Edge function to send emails via Resend |
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/contexts/AuthContext.tsx` | Call edge function after successful signup |
-| `src/pages/Auth.tsx` | Update success message and add error handling |
-| `supabase/config.toml` | Register the new edge function |
-
-## Secret to Add
-
-| Name | Value |
-|------|-------|
-| `RESEND_API_KEY` | Your provided API key (securely stored) |
-
-## Technical Implementation
-
-### Edge Function Logic
-
+**Before:**
 ```typescript
-// Receives: email, confirmationUrl
-// Sends branded HTML email via Resend
-// Returns: success/error response
+toast({
+  title: 'Check your email! 📧',
+  description: "We've sent a confirmation link to verify your account.",
+});
 ```
 
-### Auth Context Changes
-
+**After:**
 ```typescript
-// After successful signUp:
-// 1. Get the confirmation URL from Supabase
-// 2. Call send-confirmation-email edge function
-// 3. Return result to UI
+toast({
+  title: 'Check your email! 📧',
+  description: "We've sent a confirmation link to verify your account. Don't forget to check your spam folder!",
+});
 ```
 
-### Auth Page Changes
+## Expected Result
 
-**Success Message:**
-```
-Title: "Check your email!"
-Description: "We've sent a confirmation link to verify your account."
-```
+After signup, users will see:
+- **Title:** Check your email! 📧
+- **Description:** We've sent a confirmation link to verify your account. Don't forget to check your spam folder!
 
-**Error Handling:**
-```
-"Email not confirmed" → "Please check your email and click the confirmation link before signing in."
-```
+## Implementation Steps
 
-## Email Template Preview
+1. Modify the toast description in `src/pages/Auth.tsx` line 91
+2. The updated code will deploy automatically
+3. Hard refresh the preview to ensure you see the latest version
 
-The confirmation email will include:
-- InControl branding with gradient header
-- Welcome message
-- Prominent "Confirm Email" button
-- Fallback link for email clients that block buttons
-- Professional footer
