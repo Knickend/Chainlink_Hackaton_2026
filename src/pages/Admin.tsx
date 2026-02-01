@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Shield, Loader2 } from 'lucide-react';
+import { ArrowLeft, Shield, Loader2, Bot } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { FeedbackDetailDialog } from '@/components/admin/FeedbackDetailDialog';
 import { AdminOverview } from '@/components/admin/AdminOverview';
 import { AdminUserStats } from '@/components/admin/AdminUserStats';
 import { AnalyticsFilters } from '@/components/admin/AnalyticsFilters';
+import { SalesBotAnalytics } from '@/components/admin/SalesBotAnalytics';
 import { Feedback, FeedbackType, FeedbackStatus } from '@/lib/feedback.types';
 
 const Admin = () => {
@@ -127,8 +128,12 @@ const Admin = () => {
 
         {/* Tabbed Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-lg grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="sales-bot" className="gap-1.5">
+              <Bot className="h-3.5 w-3.5" />
+              Sales Bot
+            </TabsTrigger>
             <TabsTrigger value="feedback">Feedback</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
@@ -143,6 +148,18 @@ const Admin = () => {
               />
             </div>
             <AdminOverview analytics={analytics} />
+          </TabsContent>
+
+          {/* Sales Bot Tab */}
+          <TabsContent value="sales-bot" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">Sales Bot Analytics</h2>
+              <AnalyticsFilters
+                dateRange={dateRange}
+                onDateRangeChange={setDateRange}
+              />
+            </div>
+            <SalesBotAnalytics dateRange={dateRange} />
           </TabsContent>
 
           {/* Feedback Tab */}

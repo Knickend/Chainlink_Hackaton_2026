@@ -23,12 +23,34 @@ const SUGGESTED_QUESTIONS = [
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sales-bot`;
 
+// Generate a unique session ID for tracking
+function generateSessionId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+// Track CTA clicks
+async function trackCtaClick(sessionId: string, ctaType: 'signup' | 'demo') {
+  try {
+    await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ action: 'track_cta', sessionId, ctaType }),
+    });
+  } catch (error) {
+    console.error('Failed to track CTA click:', error);
+  }
+}
+
 export function SalesChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId] = useState(() => generateSessionId());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -88,7 +110,7 @@ export function SalesChatBot() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: userMessages }),
+        body: JSON.stringify({ messages: userMessages, sessionId }),
       });
 
       if (!response.ok) {
@@ -354,7 +376,10 @@ export function SalesChatBot() {
             <div className="flex gap-2 p-3 border-t border-border bg-muted/30">
               <Button 
                 size="sm" 
-                onClick={() => navigate('/auth?signup=true')}
+                onClick={() => {
+                  trackCtaClick(sessionId, 'signup');
+                  navigate('/auth?signup=true');
+                }}
                 className="flex-1 gap-1.5 gold-glow"
               >
                 <Sparkles className="h-3.5 w-3.5" />
@@ -364,7 +389,10 @@ export function SalesChatBot() {
               <Button 
                 size="sm" 
                 variant="outline"
-                onClick={() => navigate('/auth')}
+                onClick={() => {
+                  trackCtaClick(sessionId, 'demo');
+                  navigate('/auth');
+                }}
                 className="flex-1 gap-1.5"
               >
                 <Eye className="h-3.5 w-3.5" />

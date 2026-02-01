@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,15 @@ function getRateLimitHeaders(remaining: number, resetTime: number): Record<strin
   };
 }
 
+// Simple hash function for IP anonymization
+async function hashIP(ip: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(ip + "sales-bot-salt-2026");
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 const SALES_PROMPT = `You are Alex, InControl's friendly sales assistant. Your goal is to help visitors understand how InControl can transform their financial management and guide them toward signing up.
 
 **About InControl:**
@@ -83,7 +93,7 @@ serve(async (req) => {
   }
 
   try {
-    // Get client IP for rate limiting
+    // Get client IP for rate limiting and tracking
     const clientIP = getClientIP(req);
     const rateLimitKey = `ip:${clientIP}`;
     
@@ -107,7 +117,32 @@ serve(async (req) => {
       );
     }
 
-    const { messages } = await req.json();
+    const body = await req.json();
+    const { messages, sessionId, action, ctaType } = body;
+
+    // Initialize Supabase client for logging
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Hash IP for privacy
+    const visitorIpHash = await hashIP(clientIP);
+
+    // Handle CTA click tracking
+    if (action === "track_cta") {
+      await supabase.from("sales_bot_interactions").insert({
+        session_id: sessionId || "unknown",
+        event_type: "cta_click",
+        visitor_ip_hash: visitorIpHash,
+        cta_type: ctaType,
+      });
+      
+      console.log(`CTA click tracked: ${ctaType} (session: ${sessionId})`);
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -126,6 +161,28 @@ serve(async (req) => {
     }
 
     console.log("Sales bot request received with", messages.length, "messages", `(${rateLimitKey})`);
+
+    // Log conversation start (first user message in session)
+    if (sessionId && messages.length === 1) {
+      await supabase.from("sales_bot_interactions").insert({
+        session_id: sessionId,
+        event_type: "conversation_start",
+        visitor_ip_hash: visitorIpHash,
+      });
+    }
+
+    // Log user message
+    if (sessionId && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === "user") {
+        await supabase.from("sales_bot_interactions").insert({
+          session_id: sessionId,
+          event_type: "message",
+          visitor_ip_hash: visitorIpHash,
+          message_role: "user",
+        });
+      }
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -164,6 +221,19 @@ serve(async (req) => {
         JSON.stringify({ error: "Unable to process your request. Please try again." }),
         { status: 500, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Log assistant message after successful response
+    if (sessionId) {
+      // Fire and forget - don't block the stream
+      supabase.from("sales_bot_interactions").insert({
+        session_id: sessionId,
+        event_type: "message",
+        visitor_ip_hash: visitorIpHash,
+        message_role: "assistant",
+      }).then(() => {
+        console.log("Assistant message logged for session:", sessionId);
+      });
     }
 
     console.log("Streaming response from AI gateway");
