@@ -41,6 +41,7 @@ import { AssetCategory, DebtType } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
 import { useSubscription } from '@/hooks/useSubscription';
 import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal, useTutorialContext } from '@/components/Tutorial';
+import { TermsAgreementDialog } from '@/components/TermsAgreementDialog';
 
 // Inner component that has access to tutorial context
 const IndexContent = () => {
@@ -53,7 +54,7 @@ const IndexContent = () => {
   const isDemo = !user;
   
   // Subscription state from database
-  const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo } = useSubscription();
+  const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo, hasAgreedToTos, acceptTerms, isLoading: subscriptionLoading } = useSubscription();
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
   // Show Pro during tutorial OR in demo mode so users see all features
@@ -100,7 +101,7 @@ const IndexContent = () => {
     deleteExpense,
   } = usePortfolio(prices, isDemo);
 
-  if (authLoading || (!isDemo && (dataLoading || debtsLoading))) {
+  if (authLoading || (!isDemo && (dataLoading || debtsLoading || subscriptionLoading))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -110,6 +111,9 @@ const IndexContent = () => {
       </div>
     );
   }
+
+  // Show Terms Agreement Dialog for authenticated users who haven't agreed yet
+  const showTermsDialog = !isDemo && !hasAgreedToTos;
 
   // Use mock debts for demo mode
   const demoDebts = isDemo ? mockDebts : debts;
@@ -124,6 +128,9 @@ const IndexContent = () => {
 
   return (
     <>
+      {/* Terms Agreement Dialog - blocks app until accepted */}
+      <TermsAgreementDialog open={showTermsDialog} onAccept={acceptTerms} />
+      
       {/* Tutorial Components */}
       <WelcomeModal />
       <CompletionModal />
