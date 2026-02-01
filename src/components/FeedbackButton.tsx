@@ -165,6 +165,32 @@ export function FeedbackButton() {
     e.preventDefault();
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          // Create a new file with a proper name since clipboard files often have generic names
+          const extension = file.type.split('/')[1] || 'png';
+          const namedFile = new File([file], `screenshot-${Date.now()}.${extension}`, { type: file.type });
+          imageFiles.push(namedFile);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      const dataTransfer = new DataTransfer();
+      imageFiles.forEach(f => dataTransfer.items.add(f));
+      handleFileSelect(dataTransfer.files);
+    }
+  };
+
   return (
     <>
       {/* Floating Action Button */}
@@ -204,7 +230,7 @@ export function FeedbackButton() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} onPaste={handlePaste} className="space-y-4">
             {/* Type Selection */}
             <div className="flex gap-2">
               <Button
@@ -276,7 +302,7 @@ export function FeedbackButton() {
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <ImageIcon className="w-8 h-8" />
                   <p className="text-sm">
-                    Click or drag images here
+                    Click, drag images, or paste (Ctrl+V)
                   </p>
                   <p className="text-xs">
                     PNG, JPG, WEBP up to 5MB ({attachments.length}/{MAX_ATTACHMENTS})
