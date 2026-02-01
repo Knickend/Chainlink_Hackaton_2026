@@ -21,35 +21,49 @@ export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      let query = supabase
-        .from('feedback')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Use the view for non-admin users to hide admin_notes field
+      // Admins query the base table to see admin_notes
+      if (isAdmin) {
+        let query = supabase
+          .from('feedback')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      // If not admin, only fetch user's own feedback
-      if (!isAdmin) {
-        query = query.eq('user_id', user.id);
-      }
+        if (filters?.type) {
+          query = query.eq('type', filters.type);
+        }
+        if (filters?.status) {
+          query = query.eq('status', filters.status);
+        }
+        if (filters?.userId) {
+          query = query.eq('user_id', filters.userId);
+        }
 
-      // Apply filters
-      if (filters?.type) {
-        query = query.eq('type', filters.type);
-      }
-      if (filters?.status) {
-        query = query.eq('status', filters.status);
-      }
-      if (filters?.userId && isAdmin) {
-        query = query.eq('user_id', filters.userId);
-      }
+        const { data, error } = await query;
+        if (error) {
+          console.error('Error fetching feedback:', error);
+          throw error;
+        }
+        return data as Feedback[];
+      } else {
+        // Non-admin: use view that excludes admin_notes
+        const { data, error } = await supabase
+          .from('feedback_user_view' as 'feedback')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Error fetching feedback:', error);
-        throw error;
+        if (error) {
+          console.error('Error fetching feedback:', error);
+          throw error;
+        }
+        
+        // Map view results to Feedback type (admin_notes will be undefined)
+        return (data ?? []).map(item => ({
+          ...item,
+          admin_notes: null,
+        })) as Feedback[];
       }
-
-      return data as Feedback[];
     },
     enabled: !!user?.id,
   });

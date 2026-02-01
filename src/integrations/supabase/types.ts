@@ -412,7 +412,42 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      feedback_user_view: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string | null
+          priority: string | null
+          status: string | null
+          title: string | null
+          type: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          priority?: string | null
+          status?: string | null
+          title?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          priority?: string | null
+          status?: string | null
+          title?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_platform_analytics: { Args: never; Returns: Json }
