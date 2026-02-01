@@ -5,6 +5,45 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 10; // 10 requests per minute for landing page visitors
+
+// In-memory rate limit store
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; remaining: number; resetTime: number } {
+  const now = Date.now();
+  const record = rateLimitStore.get(key);
+  
+  if (!record || now > record.resetTime) {
+    const resetTime = now + windowMs;
+    rateLimitStore.set(key, { count: 1, resetTime });
+    return { allowed: true, remaining: maxRequests - 1, resetTime };
+  }
+  
+  if (record.count >= maxRequests) {
+    return { allowed: false, remaining: 0, resetTime: record.resetTime };
+  }
+  
+  record.count++;
+  return { allowed: true, remaining: maxRequests - record.count, resetTime: record.resetTime };
+}
+
+function getClientIP(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+    || req.headers.get("x-real-ip") 
+    || "unknown";
+}
+
+function getRateLimitHeaders(remaining: number, resetTime: number): Record<string, string> {
+  return {
+    "X-RateLimit-Limit": String(MAX_REQUESTS_PER_WINDOW),
+    "X-RateLimit-Remaining": String(remaining),
+    "X-RateLimit-Reset": String(Math.ceil(resetTime / 1000)),
+  };
+}
+
 const SALES_PROMPT = `You are Alex, InControl's friendly sales assistant. Your goal is to help visitors understand how InControl can transform their financial management and guide them toward signing up.
 
 **About InControl:**
@@ -44,12 +83,36 @@ serve(async (req) => {
   }
 
   try {
+    // Get client IP for rate limiting
+    const clientIP = getClientIP(req);
+    const rateLimitKey = `ip:${clientIP}`;
+    
+    // Check rate limit
+    const { allowed, remaining, resetTime } = checkRateLimit(
+      rateLimitKey, 
+      MAX_REQUESTS_PER_WINDOW, 
+      RATE_LIMIT_WINDOW_MS
+    );
+    
+    const rateLimitHeaders = getRateLimitHeaders(remaining, resetTime);
+    
+    if (!allowed) {
+      console.log(`Rate limit exceeded for ${rateLimitKey}`);
+      return new Response(
+        JSON.stringify({ error: "You're sending messages too quickly. Please wait a moment before trying again." }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+
     const { messages } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
         JSON.stringify({ error: "Messages array is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -58,11 +121,11 @@ serve(async (req) => {
       console.error("LOVABLE_API_KEY is not configured");
       return new Response(
         JSON.stringify({ error: "AI service is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("Sales bot request received with", messages.length, "messages");
+    console.log("Sales bot request received with", messages.length, "messages", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -85,28 +148,28 @@ serve(async (req) => {
         console.error("Rate limit exceeded");
         return new Response(
           JSON.stringify({ error: "I'm getting a lot of questions right now! Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 429, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
         console.error("Payment required");
         return new Response(
           JSON.stringify({ error: "AI service temporarily unavailable. Please try again later." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 402, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
         );
       }
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
       return new Response(
         JSON.stringify({ error: "Unable to process your request. Please try again." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("Streaming response from AI gateway");
 
     return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
     console.error("Sales bot error:", error);
