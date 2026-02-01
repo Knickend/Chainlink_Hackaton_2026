@@ -1,75 +1,89 @@
 
-# Add Password Visibility Toggle
+# Add Rate Limiting to AI Edge Functions
 
 ## Overview
-Add an eye icon button to password fields that allows users to toggle between showing and hiding their password. This is a common UX pattern that helps users verify what they've typed without making mistakes.
+Implement application-level rate limiting for the `financial-advisor` and `sales-bot` edge functions to prevent API abuse. This will protect against excessive usage, reduce costs, and ensure fair access for all users.
 
-## What Will Be Built
+## Current State
+- Both functions currently have no rate limiting
+- They rely only on the downstream Lovable AI gateway's rate limits (429 responses)
+- Anyone can spam requests, consuming API credits and degrading service
 
-- A clickable eye icon on the right side of password fields
-- When clicked, the password becomes visible (shows actual characters)
-- The icon changes from "eye" (hidden) to "eye-off" (visible) to indicate the current state
-- Works consistently across all authentication forms
+## Implementation Strategy
 
-## Files to Update
+### Rate Limiting Approach: In-Memory Token Bucket
+Since Edge Functions are stateless and short-lived, we'll use an **in-memory rate limiter per function instance** with the following characteristics:
 
-| File | Password Fields |
-|------|-----------------|
-| `src/pages/Auth.tsx` | Login/Signup password |
-| `src/components/auth/ResetPasswordForm.tsx` | New password + Confirm password |
-| `src/pages/AdminLogin.tsx` | Admin login password |
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| **Window** | 1 minute | Short enough to prevent bursts, long enough to be user-friendly |
+| **Max requests** | 10 per IP (sales-bot) | Landing page visitors need limited interactions |
+| **Max requests** | 20 per IP (financial-advisor) | Authenticated users may have longer conversations |
 
-## Implementation Approach
+### Rate Limit Key
+- **Sales bot**: Client IP address (unauthenticated visitors)
+- **Financial advisor**: User ID from JWT (authenticated) or IP as fallback
 
-### Option A: Reusable Component (Recommended)
-Create a new `PasswordInput` component that wraps the standard Input with visibility toggle logic. This ensures consistency and reduces code duplication.
+## Technical Implementation
 
-### Option B: Inline Logic
-Add visibility state and toggle button directly to each password field. Faster to implement but creates code duplication.
+### Rate Limiter Logic
+```typescript
+// Simple in-memory rate limiter using Map
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
-I'll use **Option A** for cleaner, maintainable code.
-
----
-
-## Technical Details
-
-### New Component: `src/components/ui/password-input.tsx`
-
-```tsx
-// A wrapper around Input that adds:
-// - showPassword state (boolean)
-// - Toggle button with Eye/EyeOff icons
-// - Switches input type between "password" and "text"
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+  const now = Date.now();
+  const record = rateLimitStore.get(key);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(key, { count: 1, resetTime: now + windowMs });
+    return true; // Allowed
+  }
+  
+  if (record.count >= maxRequests) {
+    return false; // Rate limited
+  }
+  
+  record.count++;
+  return true; // Allowed
+}
 ```
 
-### Component Features
-- Extends all standard Input props
-- Eye icon positioned on the right side (right-3)
-- Icon is a button for accessibility (keyboard navigable)
-- Supports the existing left-side Lock icon pattern
-- Uses `pr-10` padding to make room for the toggle button
-
-### Usage Pattern
-Replace:
-```tsx
-<Input type="password" ... />
-```
-With:
-```tsx
-<PasswordInput ... />
+### IP Extraction
+```typescript
+function getClientIP(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+    || req.headers.get("x-real-ip") 
+    || "unknown";
+}
 ```
 
-### Icon States
-- Password hidden: `Eye` icon (click to reveal)
-- Password visible: `EyeOff` icon (click to hide)
+### Response Headers
+Add standard rate limit headers for transparency:
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Requests remaining in window
+- `X-RateLimit-Reset`: Unix timestamp when window resets
 
----
+## Files to Modify
 
-## File Changes Summary
+| File | Changes |
+|------|---------|
+| `supabase/functions/financial-advisor/index.ts` | Add rate limiter (20 req/min per user) |
+| `supabase/functions/sales-bot/index.ts` | Add rate limiter (10 req/min per IP) |
 
-| File | Change |
-|------|--------|
-| `src/components/ui/password-input.tsx` | **New** - Reusable password input with toggle |
-| `src/pages/Auth.tsx` | Use PasswordInput for login/signup |
-| `src/components/auth/ResetPasswordForm.tsx` | Use PasswordInput for both password fields |
-| `src/pages/AdminLogin.tsx` | Use PasswordInput for admin login |
+## Rate Limited Response
+When rate limited, return a friendly 429 response:
+
+```json
+{
+  "error": "You're sending messages too quickly. Please wait a moment before trying again."
+}
+```
+
+## Edge Cases Handled
+- **Cleanup**: Old entries are automatically overwritten when the window expires
+- **Memory**: Map size is bounded by unique IPs/users within the window
+- **Graceful degradation**: If IP detection fails, uses "unknown" as key (shared limit)
+
+## Limitations Note
+Since Edge Functions can run on multiple instances, this provides per-instance rate limiting rather than global. For stricter enforcement, a database-backed solution would be needed, but this approach provides good protection against most abuse scenarios with zero additional infrastructure.
