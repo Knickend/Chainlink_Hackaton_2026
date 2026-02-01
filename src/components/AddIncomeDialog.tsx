@@ -56,7 +56,7 @@ export function AddIncomeDialog({ onAdd, displayUnit }: AddIncomeDialogProps) {
   // Auto-switch to SATS when Mining is selected (if not already a bitcoin currency)
   useEffect(() => {
     if (selectedType === 'mining' && !isBitcoinCurrency(selectedCurrency)) {
-      form.setValue('currency', 'SATS');
+      form.setValue('currency', 'SATS', { shouldValidate: true, shouldDirty: true });
     }
   }, [selectedType, selectedCurrency, form]);
 
