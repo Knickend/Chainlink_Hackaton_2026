@@ -2,6 +2,14 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 export default function Privacy() {
   return (
@@ -34,85 +42,123 @@ export default function Privacy() {
         >
           <h1 className="text-3xl font-bold mb-2">Privacy Policy - InControl.finance</h1>
           <p className="text-muted-foreground mb-8">
-            <em>Effective: January 30, 2026</em>
+            <em>Effective: February 1, 2026</em>
           </p>
 
           {/* Section 1 */}
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">1. Introduction</h2>
             <p className="text-muted-foreground">
-              InControl.finance ("we", "our", "us") is committed to protecting your privacy. 
-              This Privacy Policy explains how we collect, use, and safeguard your information 
-              when you use our portfolio tracking service.
+              InControl.finance ("we") protects your privacy. Standalone portfolio tracker - <strong className="text-foreground">NO financial data stored on servers</strong>.
             </p>
           </section>
 
           {/* Section 2 */}
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">2. Data We Collect</h2>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+            <ul className="list-disc list-inside space-y-2 text-muted-foreground mb-4">
               <li><strong className="text-foreground">Account Information:</strong> Email address for authentication</li>
-              <li><strong className="text-foreground">Portfolio Data:</strong> Assets, debts, income, and expenses you enter</li>
+              <li><strong className="text-foreground">Portfolio Data:</strong> Assets, debts, income, and expenses <strong className="text-foreground">you manually enter</strong></li>
               <li><strong className="text-foreground">Usage Data:</strong> How you interact with the service (pages visited, features used)</li>
               <li><strong className="text-foreground">Payment Information:</strong> Processed securely by Stripe; we don't store card details</li>
             </ul>
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-2">
+              <p className="text-foreground font-medium">• <strong>NO</strong> integrations with financial APIs, banks, or exchanges</p>
+              <p className="text-foreground font-medium">• Data stored <strong>LOCALLY</strong> in browser/device only</p>
+              <p className="text-foreground font-medium">• We <strong>NEVER</strong> receive your financial account information</p>
+            </div>
           </section>
 
           {/* Section 3 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">3. How We Use Your Data</h2>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Provide and maintain the portfolio tracking service</li>
-              <li>Process subscription payments</li>
-              <li>Send essential service communications</li>
-              <li>Improve our service based on usage patterns</li>
-              <li>Comply with legal obligations</li>
-            </ul>
+            <h2 className="text-xl font-semibold mb-3">3. How We Use Data (GDPR Art. 5)</h2>
+            <p className="text-muted-foreground mb-2">
+              Provide service, process payments, improve product.
+            </p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Legal basis:</strong> Contract (Art. 6(1)(b)), Legitimate interest (Art. 6(1)(f)).
+            </p>
           </section>
 
           {/* Section 4 */}
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">4. Data Storage & Security</h2>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Data stored securely on EU-based servers</li>
-              <li>Encrypted in transit (TLS) and at rest</li>
-              <li>Access restricted to essential personnel only</li>
-              <li>Regular security audits and updates</li>
-            </ul>
+            <p className="text-muted-foreground">
+              EU servers (Supabase). TLS encrypted. Local portfolio data.
+            </p>
           </section>
 
           {/* Section 5 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">5. Third-Party Services</h2>
-            <p className="text-muted-foreground mb-3">
-              We use the following third-party services:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong className="text-foreground">Supabase:</strong> Database and authentication</li>
-              <li><strong className="text-foreground">Stripe:</strong> Payment processing</li>
-              <li><strong className="text-foreground">Price APIs:</strong> Real-time asset pricing</li>
-            </ul>
-            <p className="text-muted-foreground mt-3">
-              Each service has its own privacy policy governing their use of data.
-            </p>
+            <h2 className="text-xl font-semibold mb-3">5. Third Parties</h2>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Purpose</TableHead>
+                    <TableHead>Privacy Policy</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="font-medium">Supabase</TableCell>
+                    <TableCell className="text-muted-foreground">Auth/DB</TableCell>
+                    <TableCell>
+                      <a 
+                        href="https://supabase.com/privacy" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        supabase.com/privacy
+                      </a>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="font-medium">Stripe</TableCell>
+                    <TableCell className="text-muted-foreground">Payments</TableCell>
+                    <TableCell>
+                      <a 
+                        href="https://stripe.com/privacy" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        stripe.com/privacy
+                      </a>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="font-medium">CoinGecko</TableCell>
+                    <TableCell className="text-muted-foreground">Prices</TableCell>
+                    <TableCell>
+                      <a 
+                        href="https://www.coingecko.com/en/privacy" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        coingecko.com/privacy
+                      </a>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
           </section>
 
           {/* Section 6 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">6. Your Rights (GDPR)</h2>
-            <p className="text-muted-foreground mb-3">
-              Under the General Data Protection Regulation (GDPR), you have the right to:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li><strong className="text-foreground">Access:</strong> Request a copy of your personal data</li>
-              <li><strong className="text-foreground">Rectification:</strong> Correct inaccurate data</li>
-              <li><strong className="text-foreground">Erasure:</strong> Request deletion of your data ("right to be forgotten")</li>
-              <li><strong className="text-foreground">Portability:</strong> Receive your data in a portable format</li>
-              <li><strong className="text-foreground">Object:</strong> Object to certain types of processing</li>
-              <li><strong className="text-foreground">Withdraw Consent:</strong> Withdraw consent at any time</li>
-            </ul>
-            <p className="text-muted-foreground mt-3">
-              To exercise these rights, contact us at the email below.
+            <h2 className="text-xl font-semibold mb-3">6. Your GDPR Rights</h2>
+            <p className="text-muted-foreground">
+              Access, rectification, erasure, portability, object. Contact:{' '}
+              <a 
+                href="mailto:InControl.Finance@proton.me" 
+                className="text-primary hover:underline"
+              >
+                InControl.Finance@proton.me
+              </a>
             </p>
           </section>
 
@@ -120,56 +166,40 @@ export default function Privacy() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">7. Cookies</h2>
             <p className="text-muted-foreground">
-              We use essential cookies for authentication and session management. 
-              We do not use tracking or advertising cookies.
+              Essential only (no consent required). Analytics opt-out available.
             </p>
           </section>
 
           {/* Section 8 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">8. Data Retention</h2>
+            <h2 className="text-xl font-semibold mb-3">8. Retention</h2>
             <p className="text-muted-foreground">
-              We retain your data for as long as your account is active. 
-              Upon account deletion, your data is permanently removed within 30 days, 
-              except where retention is required by law.
+              Account active: Indefinite. Deletion: 30 days permanent.
             </p>
           </section>
 
           {/* Section 9 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">9. Changes to This Policy</h2>
+            <h2 className="text-xl font-semibold mb-3">9. Data Controller</h2>
             <p className="text-muted-foreground">
-              We may update this Privacy Policy. We will notify you of significant changes 
-              via email at least 30 days before they take effect.
+              InControl.finance OÜ, Estonia e-Business Register
+            </p>
+            <p className="text-muted-foreground mt-2">
+              Contact:{' '}
+              <a 
+                href="mailto:InControl.Finance@proton.me" 
+                className="text-primary hover:underline"
+              >
+                InControl.Finance@proton.me
+              </a>
             </p>
           </section>
 
           {/* Section 10 */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">10. Contact</h2>
+            <h2 className="text-xl font-semibold mb-3">10. Changes</h2>
             <p className="text-muted-foreground">
-              For privacy-related inquiries, contact us at:{' '}
-              <a 
-                href="mailto:InControl.Finance@proton.me" 
-                className="text-primary hover:underline"
-              >
-                InControl.Finance@proton.me
-              </a>
-            </p>
-          </section>
-
-          {/* Data Controller */}
-          <section className="mb-8 p-4 rounded-lg bg-muted/50 border border-border">
-            <h2 className="text-lg font-semibold mb-2">Data Controller</h2>
-            <p className="text-muted-foreground text-sm">
-              InControl.finance<br />
-              Madrid, Spain<br />
-              <a 
-                href="mailto:InControl.Finance@proton.me" 
-                className="text-primary hover:underline"
-              >
-                InControl.Finance@proton.me
-              </a>
+              30 days email notice.
             </p>
           </section>
         </motion.article>
