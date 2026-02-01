@@ -176,6 +176,60 @@ export type Database = {
         }
         Relationships: []
       }
+      financial_goals: {
+        Row: {
+          category: string
+          completed_at: string | null
+          created_at: string
+          currency: string
+          current_amount: number
+          id: string
+          is_completed: boolean
+          monthly_contribution: number | null
+          name: string
+          notes: string | null
+          priority: string
+          target_amount: number
+          target_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          completed_at?: string | null
+          created_at?: string
+          currency?: string
+          current_amount?: number
+          id?: string
+          is_completed?: boolean
+          monthly_contribution?: number | null
+          name: string
+          notes?: string | null
+          priority?: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          completed_at?: string | null
+          created_at?: string
+          currency?: string
+          current_amount?: number
+          id?: string
+          is_completed?: boolean
+          monthly_contribution?: number | null
+          name?: string
+          notes?: string | null
+          priority?: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       income: {
         Row: {
           amount: number
