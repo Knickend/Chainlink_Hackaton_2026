@@ -4,9 +4,10 @@ import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, Help
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { mockDebts } from '@/lib/mockData';
+import { mockDebts, mockGoals } from '@/lib/mockData';
 import { useLivePrices } from '@/hooks/useLivePrices';
 import { useDebts } from '@/hooks/useDebts';
+import { useGoals } from '@/hooks/useGoals';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
@@ -34,6 +35,7 @@ import { ProBadge } from '@/components/ProBadge';
 import { PerformanceCard } from '@/components/PerformanceCard';
 import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
+import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -61,7 +63,20 @@ const IndexContent = () => {
   const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
   const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
   const isSubscribed = (isDemo || isTutorialActive) ? true : subscriptionIsSubscribed;
-  
+
+  // Goals hook - pass effective subscription tier
+  const {
+    goals,
+    loading: goalsLoading,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    calculateProgress,
+    calculateMonthsToGoal,
+    getGoalStatus,
+    canAddGoal,
+    goalLimit,
+  } = useGoals(effectiveSubscriptionTier);
   // First call to usePortfolio with undefined prices to get assets for symbol extraction
   const portfolioInitial = usePortfolio(undefined, isDemo);
   
@@ -101,7 +116,7 @@ const IndexContent = () => {
     deleteExpense,
   } = usePortfolio(prices, isDemo);
 
-  if (authLoading || (!isDemo && (dataLoading || debtsLoading || subscriptionLoading))) {
+  if (authLoading || (!isDemo && (dataLoading || debtsLoading || goalsLoading || subscriptionLoading))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -120,6 +135,9 @@ const IndexContent = () => {
   const demoTotalDebt = isDemo ? mockDebts.reduce((sum, d) => sum + d.principal_amount, 0) : totalDebt;
   const demoMonthlyPayments = isDemo ? mockDebts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0) : monthlyPayments;
   const demoMonthlyInterest = isDemo ? mockDebts.reduce((sum, d) => sum + (d.principal_amount * d.interest_rate / 100 / 12), 0) : monthlyInterest;
+
+  // Use mock goals for demo mode
+  const demoGoals = isDemo ? mockGoals : goals;
 
   // Calculate adjusted net worth (assets - debt)
   const adjustedNetWorth = metrics.totalNetWorth - demoTotalDebt;
@@ -316,6 +334,26 @@ const IndexContent = () => {
               delay={0.2}
             />
           )}
+        </div>
+
+        {/* Financial Goals */}
+        <div className="mb-8">
+          <GoalsOverviewCard
+            goals={demoGoals}
+            loading={!isDemo && goalsLoading}
+            calculateProgress={calculateProgress}
+            calculateMonthsToGoal={calculateMonthsToGoal}
+            getGoalStatus={getGoalStatus}
+            formatValue={formatValue}
+            onAddGoal={isDemo ? undefined : addGoal}
+            onUpdateGoal={isDemo ? undefined : updateGoal}
+            onDeleteGoal={isDemo ? undefined : deleteGoal}
+            canAddGoal={isDemo ? true : canAddGoal}
+            goalLimit={isDemo ? undefined : goalLimit}
+            onUpgrade={() => setShowSubscriptionDialog(true)}
+            delay={0.25}
+            isDemo={isDemo}
+          />
         </div>
 
         {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}

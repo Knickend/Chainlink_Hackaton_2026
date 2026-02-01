@@ -1,4 +1,4 @@
-import { Asset, Income, Expense, Debt, CommodityUnit } from './types';
+import { Asset, Income, Expense, Debt, Goal, CommodityUnit } from './types';
 
 export const mockAssets: Asset[] = [
   // Banking
@@ -54,6 +54,51 @@ export const mockDebts: Debt[] = [
   { id: '2', name: 'Chase Sapphire', debt_type: 'credit_card', principal_amount: 4500, interest_rate: 19.99, monthly_payment: 250, currency: 'USD' },
   { id: '3', name: 'Auto Loan - Tesla', debt_type: 'auto_loan', principal_amount: 28000, interest_rate: 5.9, monthly_payment: 520, currency: 'USD' },
   { id: '4', name: 'Student Loans', debt_type: 'student_loan', principal_amount: 35000, interest_rate: 4.5, monthly_payment: 380, currency: 'USD' },
+];
+
+export const mockGoals: Goal[] = [
+  {
+    id: 'g1',
+    name: 'Emergency Fund',
+    category: 'emergency',
+    target_amount: 15000,
+    current_amount: 9750,
+    currency: 'USD',
+    monthly_contribution: 500,
+    priority: 'high',
+    is_completed: false,
+    created_at: '2025-06-01T00:00:00Z',
+    updated_at: '2026-01-15T00:00:00Z',
+  },
+  {
+    id: 'g2',
+    name: 'Summer Vacation 2026',
+    category: 'holiday',
+    target_amount: 5000,
+    current_amount: 2000,
+    currency: 'USD',
+    target_date: '2026-07-01',
+    monthly_contribution: 400,
+    priority: 'medium',
+    is_completed: false,
+    created_at: '2025-09-01T00:00:00Z',
+    updated_at: '2026-01-10T00:00:00Z',
+  },
+  {
+    id: 'g3',
+    name: 'New Car',
+    category: 'car',
+    target_amount: 35000,
+    current_amount: 8750,
+    currency: 'USD',
+    target_date: '2027-06-01',
+    monthly_contribution: 750,
+    priority: 'low',
+    notes: 'Saving for an electric vehicle',
+    is_completed: false,
+    created_at: '2025-03-01T00:00:00Z',
+    updated_at: '2026-01-05T00:00:00Z',
+  },
 ];
 
 export const mockHistoricalData = [

@@ -17,6 +17,7 @@ const freePlan = {
   description: 'Perfect for getting started',
   features: [
     'Up to 10 assets',
+    '1 financial goal',
     'Basic price tracking',
     'Portfolio overview',
     'Demo mode access',

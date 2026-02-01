@@ -12,6 +12,7 @@ export interface SubscriptionPlan {
   firstMonthDiscount: number;
   features: string[];
   assetLimit?: number;
+  goalLimit?: number;
   isPopular?: boolean;
 }
 
@@ -24,8 +25,10 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     currency: 'EUR',
     firstMonthDiscount: 0.50,
     assetLimit: 30,
+    goalLimit: 3,
     features: [
       'Up to 30 assets',
+      '3 financial goals',
       'Real-time price updates',
       'Income & expense tracking',
       'Asset allocation charts',
@@ -41,6 +44,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     isPopular: true,
     features: [
       'Unlimited asset tracking',
+      'Unlimited financial goals',
       'Everything in Standard',
       'Monthly performance tracking',
       'YTD overview & analytics',
@@ -52,6 +56,17 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     ],
   },
 ];
+
+// Goal limits by tier
+export const GOAL_LIMITS: Record<SubscriptionTier, number | undefined> = {
+  free: 1,
+  standard: 3,
+  pro: undefined, // unlimited
+};
+
+export function getGoalLimit(tier: SubscriptionTier): number | undefined {
+  return GOAL_LIMITS[tier];
+}
 
 export function getPlanByTier(tier: SubscriptionTier): SubscriptionPlan | undefined {
   return SUBSCRIPTION_PLANS.find(p => p.tier === tier);

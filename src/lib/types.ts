@@ -223,3 +223,42 @@ export function getCurrencySymbol(currency: string): string {
   const curr = BANKING_CURRENCIES.find(c => c.value === currency);
   return curr?.symbol || currency;
 }
+
+// Goal types
+export type GoalCategory = 'car' | 'holiday' | 'emergency' | 'home' | 'education' | 'wedding' | 'retirement' | 'other';
+
+export const GOAL_CATEGORIES: { value: GoalCategory; label: string }[] = [
+  { value: 'car', label: 'Car' },
+  { value: 'holiday', label: 'Holiday' },
+  { value: 'emergency', label: 'Emergency Fund' },
+  { value: 'home', label: 'Home' },
+  { value: 'education', label: 'Education' },
+  { value: 'wedding', label: 'Wedding' },
+  { value: 'retirement', label: 'Retirement' },
+  { value: 'other', label: 'Other' },
+];
+
+export type GoalPriority = 'low' | 'medium' | 'high';
+
+export const GOAL_PRIORITIES: { value: GoalPriority; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+export interface Goal {
+  id: string;
+  name: string;
+  category: GoalCategory;
+  target_amount: number;
+  current_amount: number;
+  currency: string;
+  target_date?: string; // ISO date string
+  monthly_contribution?: number;
+  priority: GoalPriority;
+  notes?: string;
+  is_completed: boolean;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
