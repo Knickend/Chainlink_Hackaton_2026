@@ -5,6 +5,62 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 20; // 20 requests per minute for authenticated users
+
+// In-memory rate limit store
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; remaining: number; resetTime: number } {
+  const now = Date.now();
+  const record = rateLimitStore.get(key);
+  
+  if (!record || now > record.resetTime) {
+    const resetTime = now + windowMs;
+    rateLimitStore.set(key, { count: 1, resetTime });
+    return { allowed: true, remaining: maxRequests - 1, resetTime };
+  }
+  
+  if (record.count >= maxRequests) {
+    return { allowed: false, remaining: 0, resetTime: record.resetTime };
+  }
+  
+  record.count++;
+  return { allowed: true, remaining: maxRequests - record.count, resetTime: record.resetTime };
+}
+
+function getClientIP(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+    || req.headers.get("x-real-ip") 
+    || "unknown";
+}
+
+function getUserIdFromAuth(req: Request): string | null {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    // Decode JWT payload (base64url) without verification - just for rate limit key
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload.sub || null;
+  } catch {
+    return null;
+  }
+}
+
+function getRateLimitHeaders(remaining: number, resetTime: number): Record<string, string> {
+  return {
+    "X-RateLimit-Limit": String(MAX_REQUESTS_PER_WINDOW),
+    "X-RateLimit-Remaining": String(remaining),
+    "X-RateLimit-Reset": String(Math.ceil(resetTime / 1000)),
+  };
+}
+
 const SYSTEM_PROMPT = `You are InControl's AI Financial Advisor, a knowledgeable and friendly expert in personal finance. You help users with:
 
 1. **Budgeting**: Creating and maintaining budgets, expense tracking, identifying areas to save money
@@ -29,12 +85,37 @@ serve(async (req) => {
   }
 
   try {
+    // Determine rate limit key - prefer user ID, fallback to IP
+    const userId = getUserIdFromAuth(req);
+    const clientIP = getClientIP(req);
+    const rateLimitKey = userId ? `user:${userId}` : `ip:${clientIP}`;
+    
+    // Check rate limit
+    const { allowed, remaining, resetTime } = checkRateLimit(
+      rateLimitKey, 
+      MAX_REQUESTS_PER_WINDOW, 
+      RATE_LIMIT_WINDOW_MS
+    );
+    
+    const rateLimitHeaders = getRateLimitHeaders(remaining, resetTime);
+    
+    if (!allowed) {
+      console.log(`Rate limit exceeded for ${rateLimitKey}`);
+      return new Response(
+        JSON.stringify({ error: "You're sending messages too quickly. Please wait a moment before trying again." }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+
     const { messages } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
         JSON.stringify({ error: "Messages array is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -43,11 +124,11 @@ serve(async (req) => {
       console.error("LOVABLE_API_KEY is not configured");
       return new Response(
         JSON.stringify({ error: "AI service not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("Starting financial advisor chat with", messages.length, "messages");
+    console.log("Starting financial advisor chat with", messages.length, "messages", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -73,27 +154,27 @@ serve(async (req) => {
       if (status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 429, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
         );
       }
       if (status === 402) {
         return new Response(
           JSON.stringify({ error: "AI credits depleted. Please add credits to continue." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 402, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
         );
       }
 
       return new Response(
         JSON.stringify({ error: "AI service temporarily unavailable" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("Streaming response from AI gateway");
 
-    // Return the stream directly
+    // Return the stream directly with rate limit headers
     return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "text/event-stream" },
     });
 
   } catch (error) {
