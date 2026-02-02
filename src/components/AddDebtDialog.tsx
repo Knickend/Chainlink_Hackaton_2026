@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DebtType, DEBT_TYPES, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+import { DebtType, DEBT_TYPES, BANKING_CURRENCIES } from '@/lib/types';
 
 const debtSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -35,16 +35,16 @@ const debtSchema = z.object({
   principal_amount: z.number().min(0.01, 'Amount must be greater than 0'),
   interest_rate: z.number().min(0, 'Interest rate must be 0 or greater').max(100, 'Interest rate cannot exceed 100%'),
   monthly_payment: z.number().min(0).optional(),
+  currency: z.string().min(1, 'Currency is required'),
 });
 
 type DebtFormData = z.infer<typeof debtSchema>;
 
 interface AddDebtDialogProps {
   onAdd: (data: DebtFormData) => void;
-  displayUnit: DisplayUnit;
 }
 
-export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
+export function AddDebtDialog({ onAdd }: AddDebtDialogProps) {
   const [open, setOpen] = useState(false);
 
   const form = useForm<DebtFormData>({
@@ -55,8 +55,12 @@ export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
       principal_amount: undefined as unknown as number,
       interest_rate: undefined as unknown as number,
       monthly_payment: undefined,
+      currency: 'USD',
     },
   });
+
+  const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+  const currencySymbol = BANKING_CURRENCIES.find(c => c.value === selectedCurrency)?.symbol || '$';
 
   const onSubmit = (data: DebtFormData) => {
     onAdd(data);
@@ -66,6 +70,7 @@ export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
       principal_amount: undefined as unknown as number,
       interest_rate: undefined as unknown as number,
       monthly_payment: undefined,
+      currency: 'USD',
     });
     setOpen(false);
   };
@@ -128,7 +133,7 @@ export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
               name="principal_amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Outstanding Balance ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+                  <FormLabel>Outstanding Balance ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -139,6 +144,31 @@ export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
                       className="bg-secondary/50"
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      {BANKING_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          {currency.symbol} - {currency.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -170,7 +200,7 @@ export function AddDebtDialog({ onAdd, displayUnit }: AddDebtDialogProps) {
               name="monthly_payment"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Payment ({UNIT_SYMBOLS[displayUnit]} - optional)</FormLabel>
+                  <FormLabel>Monthly Payment ({currencySymbol} - optional)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

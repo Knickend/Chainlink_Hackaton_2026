@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Pencil } from 'lucide-react';
@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Debt, DebtType, DEBT_TYPES, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+import { Debt, DebtType, DEBT_TYPES, BANKING_CURRENCIES } from '@/lib/types';
 
 const debtSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -35,6 +35,7 @@ const debtSchema = z.object({
   principal_amount: z.number().min(0.01, 'Amount must be greater than 0'),
   interest_rate: z.number().min(0, 'Interest rate must be 0 or greater').max(100, 'Interest rate cannot exceed 100%'),
   monthly_payment: z.number().min(0).optional(),
+  currency: z.string().min(1, 'Currency is required'),
 });
 
 type DebtFormData = z.infer<typeof debtSchema>;
@@ -42,10 +43,9 @@ type DebtFormData = z.infer<typeof debtSchema>;
 interface EditDebtDialogProps {
   debt: Debt;
   onUpdate: (id: string, data: Partial<Omit<Debt, 'id'>>) => void;
-  displayUnit: DisplayUnit;
 }
 
-export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogProps) {
+export function EditDebtDialog({ debt, onUpdate }: EditDebtDialogProps) {
   const [open, setOpen] = useState(false);
 
   const form = useForm<DebtFormData>({
@@ -56,8 +56,12 @@ export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogPr
       principal_amount: debt.principal_amount,
       interest_rate: debt.interest_rate,
       monthly_payment: debt.monthly_payment,
+      currency: debt.currency || 'USD',
     },
   });
+
+  const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+  const currencySymbol = BANKING_CURRENCIES.find(c => c.value === selectedCurrency)?.symbol || '$';
 
   useEffect(() => {
     if (open) {
@@ -67,6 +71,7 @@ export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogPr
         principal_amount: debt.principal_amount,
         interest_rate: debt.interest_rate,
         monthly_payment: debt.monthly_payment,
+        currency: debt.currency || 'USD',
       });
     }
   }, [open, debt, form]);
@@ -133,7 +138,7 @@ export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogPr
               name="principal_amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Outstanding Balance ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+                  <FormLabel>Outstanding Balance ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -144,6 +149,31 @@ export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogPr
                       className="bg-secondary/50"
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      {BANKING_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          {currency.symbol} - {currency.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -175,7 +205,7 @@ export function EditDebtDialog({ debt, onUpdate, displayUnit }: EditDebtDialogPr
               name="monthly_payment"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Payment ({UNIT_SYMBOLS[displayUnit]} - optional)</FormLabel>
+                  <FormLabel>Monthly Payment ({currencySymbol} - optional)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

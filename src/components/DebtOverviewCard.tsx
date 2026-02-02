@@ -158,7 +158,7 @@ export function DebtOverviewCard({
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {onUpdateDebt && (
-                      <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} displayUnit={displayUnit} />
+                      <EditDebtDialog debt={debt} onUpdate={onUpdateDebt} />
                     )}
                     {onDeleteDebt && (
                       <DeleteConfirmDialog
