@@ -209,12 +209,13 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
           Add Asset
         </Button>
       </DialogTrigger>
-      <DialogContent className="glass-card border-primary/20 sm:max-w-[425px]">
-        <DialogHeader>
+      <DialogContent className="glass-card border-primary/20 sm:max-w-[425px] max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="gradient-text">Add New Asset</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
             <FormField
               control={form.control}
               name="category"
@@ -804,7 +805,8 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
               </>
             )}
 
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
+            </div>
+            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 mt-4 flex-shrink-0">
               Add Asset
             </Button>
           </form>
