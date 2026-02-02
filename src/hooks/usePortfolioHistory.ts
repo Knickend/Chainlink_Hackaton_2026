@@ -49,6 +49,19 @@ function calculateChange(newVal: number, oldVal: number): { absolute: number; pe
   return { absolute, percent };
 }
 
+export interface MetricTrend {
+  value: number;
+  isPositive: boolean;
+}
+
+export interface MetricTrends {
+  netWorth: MetricTrend | null;
+  totalDebt: MetricTrend | null;
+  totalIncome: MetricTrend | null;
+  totalExpenses: MetricTrend | null;
+  monthlyNet: MetricTrend | null;
+}
+
 export function usePortfolioHistory() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -162,6 +175,34 @@ export function usePortfolioHistory() {
     return calculateChange(selectedSnapshot.net_worth, previousSnapshot.net_worth);
   }, [selectedSnapshot, snapshots]);
 
+  // Calculate trends for all metrics (comparing most recent two snapshots)
+  const metricTrends = useMemo((): MetricTrends => {
+    if (snapshots.length < 2) {
+      return { netWorth: null, totalDebt: null, totalIncome: null, totalExpenses: null, monthlyNet: null };
+    }
+    
+    const current = snapshots[0]; // Most recent
+    const previous = snapshots[1]; // Previous month
+    
+    const netWorthChange = calculateChange(current.net_worth, previous.net_worth);
+    const debtChange = calculateChange(current.total_debt, previous.total_debt);
+    const incomeChange = calculateChange(current.total_income, previous.total_income);
+    const expensesChange = calculateChange(current.total_expenses, previous.total_expenses);
+    
+    // Monthly net = income - expenses
+    const currentMonthlyNet = current.total_income - current.total_expenses;
+    const previousMonthlyNet = previous.total_income - previous.total_expenses;
+    const monthlyNetChange = calculateChange(currentMonthlyNet, previousMonthlyNet);
+    
+    return {
+      netWorth: { value: Math.abs(netWorthChange.percent), isPositive: netWorthChange.percent >= 0 },
+      totalDebt: { value: Math.abs(debtChange.percent), isPositive: debtChange.percent <= 0 }, // Lower debt is positive
+      totalIncome: { value: Math.abs(incomeChange.percent), isPositive: incomeChange.percent >= 0 },
+      totalExpenses: { value: Math.abs(expensesChange.percent), isPositive: expensesChange.percent <= 0 }, // Lower expenses is positive
+      monthlyNet: { value: Math.abs(monthlyNetChange.percent), isPositive: monthlyNetChange.percent >= 0 },
+    };
+  }, [snapshots]);
+
   // Format month for display
   const formatMonth = useCallback((dateString: string) => {
     return format(parseISO(dateString), 'MMMM yyyy');
@@ -185,6 +226,7 @@ export function usePortfolioHistory() {
     setComparisonMonth,
     selectedSnapshot,
     monthOverMonthChange,
+    metricTrends,
     getComparison,
     formatMonth,
     formatShortMonth,
