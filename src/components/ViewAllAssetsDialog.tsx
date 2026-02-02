@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Filter, List } from 'lucide-react';
+import { Search, Filter, List, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -27,13 +27,24 @@ import {
 import { Asset, AssetCategory } from '@/lib/types';
 import { EditAssetDialog } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { SellAssetDialog } from './SellAssetDialog';
 import { LivePrices } from '@/hooks/useLivePrices';
+
+interface SellData {
+  quantity: number;
+  price_per_unit: number;
+  total_value: number;
+  realized_pnl?: number;
+  transaction_date: string;
+  notes?: string;
+}
 
 interface ViewAllAssetsDialogProps {
   assets: Asset[];
   formatValue: (value: number) => string;
   onUpdateAsset?: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
   onDeleteAsset?: (id: string) => void;
+  onSellAsset?: (assetId: string, data: SellData) => Promise<void>;
   livePrices?: LivePrices;
 }
 
@@ -49,11 +60,58 @@ export function ViewAllAssetsDialog({
   formatValue,
   onUpdateAsset,
   onDeleteAsset,
+  onSellAsset,
   livePrices,
 }: ViewAllAssetsDialogProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sellDialogAsset, setSellDialogAsset] = useState<Asset | null>(null);
+
+  // Categories that can be sold (have quantity and market prices)
+  const sellableCategories = ['stocks', 'crypto', 'commodities'];
+
+  const canSellAsset = (asset: Asset) => {
+    return sellableCategories.includes(asset.category) && (asset.quantity ?? 0) > 0;
+  };
+
+  const getCurrentPrice = (asset: Asset): number | undefined => {
+    if (!livePrices || !asset.symbol) return undefined;
+    
+    const symbolUpper = asset.symbol.toUpperCase();
+    
+    if (asset.category === 'crypto') {
+      // Check dedicated crypto lookup first, then top-level shortcuts
+      const cryptoData = livePrices.crypto?.[symbolUpper];
+      if (cryptoData) return cryptoData.price;
+      // Fallback to top-level for BTC/ETH/LINK
+      if (symbolUpper === 'BTC') return livePrices.btc;
+      if (symbolUpper === 'ETH') return livePrices.eth;
+      if (symbolUpper === 'LINK') return livePrices.link;
+      return undefined;
+    }
+    if (asset.category === 'stocks') {
+      const stockData = livePrices.stocks?.[symbolUpper];
+      return stockData?.price;
+    }
+    if (asset.category === 'commodities') {
+      // Check commodities lookup, then top-level shortcuts
+      const commodityData = livePrices.commodities?.[symbolUpper];
+      if (commodityData) return commodityData.price;
+      // Fallback to top-level for gold/silver
+      if (symbolUpper === 'GOLD' || symbolUpper === 'XAU') return livePrices.gold;
+      if (symbolUpper === 'SILVER' || symbolUpper === 'XAG') return livePrices.silver;
+      return undefined;
+    }
+    return undefined;
+  };
+
+  const handleSell = async (assetId: string, data: SellData) => {
+    if (onSellAsset) {
+      await onSellAsset(assetId, data);
+      setSellDialogAsset(null);
+    }
+  };
 
   const filteredAssets = useMemo(() => {
     return assets.filter((asset) => {
@@ -119,7 +177,7 @@ export function ViewAllAssetsDialog({
                 <TableHead>Category</TableHead>
                 <TableHead>Quantity</TableHead>
                 <TableHead className="text-right">Value</TableHead>
-                {(onUpdateAsset || onDeleteAsset) && (
+                {(onUpdateAsset || onDeleteAsset || onSellAsset) && (
                   <TableHead className="text-right">Actions</TableHead>
                 )}
               </TableRow>
@@ -128,7 +186,7 @@ export function ViewAllAssetsDialog({
               {sortedAssets.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={onUpdateAsset || onDeleteAsset ? 6 : 5}
+                    colSpan={onUpdateAsset || onDeleteAsset || onSellAsset ? 6 : 5}
                     className="text-center text-muted-foreground py-8"
                   >
                     {searchQuery || categoryFilter !== 'all'
@@ -164,7 +222,7 @@ export function ViewAllAssetsDialog({
                     <TableCell className="text-right font-mono">
                       {formatValue(asset.value)}
                     </TableCell>
-                    {(onUpdateAsset || onDeleteAsset) && (
+                    {(onUpdateAsset || onDeleteAsset || onSellAsset) && (
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {onUpdateAsset && (
@@ -173,6 +231,17 @@ export function ViewAllAssetsDialog({
                               onUpdate={onUpdateAsset}
                               livePrices={livePrices}
                             />
+                          )}
+                          {onSellAsset && canSellAsset(asset) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-success hover:text-success hover:bg-success/10"
+                              onClick={() => setSellDialogAsset(asset)}
+                              title="Sell asset"
+                            >
+                              <DollarSign className="w-4 h-4" />
+                            </Button>
                           )}
                           {onDeleteAsset && (
                             <DeleteConfirmDialog
@@ -203,6 +272,15 @@ export function ViewAllAssetsDialog({
           </div>
         )}
       </DialogContent>
+
+      {/* Sell Asset Dialog */}
+      <SellAssetDialog
+        asset={sellDialogAsset}
+        open={!!sellDialogAsset}
+        onOpenChange={(open) => !open && setSellDialogAsset(null)}
+        onSell={handleSell}
+        currentPrice={sellDialogAsset ? getCurrentPrice(sellDialogAsset) : undefined}
+      />
     </Dialog>
   );
 }
