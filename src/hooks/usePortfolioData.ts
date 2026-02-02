@@ -54,6 +54,8 @@ export function usePortfolioData() {
         amount: Number(i.amount),
         type: i.type as Income['type'],
         currency: (i as any).currency || 'USD',
+        is_recurring: (i as any).is_recurring ?? true,
+        income_date: (i as any).income_date || undefined,
       })));
 
       setExpenses(expensesRes.data.map(e => ({
@@ -194,6 +196,8 @@ export function usePortfolioData() {
     amount: number;
     type: Income['type'];
     currency?: string;
+    is_recurring?: boolean;
+    income_date?: string;
   }) => {
     if (!user) return;
 
@@ -204,6 +208,8 @@ export function usePortfolioData() {
         amount: incomeData.amount,
         type: incomeData.type,
         currency: incomeData.currency || 'USD',
+        is_recurring: incomeData.is_recurring ?? true,
+        income_date: incomeData.income_date || null,
       } as any).select().single();
 
       if (error) throw error;
@@ -214,6 +220,8 @@ export function usePortfolioData() {
         amount: Number(data.amount),
         type: data.type as Income['type'],
         currency: (data as any).currency || 'USD',
+        is_recurring: (data as any).is_recurring ?? true,
+        income_date: (data as any).income_date || undefined,
       }, ...prev]);
 
       toast({ title: 'Income added successfully' });

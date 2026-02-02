@@ -28,13 +28,14 @@ export const mockAssets: Asset[] = [
 ];
 
 export const mockIncome: Income[] = [
-  { id: '1', source: 'Software Engineering Salary', amount: 12500, type: 'work', currency: 'USD' },
-  { id: '2', source: 'Freelance Consulting', amount: 2500, type: 'work', currency: 'USD' },
-  { id: '3', source: 'Dividend Income', amount: 480, type: 'investment', currency: 'USD' },
-  { id: '4', source: 'Rental Property', amount: 1800, type: 'passive', currency: 'USD' },
-  { id: '5', source: 'Interest Income', amount: 285, type: 'passive', currency: 'USD' },
-  { id: '6', source: 'Staking Rewards', amount: 120, type: 'investment', currency: 'USD' },
-  { id: '7', source: 'Bitcoin Mining Pool', amount: 150000, type: 'mining', currency: 'SATS' },
+  { id: '1', source: 'Software Engineering Salary', amount: 12500, type: 'work', currency: 'USD', is_recurring: true },
+  { id: '2', source: 'Freelance Consulting', amount: 2500, type: 'work', currency: 'USD', is_recurring: true },
+  { id: '3', source: 'Dividend Income', amount: 480, type: 'investment', currency: 'USD', is_recurring: true },
+  { id: '4', source: 'Rental Property', amount: 1800, type: 'passive', currency: 'USD', is_recurring: true },
+  { id: '5', source: 'Interest Income', amount: 285, type: 'passive', currency: 'USD', is_recurring: true },
+  { id: '6', source: 'Staking Rewards', amount: 120, type: 'investment', currency: 'USD', is_recurring: true },
+  { id: '7', source: 'Bitcoin Mining Pool', amount: 150000, type: 'mining', currency: 'SATS', is_recurring: true },
+  { id: '8', source: 'Year-end Bonus', amount: 15000, type: 'work', currency: 'USD', is_recurring: false, income_date: '2025-12-15' },
 ];
 
 export const mockExpenses: Expense[] = [

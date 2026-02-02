@@ -343,6 +343,8 @@ export type Database = {
           created_at: string
           currency: string | null
           id: string
+          income_date: string | null
+          is_recurring: boolean
           source: string
           type: string
           updated_at: string
@@ -353,6 +355,8 @@ export type Database = {
           created_at?: string
           currency?: string | null
           id?: string
+          income_date?: string | null
+          is_recurring?: boolean
           source: string
           type: string
           updated_at?: string
@@ -363,6 +367,8 @@ export type Database = {
           created_at?: string
           currency?: string | null
           id?: string
+          income_date?: string | null
+          is_recurring?: boolean
           source?: string
           type?: string
           updated_at?: string

@@ -26,7 +26,7 @@ import { NetWorthChart } from '@/components/NetWorthChart';
 import { AllocationChart } from '@/components/AllocationChart';
 import { AddAssetDialog } from '@/components/AddAssetDialog';
 import { ViewAllAssetsDialog } from '@/components/ViewAllAssetsDialog';
-import { AddIncomeDialog } from '@/components/AddIncomeDialog';
+import { AddIncomeDropdown } from '@/components/AddIncomeDropdown';
 import { AddExpenseDropdown } from '@/components/AddExpenseDropdown';
 import { AddDebtDialog } from '@/components/AddDebtDialog';
 import { PriceIndicator } from '@/components/PriceIndicator';
@@ -602,7 +602,15 @@ const IndexContent = () => {
               items={income}
               total={formatValue(metrics.totalIncome)}
               formatValue={formatValue}
-              actionButton={isDemo ? undefined : <AddIncomeDialog onAdd={(data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining'; currency: string }) => addIncome(data)} displayUnit={displayUnit} />}
+              actionButton={isDemo ? undefined : (
+                <AddIncomeDropdown
+                  onAddRecurring={(data) => addIncome(data)}
+                  onAddOneTime={(data) => addIncome(data)}
+                  displayUnit={displayUnit}
+                  isPro={isPro}
+                  onUpgrade={() => setShowSubscriptionDialog(true)}
+                />
+              )}
               displayUnit={displayUnit}
               onUpdateIncome={isDemo ? undefined : updateIncome}
               onDeleteIncome={isDemo ? undefined : deleteIncome}
