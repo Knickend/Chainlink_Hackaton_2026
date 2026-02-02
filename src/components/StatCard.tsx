@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 interface StatCardProps {
   title: string;
@@ -53,15 +54,24 @@ export function StatCard({
         </div>
         <div className="min-w-[60px] text-right">
           {trend && (
-            <div
-              className={cn(
-                'flex items-center justify-end gap-1 text-sm font-medium',
-                trend.isPositive ? 'text-success' : 'text-danger'
-              )}
-            >
-              <span>{trend.isPositive ? '↑' : '↓'}</span>
-              <span>{Math.abs(trend.value).toFixed(1)}%</span>
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      'flex items-center justify-end gap-1 text-sm font-medium cursor-pointer',
+                      trend.isPositive ? 'text-success' : 'text-danger'
+                    )}
+                  >
+                    <span>{trend.isPositive ? '↑' : '↓'}</span>
+                    <span>{Math.abs(trend.value).toFixed(1)}%</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Change vs last month</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </div>
