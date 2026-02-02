@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Pencil, Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Pencil, Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark, AlertTriangle, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Goal, GoalCategory, GoalPriority, GOAL_CATEGORIES, GOAL_PRIORITIES, BANKING_CURRENCIES, getCurrencySymbol } from '@/lib/types';
 import { GoalInput } from '@/hooks/useGoals';
+import { getGoalRecommendation } from '@/lib/goalAnalysis';
 
 interface EditGoalDialogProps {
   goal: Goal;
@@ -87,6 +89,18 @@ export function EditGoalDialog({ goal, onUpdate, trigger }: EditGoalDialogProps)
 
   const currencySymbol = getCurrencySymbol(currency);
   const CategoryIcon = CATEGORY_ICONS[category];
+  
+  // Calculate recommendation for the current goal state
+  const recommendation = useMemo(() => {
+    const goalWithCurrentValues: Goal = {
+      ...goal,
+      target_amount: parseFloat(targetAmount) || goal.target_amount,
+      current_amount: parseFloat(currentAmount) || 0,
+      target_date: targetDate || undefined,
+      monthly_contribution: parseFloat(monthlyContribution) || undefined,
+    };
+    return getGoalRecommendation(goalWithCurrentValues);
+  }, [goal, targetAmount, currentAmount, targetDate, monthlyContribution]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -143,7 +157,32 @@ export function EditGoalDialog({ goal, onUpdate, trigger }: EditGoalDialogProps)
               </Select>
             </div>
 
-            <div className="space-y-2">
+          {/* Recommendation Alert */}
+          {recommendation.hasRecommendation && recommendation.monthlyShortfall > 0 && (
+            <Alert className="border-amber-500/30 bg-amber-500/10">
+              <Lightbulb className="h-4 w-4 text-amber-400" />
+              <AlertDescription className="text-sm">
+                <span className="font-medium text-amber-400">Recommendation: </span>
+                Save {currencySymbol}{recommendation.requiredMonthlySavings.toLocaleString()}/month to meet your target date.
+                {recommendation.currentMonthlySavings > 0 && (
+                  <span className="text-muted-foreground">
+                    {' '}(currently {currencySymbol}{recommendation.currentMonthlySavings.toLocaleString()}/month)
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 ml-2 text-amber-400 hover:text-amber-300"
+                  onClick={() => setMonthlyContribution(recommendation.requiredMonthlySavings.toString())}
+                >
+                  Apply
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
               <Label htmlFor="edit-priority">Priority</Label>
               <Select value={priority} onValueChange={(v) => setPriority(v as GoalPriority)}>
                 <SelectTrigger>

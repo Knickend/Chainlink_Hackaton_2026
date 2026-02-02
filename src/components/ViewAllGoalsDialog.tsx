@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark, Trash2, CheckCircle, Circle } from 'lucide-react';
+import { Eye, Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark, Trash2, CheckCircle, Circle, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Goal, GoalCategory, getCurrencySymbol } from '@/lib/types';
 import { GoalInput } from '@/hooks/useGoals';
+import { GoalRecommendation } from '@/lib/goalAnalysis';
 import { EditGoalDialog } from './EditGoalDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { format } from 'date-fns';
@@ -23,6 +24,7 @@ interface ViewAllGoalsDialogProps {
   calculateProgress: (goal: Goal) => number;
   calculateMonthsToGoal: (goal: Goal) => number | undefined;
   getGoalStatus: (goal: Goal) => 'completed' | 'on_track' | 'behind' | 'no_deadline';
+  getRecommendation: (goal: Goal) => GoalRecommendation;
   formatValue: (value: number, showCents?: boolean) => string;
   onUpdateGoal?: (id: string, data: Partial<GoalInput & { is_completed?: boolean }>) => void;
   onDeleteGoal?: (id: string) => void;
@@ -57,6 +59,7 @@ export function ViewAllGoalsDialog({
   calculateProgress,
   calculateMonthsToGoal,
   getGoalStatus,
+  getRecommendation,
   formatValue,
   onUpdateGoal,
   onDeleteGoal,
@@ -106,6 +109,7 @@ export function ViewAllGoalsDialog({
                 const status = getGoalStatus(goal);
                 const statusStyle = STATUS_STYLES[status];
                 const currencySymbol = getCurrencySymbol(goal.currency);
+                const recommendation = getRecommendation(goal);
 
                 return (
                   <div
@@ -197,6 +201,53 @@ export function ViewAllGoalsDialog({
                         )}
                       </div>
                     </div>
+
+                    {/* Recommendation section for behind goals */}
+                    {status === 'behind' && recommendation.hasRecommendation && onUpdateGoal && (
+                      <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <div className="flex items-start gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="text-sm">
+                            <p className="font-medium text-amber-400">Recommendation</p>
+                            <p className="text-muted-foreground mt-1">
+                              To reach your goal by {format(new Date(goal.target_date!), 'MMM yyyy')}, save{' '}
+                              <span className="font-semibold text-foreground">
+                                {currencySymbol}{recommendation.requiredMonthlySavings.toLocaleString()}/month
+                              </span>
+                              {recommendation.currentMonthlySavings > 0 && (
+                                <> instead of {currencySymbol}{recommendation.currentMonthlySavings.toLocaleString()}/month</>
+                              )}.
+                            </p>
+                            {recommendation.monthlyShortfall > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Monthly shortfall: {currencySymbol}{recommendation.monthlyShortfall.toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 border-amber-500/30 hover:bg-amber-500/10"
+                            onClick={() => onUpdateGoal(goal.id, { monthly_contribution: recommendation.requiredMonthlySavings })}
+                          >
+                            Apply {currencySymbol}{recommendation.requiredMonthlySavings.toLocaleString()}/mo
+                          </Button>
+                          {recommendation.suggestedDeadline && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs h-7"
+                              onClick={() => onUpdateGoal(goal.id, { target_date: format(recommendation.suggestedDeadline!, 'yyyy-MM-dd') })}
+                            >
+                              Extend to {format(recommendation.suggestedDeadline, 'MMM yyyy')}
+                              <ArrowRight className="w-3 h-3 ml-1" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {goal.notes && (
                       <p className="mt-3 text-sm text-muted-foreground border-t pt-3 border-border/50">

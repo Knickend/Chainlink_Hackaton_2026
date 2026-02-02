@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Goal, GoalCategory, GoalPriority, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionTier, getGoalLimit } from '@/lib/subscription';
+import { getGoalRecommendation, GoalRecommendation } from '@/lib/goalAnalysis';
 
 export interface GoalInput {
   name: string;
@@ -251,6 +252,11 @@ export function useGoals(subscriptionTier: SubscriptionTier = 'free') {
 
   const overallProgress = totalGoalTarget > 0 ? (totalGoalSaved / totalGoalTarget) * 100 : 0;
 
+  // Get recommendation for a goal (for behind goals)
+  const getRecommendation = useCallback((goal: Goal): GoalRecommendation => {
+    return getGoalRecommendation(goal);
+  }, []);
+
   return {
     goals,
     loading,
@@ -262,6 +268,7 @@ export function useGoals(subscriptionTier: SubscriptionTier = 'free') {
     calculateMonthsToGoal,
     calculateEstimatedDate,
     getGoalStatus,
+    getRecommendation,
     totalGoalTarget,
     totalGoalSaved,
     overallProgress,

@@ -74,6 +74,7 @@ const IndexContent = () => {
     calculateProgress,
     calculateMonthsToGoal,
     getGoalStatus,
+    getRecommendation,
     canAddGoal,
     goalLimit,
   } = useGoals(effectiveSubscriptionTier);
@@ -344,6 +345,7 @@ const IndexContent = () => {
             calculateProgress={calculateProgress}
             calculateMonthsToGoal={calculateMonthsToGoal}
             getGoalStatus={getGoalStatus}
+            getRecommendation={getRecommendation}
             formatValue={formatValue}
             onAddGoal={isDemo ? undefined : addGoal}
             onUpdateGoal={isDemo ? undefined : updateGoal}
