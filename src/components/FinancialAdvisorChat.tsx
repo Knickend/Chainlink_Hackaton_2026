@@ -1,15 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { useVoiceChat } from '@/hooks/useVoiceChat';
+import { useVoiceActions, VoiceAction } from '@/hooks/useVoiceActions';
+import { usePortfolio } from '@/hooks/usePortfolio';
+import { useDebts } from '@/hooks/useDebts';
+import { useGoals } from '@/hooks/useGoals';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  isAction?: boolean;
+}
+
+interface PendingAction {
+  action: string;
+  data: Record<string, any>;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/financial-advisor`;
@@ -26,8 +38,79 @@ export function FinancialAdvisorChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  // Voice chat hook
+  const {
+    voiceMode,
+    setVoiceMode,
+    isRecording,
+    isPlaying,
+    playingMessageId,
+    startRecording,
+    stopRecording,
+    transcribeAudio,
+    playResponse,
+    stopPlayback,
+    parseVoiceCommand,
+  } = useVoiceChat();
+
+  // Portfolio hooks for voice actions
+  const {
+    assets,
+    income,
+    expenses,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    addIncome,
+    updateIncome,
+    deleteIncome,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+  } = usePortfolio();
+
+  const {
+    debts,
+    addDebt,
+    updateDebt,
+    deleteDebt,
+  } = useDebts();
+
+  const {
+    goals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+  } = useGoals();
+
+  // Voice actions hook
+  const { executeAction, confirmDelete } = useVoiceActions({
+    assets,
+    income,
+    expenses,
+    debts,
+    goals,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    addIncome,
+    updateIncome,
+    deleteIncome,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    addDebt,
+    updateDebt,
+    deleteDebt,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+  });
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -38,10 +121,10 @@ export function FinancialAdvisorChat() {
 
   // Focus input when opened
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isOpen && inputRef.current && !voiceMode) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen]);
+  }, [isOpen, voiceMode]);
 
   const streamChat = useCallback(async (userMessage: string, allMessages: Message[]) => {
     const resp = await fetch(CHAT_URL, {
@@ -50,7 +133,7 @@ export function FinancialAdvisorChat() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
       },
-      body: JSON.stringify({ messages: allMessages }),
+      body: JSON.stringify({ messages: allMessages.map(m => ({ role: m.role, content: m.content })) }),
     });
 
     if (!resp.ok) {
@@ -101,45 +184,16 @@ export function FinancialAdvisorChat() {
             });
           }
         } catch {
-          // Incomplete JSON, put it back
           textBuffer = line + '\n' + textBuffer;
           break;
         }
       }
     }
 
-    // Final flush
-    if (textBuffer.trim()) {
-      for (let raw of textBuffer.split('\n')) {
-        if (!raw) continue;
-        if (raw.endsWith('\r')) raw = raw.slice(0, -1);
-        if (raw.startsWith(':') || raw.trim() === '') continue;
-        if (!raw.startsWith('data: ')) continue;
-        const jsonStr = raw.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-          if (content) {
-            assistantContent += content;
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === 'assistant') {
-                return prev.map((m, i) =>
-                  i === prev.length - 1 ? { ...m, content: assistantContent } : m
-                );
-              }
-              return [...prev, { role: 'assistant', content: assistantContent }];
-            });
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    }
+    return assistantContent;
   }, []);
 
-  const sendMessage = async (messageText?: string) => {
+  const sendMessage = useCallback(async (messageText?: string, skipVoicePlayback = false) => {
     const text = messageText || input.trim();
     if (!text || isLoading) return;
 
@@ -151,7 +205,14 @@ export function FinancialAdvisorChat() {
     setIsLoading(true);
 
     try {
-      await streamChat(text, newMessages);
+      const assistantContent = await streamChat(text, newMessages);
+      
+      // Auto-play response in voice mode
+      if (voiceMode && !skipVoicePlayback && assistantContent) {
+        // Extract plain text from markdown for TTS
+        const plainText = assistantContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
+        await playResponse(plainText, messages.length);
+      }
     } catch (error) {
       console.error('Chat error:', error);
       setMessages((prev) => [
@@ -164,7 +225,151 @@ export function FinancialAdvisorChat() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, messages, streamChat, voiceMode, playResponse]);
+
+  const handleVoiceCommand = useCallback(async (transcribedText: string) => {
+    // Add user message to chat
+    setMessages(prev => [...prev, { role: 'user', content: transcribedText }]);
+    setIsLoading(true);
+
+    try {
+      // Parse the command
+      const parsed = await parseVoiceCommand(transcribedText);
+      
+      // If it's a question, route to normal chat
+      if (parsed.action === 'QUESTION') {
+        setIsLoading(false);
+        await sendMessage(transcribedText, false);
+        return;
+      }
+
+      // Execute the action
+      const result = await executeAction(parsed);
+
+      // Handle confirmation needed
+      if (result.needsConfirmation) {
+        setPendingAction({ action: parsed.action, data: parsed.data });
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: result.message,
+          isAction: true,
+        }]);
+        if (voiceMode) {
+          await playResponse(result.message);
+        }
+      } else {
+        // Add result to chat
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: result.message,
+          isAction: result.success,
+        }]);
+        
+        // Speak confirmation
+        if (voiceMode) {
+          await playResponse(result.message);
+        }
+      }
+    } catch (error) {
+      console.error('Voice command error:', error);
+      const errorMessage = `Something went wrong: ${error instanceof Error ? error.message : 'Please try again.'}`;
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [parseVoiceCommand, executeAction, sendMessage, voiceMode, playResponse]);
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!pendingAction) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await confirmDelete(pendingAction.action, pendingAction.data);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: result.message,
+        isAction: result.success,
+      }]);
+      
+      if (voiceMode) {
+        await playResponse(result.message);
+      }
+      
+      if (result.success) {
+        toast({ title: result.message });
+      }
+    } catch (error) {
+      console.error('Confirm action error:', error);
+    } finally {
+      setPendingAction(null);
+      setIsLoading(false);
+    }
+  }, [pendingAction, confirmDelete, voiceMode, playResponse, toast]);
+
+  const handleCancelAction = useCallback(() => {
+    setPendingAction(null);
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Okay, cancelled.' }]);
+    if (voiceMode) {
+      playResponse('Okay, cancelled.');
+    }
+  }, [voiceMode, playResponse]);
+
+  const handleMicPress = useCallback(async () => {
+    if (isRecording) return;
+    
+    try {
+      await startRecording();
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Microphone access required',
+        description: 'Please enable microphone access to use voice features.',
+      });
+    }
+  }, [isRecording, startRecording, toast]);
+
+  const handleMicRelease = useCallback(async () => {
+    if (!isRecording) return;
+    
+    setIsLoading(true);
+    try {
+      const audioBlob = await stopRecording();
+      if (!audioBlob || audioBlob.size < 1000) {
+        toast({
+          variant: 'destructive',
+          title: 'Recording too short',
+          description: 'Please hold the button longer while speaking.',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Transcribe the audio
+      const transcribedText = await transcribeAudio(audioBlob);
+      
+      if (!transcribedText || transcribedText.trim().length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not understand',
+          description: 'Please try speaking more clearly.',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Handle the voice command
+      await handleVoiceCommand(transcribedText);
+    } catch (error) {
+      console.error('Voice input error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Voice input failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      });
+      setIsLoading(false);
+    }
+  }, [isRecording, stopRecording, transcribeAudio, handleVoiceCommand, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -172,6 +377,17 @@ export function FinancialAdvisorChat() {
       sendMessage();
     }
   };
+
+  const handlePlayMessage = useCallback(async (content: string, messageIndex: number) => {
+    if (isPlaying && playingMessageId === messageIndex) {
+      stopPlayback();
+      return;
+    }
+    
+    // Extract plain text from markdown for TTS
+    const plainText = content.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
+    await playResponse(plainText, messageIndex);
+  }, [isPlaying, playingMessageId, stopPlayback, playResponse]);
 
   return (
     <>
@@ -214,12 +430,35 @@ export function FinancialAdvisorChat() {
                 </div>
                 <div>
                   <h3 className="font-semibold">Financial Advisor</h3>
-                  <p className="text-xs text-muted-foreground">AI-powered guidance</p>
+                  <p className="text-xs text-muted-foreground">
+                    {voiceMode ? 'Voice mode' : 'AI-powered guidance'}
+                  </p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-                <X className="w-5 h-5" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {/* Voice/Text Toggle */}
+                <Button
+                  variant={!voiceMode ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setVoiceMode(false)}
+                  title="Text mode"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={voiceMode ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setVoiceMode(true)}
+                  title="Voice mode"
+                >
+                  <Mic className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsOpen(false)}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -228,24 +467,35 @@ export function FinancialAdvisorChat() {
                 <div className="space-y-4">
                   <div className="text-center py-6">
                     <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                      <Sparkles className="w-6 h-6 text-primary" />
+                      {voiceMode ? (
+                        <Mic className="w-6 h-6 text-primary" />
+                      ) : (
+                        <Sparkles className="w-6 h-6 text-primary" />
+                      )}
                     </div>
-                    <h4 className="font-medium">How can I help you today?</h4>
+                    <h4 className="font-medium">
+                      {voiceMode ? 'Voice Assistant Ready' : 'How can I help you today?'}
+                    </h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Ask me about budgeting, investing, or debt management
+                      {voiceMode 
+                        ? 'Hold the mic button and speak commands like "Add $500 to my savings"'
+                        : 'Ask me about budgeting, investing, or debt management'
+                      }
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    {SUGGESTED_QUESTIONS.map((question, i) => (
-                      <button
-                        key={i}
-                        onClick={() => sendMessage(question)}
-                        className="w-full text-left p-3 text-sm rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
+                  {!voiceMode && (
+                    <div className="space-y-2">
+                      {SUGGESTED_QUESTIONS.map((question, i) => (
+                        <button
+                          key={i}
+                          onClick={() => sendMessage(question)}
+                          className="w-full text-left p-3 text-sm rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                        >
+                          {question}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -262,6 +512,8 @@ export function FinancialAdvisorChat() {
                           "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
                           message.role === 'user'
                             ? "bg-primary text-primary-foreground"
+                            : message.isAction
+                            ? "bg-green-500/20 text-green-500"
                             : "bg-muted"
                         )}
                       >
@@ -276,12 +528,28 @@ export function FinancialAdvisorChat() {
                           "flex-1 rounded-lg p-3 text-sm",
                           message.role === 'user'
                             ? "bg-primary text-primary-foreground"
+                            : message.isAction
+                            ? "bg-green-500/10 border border-green-500/20"
                             : "bg-muted"
                         )}
                       >
                         {message.role === 'assistant' ? (
-                          <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="prose prose-sm dark:prose-invert max-w-none flex-1">
+                              <ReactMarkdown>{message.content}</ReactMarkdown>
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 flex-shrink-0"
+                              onClick={() => handlePlayMessage(message.content, i)}
+                            >
+                              {isPlaying && playingMessageId === i ? (
+                                <VolumeX className="w-3 h-3" />
+                              ) : (
+                                <Volume2 className="w-3 h-3" />
+                              )}
+                            </Button>
                           </div>
                         ) : (
                           message.content
@@ -289,7 +557,41 @@ export function FinancialAdvisorChat() {
                       </div>
                     </div>
                   ))}
-                  {isLoading && messages[messages.length - 1]?.role === 'user' && (
+                  
+                  {/* Pending Action Confirmation */}
+                  {pendingAction && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                      <div className="flex items-start gap-2 mb-3">
+                        <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">Confirm Action</p>
+                          <p className="text-sm text-muted-foreground">
+                            This action cannot be undone.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="destructive" 
+                          onClick={handleConfirmAction}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, delete'}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={handleCancelAction}
+                          disabled={isLoading}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {isLoading && messages[messages.length - 1]?.role === 'user' && !pendingAction && (
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
                         <Bot className="w-4 h-4" />
@@ -303,26 +605,58 @@ export function FinancialAdvisorChat() {
               )}
             </ScrollArea>
 
-            {/* Input */}
+            {/* Input Area */}
             <div className="p-4 border-t border-border">
-              <div className="flex gap-2">
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask about finances..."
-                  disabled={isLoading}
-                  className="flex-1"
-                />
+              {voiceMode ? (
                 <Button
-                  onClick={() => sendMessage()}
-                  disabled={!input.trim() || isLoading}
-                  size="icon"
+                  className={cn(
+                    "w-full h-12 transition-all",
+                    isRecording && "bg-red-500 hover:bg-red-600"
+                  )}
+                  onMouseDown={handleMicPress}
+                  onMouseUp={handleMicRelease}
+                  onMouseLeave={handleMicRelease}
+                  onTouchStart={handleMicPress}
+                  onTouchEnd={handleMicRelease}
+                  disabled={isLoading}
                 >
-                  <Send className="w-4 h-4" />
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : isRecording ? (
+                    <>
+                      <MicOff className="w-5 h-5 mr-2 animate-pulse" />
+                      Listening... Release to send
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-5 h-5 mr-2" />
+                      Hold to speak
+                    </>
+                  )}
                 </Button>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask about finances..."
+                    disabled={isLoading}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={() => sendMessage()}
+                    disabled={!input.trim() || isLoading}
+                    size="icon"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
