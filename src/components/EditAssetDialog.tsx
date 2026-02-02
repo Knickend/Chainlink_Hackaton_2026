@@ -430,9 +430,9 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
             </TabsList>
             
             {/* Edit Tab */}
-            <TabsContent value="edit" className="flex-1 min-h-0 mt-4">
+            <TabsContent value="edit" className="flex-1 min-h-0 mt-4 overflow-hidden flex flex-col">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
                   <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
                     {renderEditFormFields()}
                   </div>
@@ -446,9 +446,9 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
             </TabsContent>
             
             {/* Buy Tab */}
-            <TabsContent value="buy" className="flex-1 min-h-0 mt-4">
+            <TabsContent value="buy" className="flex-1 min-h-0 mt-4 overflow-hidden flex flex-col">
               <Form {...buyForm}>
-                <form onSubmit={buyForm.handleSubmit(handleBuySubmit)} className="flex flex-col h-full">
+                <form onSubmit={buyForm.handleSubmit(handleBuySubmit)} className="flex flex-col flex-1 min-h-0">
                   <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
                     <div className="p-3 rounded-lg bg-secondary/30 text-sm">
                       <div className="flex justify-between">
@@ -556,9 +556,9 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
             </TabsContent>
             
             {/* Sell Tab */}
-            <TabsContent value="sell" className="flex-1 min-h-0 mt-4">
+            <TabsContent value="sell" className="flex-1 min-h-0 mt-4 overflow-hidden flex flex-col">
               <Form {...sellForm}>
-                <form onSubmit={sellForm.handleSubmit(handleSellSubmit)} className="flex flex-col h-full">
+                <form onSubmit={sellForm.handleSubmit(handleSellSubmit)} className="flex flex-col flex-1 min-h-0">
                   <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
                     <div className="p-3 rounded-lg bg-secondary/30 text-sm">
                       <div className="flex justify-between">
