@@ -14,12 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      asset_transactions: {
+        Row: {
+          asset_id: string | null
+          asset_name: string
+          category: string
+          created_at: string | null
+          id: string
+          notes: string | null
+          price_per_unit: number
+          quantity: number
+          realized_pnl: number | null
+          symbol: string
+          total_value: number
+          transaction_date: string
+          transaction_type: string
+          user_id: string
+        }
+        Insert: {
+          asset_id?: string | null
+          asset_name: string
+          category: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          price_per_unit: number
+          quantity: number
+          realized_pnl?: number | null
+          symbol: string
+          total_value: number
+          transaction_date?: string
+          transaction_type: string
+          user_id: string
+        }
+        Update: {
+          asset_id?: string | null
+          asset_name?: string
+          category?: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          price_per_unit?: number
+          quantity?: number
+          realized_pnl?: number | null
+          symbol?: string
+          total_value?: number
+          transaction_date?: string
+          transaction_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_transactions_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assets: {
         Row: {
           category: string
+          cost_basis: number | null
           created_at: string
           id: string
           name: string
+          purchase_date: string | null
+          purchase_price_per_unit: number | null
           quantity: number | null
           symbol: string | null
           unit: string | null
@@ -30,9 +92,12 @@ export type Database = {
         }
         Insert: {
           category: string
+          cost_basis?: number | null
           created_at?: string
           id?: string
           name: string
+          purchase_date?: string | null
+          purchase_price_per_unit?: number | null
           quantity?: number | null
           symbol?: string | null
           unit?: string | null
@@ -43,9 +108,12 @@ export type Database = {
         }
         Update: {
           category?: string
+          cost_basis?: number | null
           created_at?: string
           id?: string
           name?: string
+          purchase_date?: string | null
+          purchase_price_per_unit?: number | null
           quantity?: number | null
           symbol?: string | null
           unit?: string | null

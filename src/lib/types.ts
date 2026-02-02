@@ -85,6 +85,30 @@ export interface Asset {
   quantity?: number; // for banking, this stores the original currency amount
   symbol?: string; // for banking, this stores the currency code (USD, EUR, etc.)
   unit?: CommodityUnit; // for commodities, the measurement unit
+  // P&L tracking fields
+  cost_basis?: number; // Total amount paid for this asset (in USD)
+  purchase_date?: string; // ISO date string when asset was acquired
+  purchase_price_per_unit?: number; // Price paid per unit at purchase (in USD)
+}
+
+// Asset transaction types for P&L tracking
+export type TransactionType = 'buy' | 'sell';
+
+export interface AssetTransaction {
+  id: string;
+  user_id: string;
+  asset_id?: string;
+  transaction_type: TransactionType;
+  symbol: string;
+  asset_name: string;
+  category: string;
+  quantity: number;
+  price_per_unit: number;
+  total_value: number;
+  realized_pnl?: number;
+  transaction_date: string;
+  notes?: string;
+  created_at: string;
 }
 
 // Helper to convert commodity quantity to troy ounces (for price calculation)

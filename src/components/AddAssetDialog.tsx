@@ -23,12 +23,20 @@ const assetSchema = z.object({
   stakingRate: z.number().min(0).max(100).optional(),
   currency: z.string().optional(),
   unit: z.string().optional(),
+  // Cost basis fields for P&L tracking
+  purchase_price_per_unit: z.number().min(0).optional(),
+  purchase_date: z.string().optional(),
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
 
 interface AddAssetDialogProps {
-  onAdd: (asset: AssetFormData & { unit?: CommodityUnit }) => void;
+  onAdd: (asset: AssetFormData & { 
+    unit?: CommodityUnit;
+    cost_basis?: number;
+    purchase_date?: string;
+    purchase_price_per_unit?: number;
+  }) => void;
   livePrices?: LivePrices;
   onStockPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
   onCryptoPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
@@ -72,6 +80,8 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       stakingRate: undefined,
       currency: 'USD',
       unit: 'oz',
+      purchase_price_per_unit: undefined,
+      purchase_date: '',
     },
   });
 
@@ -129,6 +139,11 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
   };
 
   const onSubmit = (data: AssetFormData) => {
+    // Calculate cost basis from purchase price if provided
+    const costBasis = data.purchase_price_per_unit && data.quantity 
+      ? data.purchase_price_per_unit * data.quantity 
+      : undefined;
+
     // For banking, store the currency in symbol and original amount in quantity
     if (data.category === 'banking' && data.currency) {
       const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
@@ -151,6 +166,9 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         symbol: data.symbol,
         quantity: data.quantity,
         unit: (data.unit as CommodityUnit) || 'oz',
+        cost_basis: costBasis,
+        purchase_date: data.purchase_date || undefined,
+        purchase_price_per_unit: data.purchase_price_per_unit,
       });
     } else {
       onAdd({
@@ -161,6 +179,9 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         quantity: data.quantity,
         yield: data.yield,
         stakingRate: data.stakingRate,
+        cost_basis: costBasis,
+        purchase_date: data.purchase_date || undefined,
+        purchase_price_per_unit: data.purchase_price_per_unit,
       });
     }
     form.reset();
@@ -355,6 +376,51 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     )}
                   />
                 )}
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Price per Unit (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 45000"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}
@@ -579,6 +645,51 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     )}
                   />
                 )}
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Price per Share (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 150.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}

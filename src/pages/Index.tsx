@@ -10,6 +10,8 @@ import { useDebts } from '@/hooks/useDebts';
 import { useGoals } from '@/hooks/useGoals';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
+import { useAssetTransactions } from '@/hooks/useAssetTransactions';
+import { useProfitLoss } from '@/hooks/useProfitLoss';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
 import { YieldBreakdownCard } from '@/components/YieldBreakdownCard';
@@ -37,6 +39,8 @@ import { PerformanceCard } from '@/components/PerformanceCard';
 import { PortfolioHistoryCard } from '@/components/PortfolioHistoryCard';
 import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
 import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
+import { ProfitLossCard } from '@/components/ProfitLossCard';
+import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -87,6 +91,9 @@ const IndexContent = () => {
     isLoading: snapshotsLoading,
     metricTrends 
   } = usePortfolioHistory();
+
+  // Asset transactions for P&L tracking
+  const { transactions, loading: transactionsLoading } = useAssetTransactions();
   
   // Auto-create snapshot for current month if missing (on login)
   const hasTriedAutoSnapshot = useRef(false);
@@ -143,6 +150,9 @@ const IndexContent = () => {
     updateExpense,
     deleteExpense,
   } = usePortfolio(prices, isDemo);
+
+  // Calculate P&L data
+  const pnlData = useProfitLoss(assets, transactions);
 
   if (authLoading || (!isDemo && (dataLoading || debtsLoading || goalsLoading || subscriptionLoading))) {
     return (
@@ -364,6 +374,24 @@ const IndexContent = () => {
               delay={0.2}
             />
           )}
+        </div>
+
+        {/* P&L Overview - Pro Feature */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+          <div className="lg:col-span-1">
+            {isPro ? (
+              <ProfitLossCard 
+                pnlData={pnlData} 
+                formatValue={formatValue} 
+                delay={0.25}
+              />
+            ) : !isDemo && (
+              <ProfitLossTeaser 
+                onUpgrade={() => setShowSubscriptionDialog(true)} 
+                delay={0.25}
+              />
+            )}
+          </div>
         </div>
 
         {/* Financial Goals */}
