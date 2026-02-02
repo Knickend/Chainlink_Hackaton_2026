@@ -18,6 +18,69 @@ interface SnapshotResult {
   error?: string;
 }
 
+// Static forex rates (fallback when live rates unavailable)
+const FOREX_RATES_TO_USD: Record<string, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.27,
+  CHF: 1.13,
+  JPY: 0.0064,
+  CAD: 0.74,
+  AUD: 0.65,
+  CNY: 0.14,
+  INR: 0.012,
+  SGD: 0.74,
+  HKD: 0.13,
+  NZD: 0.60,
+  SEK: 0.095,
+  NOK: 0.093,
+  DKK: 0.145,
+  ZAR: 0.055,
+  BRL: 0.20,
+  MXN: 0.058,
+  KRW: 0.00073,
+  THB: 0.029,
+};
+
+// Get live forex rates from price_cache (USD→Currency rates)
+async function getLiveForexRates(supabase: any): Promise<Record<string, number>> {
+  const { data } = await supabase
+    .from('price_cache')
+    .select('symbol, price')
+    .eq('asset_type', 'forex');
+  
+  const rates: Record<string, number> = { USD: 1 };
+  if (data) {
+    for (const row of data) {
+      // price_cache stores USD→Currency rate, we need Currency→USD
+      rates[row.symbol] = 1 / Number(row.price);
+    }
+  }
+  return rates;
+}
+
+// Convert any currency to USD
+function convertToUSD(
+  amount: number, 
+  currency: string, 
+  forexRates: Record<string, number>,
+  btcPrice: number
+): number {
+  const curr = (currency || 'USD').trim().toUpperCase();
+  
+  // Handle Bitcoin currencies
+  if (curr === 'SATS') {
+    return (amount / 100_000_000) * btcPrice;
+  }
+  if (curr === 'BTC') {
+    return amount * btcPrice;
+  }
+  
+  // Handle fiat - prioritize live rates, fallback to static
+  const rate = forexRates[curr] || FOREX_RATES_TO_USD[curr] || 1;
+  return amount * rate;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -86,6 +149,17 @@ Deno.serve(async (req) => {
     // Create service role client for data fetching (bypasses RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Fetch live forex rates and BTC price for currency conversion
+    const forexRates = await getLiveForexRates(supabase);
+    const { data: btcCache } = await supabase
+      .from('price_cache')
+      .select('price')
+      .eq('symbol', 'BTC')
+      .single();
+    const btcPrice = btcCache?.price ? Number(btcCache.price) : 96000;
+
+    console.log(`Using BTC price: ${btcPrice}, Forex rates loaded: ${Object.keys(forexRates).length}`);
+
     // Get current month (first of month)
     const now = new Date();
     now.setDate(1);
@@ -143,16 +217,34 @@ Deno.serve(async (req) => {
         const income = incomeResult.data || [];
         const expenses = expensesResult.data || [];
 
-        // Calculate totals
+        // Calculate totals with proper currency conversion to USD
         const totalAssets = assets.reduce((sum, a) => sum + Number(a.value || 0), 0);
-        const totalDebt = debts.reduce((sum, d) => sum + Number(d.principal_amount || 0), 0);
-        const netWorth = totalAssets - totalDebt;
-        const totalIncome = income.reduce((sum, i) => sum + Number(i.amount || 0), 0);
         
-        // Only count recurring expenses for monthly total
-        const totalExpenses = expenses
-          .filter(e => e.is_recurring)
-          .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const totalDebt = debts.reduce((sum, d) => {
+          const currency = (d.currency || 'USD').trim().toUpperCase();
+          return sum + convertToUSD(Number(d.principal_amount || 0), currency, forexRates, btcPrice);
+        }, 0);
+        
+        const netWorth = totalAssets - totalDebt;
+        
+        // Calculate income with proper currency conversion (all income, recurring + one-time)
+        const totalIncome = income.reduce((sum, i) => {
+          const currency = (i.currency || 'USD').trim().toUpperCase();
+          return sum + convertToUSD(Number(i.amount || 0), currency, forexRates, btcPrice);
+        }, 0);
+        
+        // Calculate expenses with proper currency conversion (all expenses, recurring + one-time)
+        const totalExpenses = expenses.reduce((sum, e) => {
+          const currency = (e.currency || 'USD').trim().toUpperCase();
+          return sum + convertToUSD(Number(e.amount || 0), currency, forexRates, btcPrice);
+        }, 0);
+
+        // Calculate monthly debt payments with proper currency conversion
+        const monthlyDebtPayments = debts.reduce((sum, d) => {
+          if (!d.monthly_payment) return sum;
+          const currency = (d.currency || 'USD').trim().toUpperCase();
+          return sum + convertToUSD(Number(d.monthly_payment), currency, forexRates, btcPrice);
+        }, 0);
 
         // Calculate breakdown by category
         const assetsBreakdown: AssetsBreakdown = {
@@ -169,7 +261,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`User ${userId} - Net Worth: ${netWorth}, Assets: ${totalAssets}, Debt: ${totalDebt}`);
+        console.log(`User ${userId} - Net Worth: ${netWorth}, Assets: ${totalAssets}, Debt: ${totalDebt}, Income: ${totalIncome}`);
 
         // Upsert snapshot (update if exists for this month)
         const { error: snapshotError } = await supabase
@@ -182,6 +274,7 @@ Deno.serve(async (req) => {
             total_debt: totalDebt,
             total_income: totalIncome,
             total_expenses: totalExpenses,
+            monthly_debt_payments: monthlyDebtPayments,
             assets_breakdown: assetsBreakdown,
           }, {
             onConflict: 'user_id,snapshot_month'

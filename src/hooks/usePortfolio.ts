@@ -80,7 +80,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
 
   const conversionRates = useMemo(() => {
     if (livePrices) {
-      return calculateConversionRates(livePrices.btc, livePrices.gold);
+      return calculateConversionRates(livePrices.btc, livePrices.gold, livePrices.forex);
     }
     return DEFAULT_CONVERSION_RATES;
   }, [livePrices]);
@@ -92,6 +92,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
     
     // Helper function to convert income amount to USD with normalized currency handling
+    // Uses live forex rates when available for consistency with display unit conversion
     const convertIncomeToUSD = (inc: typeof income[0]): number => {
       const currency = (inc.currency || 'USD').trim().toUpperCase();
       
@@ -100,14 +101,32 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
         return convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
       }
       
-      // Handle fiat currencies
+      // Handle fiat currencies - use live forex rate if available for consistency
+      // This ensures €300 → USD → €300 round-trips correctly
+      const liveRate = livePrices?.forex?.[currency];
+      if (liveRate && liveRate > 0) {
+        // API returns USD→Currency, we need Currency→USD
+        return inc.amount * (1 / liveRate);
+      }
+      
+      // Fallback to static rates
       const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
       return inc.amount * rate;
     };
     
     // Helper function to convert expense amount to USD with normalized currency handling
+    // Uses live forex rates when available for consistency with display unit conversion
     const convertExpenseToUSD = (exp: typeof expenses[0]): number => {
       const currency = (exp.currency || 'USD').trim().toUpperCase();
+      
+      // Use live forex rate if available for consistency
+      const liveRate = livePrices?.forex?.[currency];
+      if (liveRate && liveRate > 0) {
+        // API returns USD→Currency, we need Currency→USD
+        return exp.amount * (1 / liveRate);
+      }
+      
+      // Fallback to static rates
       const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
       return exp.amount * rate;
     };
@@ -163,7 +182,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
       recurringExpenses,
       oneTimeExpenses,
     };
-  }, [assets, income, expenses, btcPrice]);
+  }, [assets, income, expenses, btcPrice, livePrices]);
 
   const assetsByCategory = useMemo(() => {
     return assets.reduce((acc, asset) => {
@@ -188,23 +207,50 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   };
 
   // Convert a value from its stored currency to the current display unit
+  // Uses live forex rates when available for consistent round-trip conversions
   const convertFromCurrency = useCallback((amount: number, fromCurrency: string): number => {
+    const currency = (fromCurrency || 'USD').trim().toUpperCase();
+    
     // For BTC and GOLD display units, we need to convert via USD
     if (displayUnit === 'BTC' || displayUnit === 'GOLD') {
-      // First convert to USD, then to display unit
-      const amountInUSD = amount * (FOREX_RATES_TO_USD[fromCurrency as BankingCurrency] || 1);
+      // First convert to USD using live rates if available
+      const liveRate = livePrices?.forex?.[currency];
+      let amountInUSD: number;
+      if (liveRate && liveRate > 0) {
+        amountInUSD = amount * (1 / liveRate);
+      } else {
+        amountInUSD = amount * (FOREX_RATES_TO_USD[currency as BankingCurrency] || 1);
+      }
       return amountInUSD * conversionRates[displayUnit];
     }
     
     // For fiat display units (USD, EUR, GBP)
-    // If same currency, return original amount
-    if (fromCurrency === displayUnit) {
+    // If same currency, return original amount (no conversion needed)
+    if (currency === displayUnit) {
       return amount;
     }
     
-    // Otherwise, convert from stored currency to display currency
+    // Convert via USD using live forex rates for consistency
+    // This ensures €300 → USD → €300 round-trips correctly
+    const liveFromRate = livePrices?.forex?.[currency];
+    const liveToRate = livePrices?.forex?.[displayUnit];
+    
+    // Convert from stored currency to USD
+    let amountInUSD: number;
+    if (liveFromRate && liveFromRate > 0) {
+      amountInUSD = amount * (1 / liveFromRate);
+    } else {
+      amountInUSD = amount * (FOREX_RATES_TO_USD[currency as BankingCurrency] || 1);
+    }
+    
+    // Convert from USD to display currency
+    if (liveToRate && liveToRate > 0) {
+      return amountInUSD * liveToRate;
+    }
+    
+    // Fallback to static conversion
     return convertCurrency(amount, fromCurrency, displayUnit);
-  }, [displayUnit, conversionRates]);
+  }, [displayUnit, conversionRates, livePrices]);
 
   const formatValue = (valueInUSD: number, showDecimals = true): string => {
     const converted = convertValue(valueInUSD);

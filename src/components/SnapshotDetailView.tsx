@@ -38,7 +38,9 @@ export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue }
     }))
     .filter(item => item.value > 0);
 
-  const netCashFlow = snapshot.total_income - snapshot.total_expenses;
+  // Use stored monthly_debt_payments if available (new snapshots), otherwise 0
+  const storedDebtPayments = (snapshot as any).monthly_debt_payments || 0;
+  const netCashFlow = snapshot.total_income - snapshot.total_expenses - storedDebtPayments;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
