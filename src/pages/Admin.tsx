@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Shield, Loader2, Bot, Clock } from 'lucide-react';
+import { ArrowLeft, Shield, Loader2, Bot, Clock, TrendingDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { AdminUserStats } from '@/components/admin/AdminUserStats';
 import { AnalyticsFilters } from '@/components/admin/AnalyticsFilters';
 import { SalesBotAnalytics } from '@/components/admin/SalesBotAnalytics';
 import { CronJobMonitor } from '@/components/admin/CronJobMonitor';
+import { CancellationFeedback } from '@/components/admin/CancellationFeedback';
 import { Feedback, FeedbackType, FeedbackStatus } from '@/lib/feedback.types';
 
 const Admin = () => {
@@ -129,7 +130,7 @@ const Admin = () => {
 
         {/* Tabbed Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-5">
+          <TabsList className="grid w-full max-w-3xl grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="sales-bot" className="gap-1.5">
               <Bot className="h-3.5 w-3.5" />
@@ -138,6 +139,10 @@ const Admin = () => {
             <TabsTrigger value="cron-jobs" className="gap-1.5">
               <Clock className="h-3.5 w-3.5" />
               Cron Jobs
+            </TabsTrigger>
+            <TabsTrigger value="churn" className="gap-1.5">
+              <TrendingDown className="h-3.5 w-3.5" />
+              Churn
             </TabsTrigger>
             <TabsTrigger value="feedback">Feedback</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
@@ -173,6 +178,14 @@ const Admin = () => {
               <h2 className="text-lg font-semibold">Cron Job Monitor</h2>
             </div>
             <CronJobMonitor />
+          </TabsContent>
+
+          {/* Churn Tab */}
+          <TabsContent value="churn" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">Subscription Cancellations</h2>
+            </div>
+            <CancellationFeedback />
           </TabsContent>
 
           {/* Feedback Tab */}

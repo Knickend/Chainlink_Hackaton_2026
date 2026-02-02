@@ -437,6 +437,36 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_cancellations: {
+        Row: {
+          additional_feedback: string | null
+          created_at: string | null
+          id: string
+          previous_tier: string
+          primary_reason: string
+          user_id: string
+          would_return: string | null
+        }
+        Insert: {
+          additional_feedback?: string | null
+          created_at?: string | null
+          id?: string
+          previous_tier: string
+          primary_reason: string
+          user_id: string
+          would_return?: string | null
+        }
+        Update: {
+          additional_feedback?: string | null
+          created_at?: string | null
+          id?: string
+          previous_tier?: string
+          primary_reason?: string
+          user_id?: string
+          would_return?: string | null
+        }
+        Relationships: []
+      }
       user_investment_preferences: {
         Row: {
           commodities_allocation: number
