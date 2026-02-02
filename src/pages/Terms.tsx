@@ -154,7 +154,7 @@ export default function Terms() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">9. Governing Law</h2>
             <p className="text-muted-foreground">
-              Kingdom of Spain. Madrid courts have exclusive jurisdiction.
+              Republic of Estonia. Harju County Court has exclusive jurisdiction.
             </p>
           </section>
 
