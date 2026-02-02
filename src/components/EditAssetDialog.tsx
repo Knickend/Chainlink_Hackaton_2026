@@ -147,7 +147,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
     resolver: zodResolver(buySchema),
     defaultValues: {
       quantity: undefined,
-      price_per_unit: currentPrice || 0,
+      price_per_unit: currentPrice || undefined,
       transaction_date: new Date().toISOString().split('T')[0],
     },
   });
@@ -157,7 +157,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
     resolver: zodResolver(sellSchema),
     defaultValues: {
       quantity: undefined,
-      price_per_unit: currentPrice || 0,
+      price_per_unit: currentPrice || undefined,
       transaction_date: new Date().toISOString().split('T')[0],
       notes: '',
     },
@@ -200,12 +200,12 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
       });
       buyForm.reset({
         quantity: undefined,
-        price_per_unit: currentPrice || 0,
+        price_per_unit: currentPrice || undefined,
         transaction_date: new Date().toISOString().split('T')[0],
       });
       sellForm.reset({
         quantity: undefined,
-        price_per_unit: currentPrice || 0,
+        price_per_unit: currentPrice || undefined,
         transaction_date: new Date().toISOString().split('T')[0],
         notes: '',
       });
