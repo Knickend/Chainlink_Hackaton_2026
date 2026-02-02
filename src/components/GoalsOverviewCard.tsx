@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion';
-import { Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark, Plus } from 'lucide-react';
+import { Target, Car, Plane, Shield, Home, GraduationCap, Heart, Landmark, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Goal, GoalCategory, getCurrencySymbol } from '@/lib/types';
 import { GoalInput } from '@/hooks/useGoals';
+import { GoalRecommendation } from '@/lib/goalAnalysis';
 import { AddGoalDialog } from './AddGoalDialog';
 import { EditGoalDialog } from './EditGoalDialog';
 import { ViewAllGoalsDialog } from './ViewAllGoalsDialog';
@@ -18,6 +20,7 @@ interface GoalsOverviewCardProps {
   calculateProgress: (goal: Goal) => number;
   calculateMonthsToGoal: (goal: Goal) => number | undefined;
   getGoalStatus: (goal: Goal) => 'completed' | 'on_track' | 'behind' | 'no_deadline';
+  getRecommendation: (goal: Goal) => GoalRecommendation;
   formatValue: (value: number, showCents?: boolean) => string;
   onAddGoal?: (data: GoalInput) => void;
   onUpdateGoal?: (id: string, data: Partial<GoalInput & { is_completed?: boolean }>) => void;
@@ -53,6 +56,7 @@ export function GoalsOverviewCard({
   calculateProgress,
   calculateMonthsToGoal,
   getGoalStatus,
+  getRecommendation,
   formatValue,
   onAddGoal,
   onUpdateGoal,
@@ -109,6 +113,7 @@ export function GoalsOverviewCard({
                   calculateProgress={calculateProgress}
                   calculateMonthsToGoal={calculateMonthsToGoal}
                   getGoalStatus={getGoalStatus}
+                  getRecommendation={getRecommendation}
                   formatValue={formatValue}
                   onUpdateGoal={isDemo ? undefined : onUpdateGoal}
                   onDeleteGoal={isDemo ? undefined : onDeleteGoal}
@@ -152,6 +157,7 @@ export function GoalsOverviewCard({
                 const status = getGoalStatus(goal);
                 const statusStyle = STATUS_STYLES[status];
                 const currencySymbol = getCurrencySymbol(goal.currency);
+                const recommendation = getRecommendation(goal);
 
                 return (
                   <div
@@ -189,6 +195,33 @@ export function GoalsOverviewCard({
                         </p>
                       )}
                     </div>
+
+                    {/* Recommendation for behind goals */}
+                    {status === 'behind' && recommendation.hasRecommendation && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="mt-2 flex items-start gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 rounded px-2 py-1.5 cursor-help">
+                              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                              <span>
+                                Save {currencySymbol}{recommendation.requiredMonthlySavings.toLocaleString()}/mo to meet deadline
+                                {recommendation.currentMonthlySavings > 0 && (
+                                  <span className="text-muted-foreground">
+                                    {' '}(+{currencySymbol}{recommendation.monthlyShortfall.toLocaleString()})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs">
+                            <p>
+                              Currently saving {currencySymbol}{recommendation.currentMonthlySavings.toLocaleString()}/mo. 
+                              Need {currencySymbol}{recommendation.monthlyShortfall.toLocaleString()} more monthly to reach your target on time.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 );
               })}
