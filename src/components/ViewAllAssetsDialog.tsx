@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Asset, AssetCategory } from '@/lib/types';
+import { Asset, AssetCategory, getCurrencySymbol } from '@/lib/types';
 import { EditAssetDialog } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { SellAssetDialog } from './SellAssetDialog';
@@ -111,6 +111,31 @@ export function ViewAllAssetsDialog({
       await onSellAsset(assetId, data);
       setSellDialogAsset(null);
     }
+  };
+
+  // Format asset value in native format (show what user entered)
+  const formatNativeAssetValue = (asset: Asset): string => {
+    // Banking: show original currency amount
+    if (asset.category === 'banking' && asset.symbol && asset.quantity) {
+      return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2 
+      })}`;
+    }
+    
+    // Crypto/Stocks: show quantity + symbol
+    if ((asset.category === 'crypto' || asset.category === 'stocks') && asset.quantity && asset.symbol) {
+      return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
+    }
+    
+    // Commodities: show quantity + unit
+    if (asset.category === 'commodities' && asset.quantity) {
+      const unit = asset.unit || 'oz';
+      return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${unit}`;
+    }
+    
+    // Fallback to formatted value in display unit
+    return formatValue(asset.value);
   };
 
   const filteredAssets = useMemo(() => {
@@ -220,7 +245,7 @@ export function ViewAllAssetsDialog({
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatValue(asset.value)}
+                      {formatNativeAssetValue(asset)}
                     </TableCell>
                     {(onUpdateAsset || onDeleteAsset || onSellAsset) && (
                       <TableCell className="text-right">

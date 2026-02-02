@@ -75,6 +75,31 @@ export function AssetCategoryCard({
             ? `${getCurrencySymbol(asset.symbol!)}${asset.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : null;
           
+          // Format asset value in native format
+          const formatNativeAssetValue = (): string => {
+            // Banking: show original currency amount
+            if (category === 'banking' && asset.symbol && asset.quantity) {
+              return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+              })}`;
+            }
+            
+            // Crypto/Stocks: show quantity + symbol
+            if ((category === 'crypto' || category === 'stocks') && asset.quantity && asset.symbol) {
+              return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
+            }
+            
+            // Commodities: show quantity + unit
+            if (category === 'commodities' && asset.quantity) {
+              const unit = asset.unit || 'oz';
+              return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${unit}`;
+            }
+            
+            // Fallback to formatted value in display unit
+            return formatValue(asset.value);
+          };
+
           return (
             <div
               key={asset.id}
@@ -93,7 +118,7 @@ export function AssetCategoryCard({
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <span className="font-mono text-sm">{originalAmount || formatValue(asset.value)}</span>
+                  <span className="font-mono text-sm">{formatNativeAssetValue()}</span>
                 </div>
                 {onUpdateAsset && (
                   <EditAssetDialog 
