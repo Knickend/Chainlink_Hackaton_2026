@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -39,11 +39,12 @@ export function FinancialAdvisorChat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [showFallbackBanner, setShowFallbackBanner] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  // Voice chat hook
+  // Voice chat hook with fallback callback
   const {
     voiceMode,
     setVoiceMode,
@@ -56,7 +57,21 @@ export function FinancialAdvisorChat() {
     playResponse,
     stopPlayback,
     parseVoiceCommand,
-  } = useVoiceChat();
+    sttProvider,
+    ttsProvider,
+    isUsingFallback,
+    startWebSpeechRecording,
+    isWebSpeechSTTSupported,
+    isWebSpeechTTSSupported,
+  } = useVoiceChat({
+    onFallbackActivated: (provider) => {
+      setShowFallbackBanner(true);
+      toast({
+        title: 'Using browser voice',
+        description: 'Premium voice is unavailable. Using your browser\'s built-in speech.',
+      });
+    },
+  });
 
   // Portfolio hooks for voice actions
   const {
@@ -317,6 +332,35 @@ export function FinancialAdvisorChat() {
   const handleMicPress = useCallback(async () => {
     if (isRecording) return;
     
+    // If using Web Speech API, start real-time recognition
+    if (sttProvider === 'webspeech' || !isWebSpeechSTTSupported) {
+      try {
+        setIsLoading(true);
+        const transcribedText = await startWebSpeechRecording();
+        
+        if (transcribedText && transcribedText.trim().length > 0) {
+          await handleVoiceCommand(transcribedText);
+        } else {
+          toast({
+            variant: 'destructive',
+            title: 'Could not understand',
+            description: 'Please try speaking more clearly.',
+          });
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Web Speech error:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Voice input failed',
+          description: error instanceof Error ? error.message : 'Please try again.',
+        });
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    // Standard MediaRecorder flow for ElevenLabs
     try {
       await startRecording();
     } catch (error) {
@@ -327,9 +371,14 @@ export function FinancialAdvisorChat() {
         description: 'Please enable microphone access to use voice features.',
       });
     }
-  }, [isRecording, startRecording, toast]);
+  }, [isRecording, sttProvider, isWebSpeechSTTSupported, startWebSpeechRecording, startRecording, handleVoiceCommand, toast]);
 
   const handleMicRelease = useCallback(async () => {
+    // If using Web Speech API, the recording is handled in handleMicPress
+    if (sttProvider === 'webspeech') {
+      return;
+    }
+    
     if (!isRecording) return;
     
     setIsLoading(true);
@@ -362,6 +411,18 @@ export function FinancialAdvisorChat() {
       await handleVoiceCommand(transcribedText);
     } catch (error) {
       console.error('Voice input error:', error);
+      
+      // Check if fallback was activated
+      const errorMessage = error instanceof Error ? error.message : '';
+      if (errorMessage === 'FALLBACK_ACTIVATED') {
+        toast({
+          title: 'Switched to browser voice',
+          description: 'Please speak again using the mic button.',
+        });
+        setIsLoading(false);
+        return;
+      }
+      
       toast({
         variant: 'destructive',
         title: 'Voice input failed',
@@ -369,7 +430,7 @@ export function FinancialAdvisorChat() {
       });
       setIsLoading(false);
     }
-  }, [isRecording, stopRecording, transcribeAudio, handleVoiceCommand, toast]);
+  }, [isRecording, sttProvider, stopRecording, transcribeAudio, handleVoiceCommand, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -429,9 +490,20 @@ export function FinancialAdvisorChat() {
                   <Bot className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Financial Advisor</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Financial Advisor</h3>
+                    {isUsingFallback && voiceMode && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                        <WifiOff className="w-3 h-3" />
+                        Browser voice
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {voiceMode ? 'Voice mode' : 'AI-powered guidance'}
+                    {voiceMode 
+                      ? (sttProvider === 'webspeech' ? 'Click mic to speak' : 'Voice mode')
+                      : 'AI-powered guidance'
+                    }
                   </p>
                 </div>
               </div>
@@ -452,6 +524,7 @@ export function FinancialAdvisorChat() {
                   className="h-8 w-8"
                   onClick={() => setVoiceMode(true)}
                   title="Voice mode"
+                  disabled={!isWebSpeechSTTSupported && sttProvider !== 'elevenlabs'}
                 >
                   <Mic className="w-4 h-4" />
                 </Button>
@@ -608,35 +681,62 @@ export function FinancialAdvisorChat() {
             {/* Input Area */}
             <div className="p-4 border-t border-border">
               {voiceMode ? (
-                <Button
-                  className={cn(
-                    "w-full h-12 transition-all",
-                    isRecording && "bg-red-500 hover:bg-red-600"
-                  )}
-                  onMouseDown={handleMicPress}
-                  onMouseUp={handleMicRelease}
-                  onMouseLeave={handleMicRelease}
-                  onTouchStart={handleMicPress}
-                  onTouchEnd={handleMicRelease}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : isRecording ? (
-                    <>
-                      <MicOff className="w-5 h-5 mr-2 animate-pulse" />
-                      Listening... Release to send
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-5 h-5 mr-2" />
-                      Hold to speak
-                    </>
-                  )}
-                </Button>
+                sttProvider === 'webspeech' ? (
+                  // Web Speech API mode: Click to start recognition
+                  <Button
+                    className="w-full h-12 transition-all"
+                    onClick={handleMicPress}
+                    disabled={isLoading || isRecording}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : isRecording ? (
+                      <>
+                        <Mic className="w-5 h-5 mr-2 animate-pulse text-destructive" />
+                        Listening...
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-5 h-5 mr-2" />
+                        Click to speak
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  // ElevenLabs mode: Hold to record
+                  <Button
+                    className={cn(
+                      "w-full h-12 transition-all",
+                      isRecording && "bg-destructive hover:bg-destructive/90"
+                    )}
+                    onMouseDown={handleMicPress}
+                    onMouseUp={handleMicRelease}
+                    onMouseLeave={handleMicRelease}
+                    onTouchStart={handleMicPress}
+                    onTouchEnd={handleMicRelease}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : isRecording ? (
+                      <>
+                        <MicOff className="w-5 h-5 mr-2 animate-pulse" />
+                        Listening... Release to send
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-5 h-5 mr-2" />
+                        Hold to speak
+                      </>
+                    )}
+                  </Button>
+                )
               ) : (
                 <div className="flex gap-2">
                   <Input
