@@ -6,15 +6,17 @@ import { Button } from '@/components/ui/button';
 import { ProBadge } from './ProBadge';
 import { ProfitLossData } from '@/hooks/useProfitLoss';
 import { ProfitLossDetailDialog } from './ProfitLossDetailDialog';
+import { AssetTransaction } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface ProfitLossCardProps {
   pnlData: ProfitLossData;
   formatValue: (value: number, showSign?: boolean) => string;
   delay?: number;
+  transactions?: AssetTransaction[];
 }
 
-export function ProfitLossCard({ pnlData, formatValue, delay = 0 }: ProfitLossCardProps) {
+export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions = [] }: ProfitLossCardProps) {
   const [showDetails, setShowDetails] = useState(false);
   
   const { totalPnL, totalUnrealizedPnL, totalRealizedPnL, totalPnLPercent } = pnlData;
@@ -135,6 +137,7 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0 }: ProfitLossCa
         onOpenChange={setShowDetails}
         pnlData={pnlData}
         formatValue={formatValue}
+        transactions={transactions}
       />
     </>
   );
