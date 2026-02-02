@@ -546,7 +546,34 @@ const IndexContent = () => {
       </div>
 
         {/* AI Financial Advisor Chat */}
-        <FinancialAdvisorChat />
+        <FinancialAdvisorChat
+          portfolioData={{
+            assets,
+            income,
+            expenses,
+            addAsset,
+            updateAsset,
+            deleteAsset,
+            addIncome,
+            updateIncome,
+            deleteIncome,
+            addExpense,
+            updateExpense,
+            deleteExpense,
+          }}
+          debtsData={{
+            debts: demoDebts,
+            addDebt,
+            updateDebt,
+            deleteDebt,
+          }}
+          goalsData={{
+            goals: demoGoals,
+            addGoal,
+            updateGoal,
+            deleteGoal,
+          }}
+        />
         
         {/* Feedback Button */}
         <FeedbackButton />
