@@ -1,101 +1,175 @@
 
-# Plan: Make All Dialogs Consistently Scrollable
+# Plan: Add Cost Basis Fields to Commodities and Banking Categories
 
 ## Problem
 
-Looking at the uploaded screenshots, the Add Asset dialog for cryptocurrency extends beyond the viewport. While you've already fixed `AddAssetDialog.tsx` with proper scrollable styling, other dialogs across the application are inconsistent - some have no scrolling at all, and others use different approaches.
+The Add Asset dialog is missing cost basis input fields for the Commodities and Banking categories. Currently only Stocks and Crypto have these fields, which means users cannot track profit and loss for commodities (gold, silver, etc.) or banking assets.
 
-## Current State Analysis
+## Current State
 
-| Dialog | Scroll Behavior | Issue |
-|--------|-----------------|-------|
-| AddAssetDialog | Fixed header/footer, scrollable content | Already correct |
-| EditAssetDialog | No scroll | May overflow on mobile/small screens |
-| SellAssetDialog | No scroll | May overflow on mobile/small screens |
-| AddDebtDialog | No scroll | May overflow with 6 form fields |
-| EditDebtDialog | No scroll | May overflow with 6 form fields |
-| AddGoalDialog | `overflow-y-auto` on entire dialog | Whole dialog scrolls including header |
-| EditGoalDialog | `overflow-y-auto` on entire dialog | Whole dialog scrolls including header |
-| AddIncomeDialog | No scroll | May overflow on mobile |
-| AddExpenseDialog | No scroll | May overflow on mobile |
+| Category | Cost Basis Fields | P&L Tracking |
+|----------|------------------|--------------|
+| Stocks | Purchase Price per Share, Purchase Date | Yes |
+| Crypto | Purchase Price per Unit, Purchase Date | Yes |
+| Commodities | None | No |
+| Banking | None | No |
 
-## Target Pattern
+## Solution
 
-Apply the same consistent pattern used in `AddAssetDialog`:
+Add the same cost basis input section to both Commodities and Banking categories in the Add Asset dialog.
+
+## Changes Required
+
+### 1. Add Cost Basis to Commodities Category
+
+Insert after the price info block (around line 577, after the closing of the price display section):
 
 ```tsx
-<DialogContent className="sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
-  <DialogHeader className="flex-shrink-0">...</DialogHeader>
-  <Form>
-    <form className="flex flex-col flex-1 min-h-0">
-      <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
-        {/* Form fields */}
-      </div>
-      <div className="flex-shrink-0 pt-4">
-        {/* Submit button / footer */}
-      </div>
-    </form>
-  </Form>
-</DialogContent>
+{/* Cost Basis Section for P&L Tracking */}
+<div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+  
+  <FormField
+    control={form.control}
+    name="purchase_price_per_unit"
+    render={({ field }) => (
+      <FormItem>
+        <FormLabel className="text-sm">Purchase Price per Unit (USD)</FormLabel>
+        <FormControl>
+          <Input
+            type="number"
+            step="0.01"
+            placeholder="e.g., 2,000.00"
+            {...field}
+            value={field.value ?? ''}
+            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+            className="bg-secondary/50"
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+
+  <FormField
+    control={form.control}
+    name="purchase_date"
+    render={({ field }) => (
+      <FormItem>
+        <FormLabel className="text-sm">Purchase Date</FormLabel>
+        <FormControl>
+          <Input
+            type="date"
+            {...field}
+            className="bg-secondary/50"
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+</div>
 ```
 
-This ensures:
-- Dialog never exceeds 85% viewport height
-- Header stays fixed at top
-- Footer/submit button stays fixed at bottom
-- Only the form content scrolls
-- `pr-2` adds padding for scrollbar
-- `pb-2` adds bottom padding for better spacing
+### 2. Add Cost Basis to Banking Category
 
-## Files to Update
+Insert after the Interest Rate field (around line 807):
+
+```tsx
+{/* Cost Basis Section for P&L Tracking */}
+<div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+  
+  <FormField
+    control={form.control}
+    name="purchase_price_per_unit"
+    render={({ field }) => (
+      <FormItem>
+        <FormLabel className="text-sm">Initial Deposit Amount</FormLabel>
+        <FormControl>
+          <Input
+            type="number"
+            step="0.01"
+            placeholder="e.g., 10,000.00"
+            {...field}
+            value={field.value ?? ''}
+            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+            className="bg-secondary/50"
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+
+  <FormField
+    control={form.control}
+    name="purchase_date"
+    render={({ field }) => (
+      <FormItem>
+        <FormLabel className="text-sm">Account Opening Date</FormLabel>
+        <FormControl>
+          <Input
+            type="date"
+            {...field}
+            className="bg-secondary/50"
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+</div>
+```
+
+### 3. Update onSubmit Handler for Banking
+
+The current banking submit logic (lines 148-159) does not include cost basis calculation. Update to:
+
+```tsx
+if (data.category === 'banking' && data.currency) {
+  const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
+  const usdValue = data.value * forexRate;
+  
+  // Calculate cost basis from initial deposit if provided
+  const costBasis = data.purchase_price_per_unit 
+    ? data.purchase_price_per_unit * forexRate 
+    : undefined;
+
+  onAdd({
+    name: data.name,
+    category: data.category,
+    value: usdValue,
+    symbol: data.currency,
+    quantity: data.value,
+    yield: data.yield,
+    stakingRate: data.stakingRate,
+    cost_basis: costBasis,
+    purchase_date: data.purchase_date || undefined,
+    purchase_price_per_unit: data.purchase_price_per_unit,
+  });
+}
+```
+
+## File to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/EditAssetDialog.tsx` | Add scroll container pattern |
-| `src/components/SellAssetDialog.tsx` | Add scroll container pattern |
-| `src/components/AddDebtDialog.tsx` | Add scroll container pattern |
-| `src/components/EditDebtDialog.tsx` | Add scroll container pattern |
-| `src/components/AddGoalDialog.tsx` | Refactor to fixed header/footer pattern |
-| `src/components/EditGoalDialog.tsx` | Refactor to fixed header/footer pattern |
-| `src/components/AddIncomeDialog.tsx` | Add scroll container pattern |
-| `src/components/AddExpenseDialog.tsx` | Add scroll container pattern |
+| `src/components/AddAssetDialog.tsx` | Add cost basis sections to commodities and banking categories, update banking submit handler |
 
-## Detailed Changes
+## User-Friendly Labels
 
-### 1. EditAssetDialog.tsx
+To make the fields more intuitive for each category:
 
-Change DialogContent from:
-```tsx
-<DialogContent className="glass-card border-primary/20 sm:max-w-[425px]">
-```
-
-To:
-```tsx
-<DialogContent className="glass-card border-primary/20 sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
-```
-
-Wrap form fields in scrollable container with fixed footer.
-
-### 2. SellAssetDialog.tsx
-
-Same pattern - add `max-h-[85vh] flex flex-col overflow-hidden` to DialogContent and restructure form.
-
-### 3. AddDebtDialog.tsx & EditDebtDialog.tsx
-
-Add scroll pattern. Both have 6 form fields which may overflow on smaller screens.
-
-### 4. AddGoalDialog.tsx & EditGoalDialog.tsx
-
-Currently use `max-h-[90vh] overflow-y-auto` on the entire DialogContent. Change to 85vh and add the fixed header/footer pattern so submit button stays visible.
-
-### 5. AddIncomeDialog.tsx & AddExpenseDialog.tsx
-
-Add scroll pattern for consistency, even though they have fewer fields.
+| Category | Price Field Label | Date Field Label |
+|----------|------------------|------------------|
+| Stocks | Purchase Price per Share | Purchase Date |
+| Crypto | Purchase Price per Unit | Purchase Date |
+| Commodities | Purchase Price per Unit | Purchase Date |
+| Banking | Initial Deposit Amount | Account Opening Date |
 
 ## Technical Notes
 
-- Using `max-h-[85vh]` instead of `90vh` for better mobile compatibility
-- `flex-shrink-0` on header ensures it never collapses
-- `min-h-0` on form is critical for flex child overflow to work correctly
-- `pr-2` provides space for scrollbar without overlapping content
-- Footer section uses `pt-4` for consistent spacing from scrollable content
+- The cost basis for commodities will be calculated as `purchase_price_per_unit * quantity` (already handled in existing submit logic)
+- For banking, cost basis represents the initial deposit which can be compared to current balance to track gains from interest
+- The fields remain optional (no validation requirements) to avoid forcing users who don't need P&L tracking
