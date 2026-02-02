@@ -1,205 +1,250 @@
 
 
-# Add Recommended Monthly Savings for Goals Behind Schedule
+# Automated Monthly Portfolio Snapshots
 
 ## Overview
-Enhance the financial goal planner to provide actionable recommendations when a user is behind on their goal. When a goal's current monthly contribution is insufficient to meet the target date, the system will calculate and display the recommended monthly savings amount needed to get back on track.
+Implement an automated system that creates portfolio snapshots for all users at the end of each month. This ensures consistent historical data for trend calculations without relying on users to manually trigger snapshots.
 
 ## What You'll Get
-- **Recommended amount calculation**: Automatically compute the required monthly savings to meet the target date
-- **Visual recommendation display**: Show the recommended amount prominently when a goal is "Behind"
-- **Shortfall indicator**: Display how much more per month is needed compared to current contribution
-- **Quick-apply action**: Button to update the monthly contribution to the recommended amount
-- **Smart tooltips**: Explain why the goal is behind and what the recommendation means
+- **Automatic monthly snapshots**: Every user gets a snapshot created on the 1st of each month at midnight
+- **Bulk processing edge function**: New endpoint to process all users in a single scheduled call
+- **Login-based fallback**: Auto-create missing snapshot when user logs in (catches new users or failed jobs)
+- **Real trend data**: Dashboard stat cards will show actual month-over-month changes
 
 ---
 
 ## Implementation Approach
 
-### 1. Add Calculation Functions to goalAnalysis.ts
+### 1. Create Bulk Snapshot Edge Function
 
-Create new utility functions to calculate:
-- **Required monthly savings**: Based on remaining amount and months until target date
-- **Monthly shortfall**: Difference between current and required contribution
-- **Feasibility check**: Whether the recommended amount is achievable based on available income
+Create a new edge function `create-bulk-snapshots` that iterates through all users with profiles and creates snapshots for each. This is separate from the existing user-triggered function to keep concerns clean.
 
-```text
-calculateRequiredMonthlySavings(goal):
-  remaining = target_amount - current_amount
-  monthsUntilDeadline = months between now and target_date
-  
-  if monthsUntilDeadline <= 0:
-    return remaining (need full amount now)
-  
-  return remaining / monthsUntilDeadline
+**Why a separate function?**
+- The existing function requires user authentication (JWT)
+- The cron job will call with a service role key, not individual user tokens
+- Bulk processing has different error handling needs (continue on individual failures)
 
-getGoalRecommendation(goal):
-  returns {
-    requiredMonthlySavings: number
-    currentMonthlySavings: number (or 0)
-    monthlyShortfall: number
-    canMeetDeadline: boolean
-    adjustedDeadline: Date (if cannot meet current deadline)
-  }
-```
+### 2. Enable pg_cron Extension
 
-### 2. Update useGoals Hook
+Enable the `pg_cron` and `pg_net` extensions via migration to allow scheduling database jobs that can call HTTP endpoints.
 
-Add new helper function to the hook:
-- `calculateRecommendedSavings(goal: Goal): GoalRecommendation`
-- Return the recommendation data alongside existing calculations
+### 3. Schedule Monthly Cron Job
 
-### 3. Enhance Goal Display Components
+Create a cron job that runs at 00:05 on the 1st of every month, calling the bulk snapshot function with the service role key for authentication.
 
-**GoalsOverviewCard.tsx**:
-- Show recommendation badge/indicator for goals with "Behind" status
-- Display compact recommendation text: "Save €X/mo to stay on track"
+### 4. Add Login-Based Auto-Capture
 
-**ViewAllGoalsDialog.tsx**:
-- Add expanded recommendation section for "Behind" goals
-- Show current vs. recommended comparison
-- Include "Apply Recommendation" button to update monthly contribution
+Update the dashboard to automatically create a snapshot for the current month if one doesn't exist when the user visits. This handles:
+- New users who signed up mid-month
+- Edge cases where the cron job failed
+- Users who want fresh data immediately
 
-**EditGoalDialog.tsx**:
-- Add recommendation callout when editing a "Behind" goal
-- Pre-fill option to use the recommended amount
+### 5. Connect Real Trends to Dashboard
+
+Once snapshots are reliably captured, update the stat cards to display real month-over-month percentage changes instead of hardcoded values.
 
 ---
 
 ## Technical Details
 
+### New Edge Function: create-bulk-snapshots
+
+```text
+Location: supabase/functions/create-bulk-snapshots/index.ts
+
+Flow:
+1. Verify request has service role authorization (not user JWT)
+2. Fetch all user_ids from profiles table
+3. For each user:
+   - Fetch their assets, income, expenses, debts
+   - Calculate totals and breakdown
+   - Upsert snapshot for current month
+   - Log success/failure per user
+4. Return summary: { processed: N, succeeded: N, failed: N }
+```
+
+### Database Migration
+
+```sql
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+
+-- Grant usage to postgres role
+GRANT USAGE ON SCHEMA cron TO postgres;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA cron TO postgres;
+```
+
+### Cron Job Setup
+
+Using the Supabase insert tool (not migration) to create the scheduled job:
+
+```sql
+SELECT cron.schedule(
+  'monthly-portfolio-snapshots',
+  '5 0 1 * *',  -- At 00:05 on day 1 of every month
+  $$
+  SELECT net.http_post(
+    url := 'https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/create-bulk-snapshots',
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer [SERVICE_ROLE_KEY]"}'::jsonb,
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
+
+### Config Update
+
+```toml
+# supabase/config.toml addition
+[functions.create-bulk-snapshots]
+verify_jwt = false
+```
+
+### Frontend Auto-Capture (Index.tsx)
+
+```typescript
+// In IndexContent component
+const { hasSnapshots, snapshots, createSnapshot } = usePortfolioHistory();
+
+// Auto-create snapshot for current month if missing
+useEffect(() => {
+  if (!isLoading && user && snapshots.length >= 0) {
+    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-02"
+    const hasCurrentMonth = snapshots.some(s => 
+      s.snapshot_month.startsWith(currentMonth)
+    );
+    
+    if (!hasCurrentMonth) {
+      // Silently create snapshot in background
+      createSnapshot().catch(console.error);
+    }
+  }
+}, [isLoading, user, snapshots]);
+```
+
 ### Files to Create/Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/goalAnalysis.ts` | Add `calculateRequiredMonthlySavings`, `getGoalRecommendation` functions |
-| `src/hooks/useGoals.ts` | Add `calculateRecommendedSavings` helper, export recommendation type |
-| `src/components/GoalsOverviewCard.tsx` | Display recommendation for behind goals |
-| `src/components/ViewAllGoalsDialog.tsx` | Add recommendation section with apply button |
-| `src/components/EditGoalDialog.tsx` | Show recommendation callout, add quick-apply option |
+| `supabase/functions/create-bulk-snapshots/index.ts` | **NEW** - Bulk processing function for cron |
+| `supabase/config.toml` | Add config for new function |
+| `src/pages/Index.tsx` | Add auto-capture on login |
+| `src/hooks/usePortfolioHistory.ts` | Add `metricTrends` calculation |
+| `src/components/StatCard.tsx` | Add tooltip for trend context |
+| Migration SQL | Enable pg_cron and pg_net extensions |
 
-### New Types
+---
+
+## Edge Function: create-bulk-snapshots
 
 ```typescript
-interface GoalRecommendation {
-  requiredMonthlySavings: number;     // What's needed to meet the deadline
-  currentMonthlySavings: number;       // Current contribution (or 0)
-  monthlyShortfall: number;            // Difference between required and current
-  monthsRemaining: number;             // Months until target date
-  isAchievable: boolean;               // Based on months remaining (>0)
-  suggestedDeadline?: Date;            // If current deadline can't be met
-}
+// Key logic
+Deno.serve(async (req) => {
+  // Verify service role authorization
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const supabase = createClient(url, serviceRoleKey);
+  
+  // Get all users
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id');
+
+  const results = { processed: 0, succeeded: 0, failed: 0 };
+  
+  for (const profile of profiles) {
+    try {
+      // Fetch user's financial data
+      const [assets, debts, income, expenses] = await Promise.all([
+        supabase.from('assets').select('*').eq('user_id', profile.user_id),
+        supabase.from('debts').select('*').eq('user_id', profile.user_id),
+        supabase.from('income').select('*').eq('user_id', profile.user_id),
+        supabase.from('expenses').select('*').eq('user_id', profile.user_id),
+      ]);
+
+      // Calculate totals...
+      // Upsert snapshot...
+      
+      results.succeeded++;
+    } catch (error) {
+      console.error(`Failed for user ${profile.user_id}:`, error);
+      results.failed++;
+    }
+    results.processed++;
+  }
+
+  return new Response(JSON.stringify(results));
+});
 ```
 
-### Key Calculation Logic
+---
+
+## Trend Calculation Enhancement
+
+Update `usePortfolioHistory.ts` to provide real trends:
 
 ```typescript
-function calculateRequiredMonthlySavings(goal: Goal): number {
-  if (!goal.target_date) return 0;
+const metricTrends = useMemo(() => {
+  if (snapshots.length < 2) return null;
   
-  const remaining = goal.target_amount - goal.current_amount;
-  if (remaining <= 0) return 0; // Goal already reached
-  
-  const now = new Date();
-  const targetDate = new Date(goal.target_date);
-  const monthsRemaining = differenceInMonths(targetDate, now);
-  
-  if (monthsRemaining <= 0) {
-    // Deadline passed or is this month - need full amount
-    return remaining;
-  }
-  
-  return Math.ceil(remaining / monthsRemaining);
-}
-
-function getGoalRecommendation(goal: Goal): GoalRecommendation {
-  const requiredMonthlySavings = calculateRequiredMonthlySavings(goal);
-  const currentMonthlySavings = goal.monthly_contribution || 0;
-  const monthlyShortfall = Math.max(0, requiredMonthlySavings - currentMonthlySavings);
-  
-  // Calculate months remaining
-  const now = new Date();
-  const targetDate = goal.target_date ? new Date(goal.target_date) : null;
-  const monthsRemaining = targetDate ? differenceInMonths(targetDate, now) : 0;
-  
-  // If current contribution exists, calculate when goal would actually be met
-  let suggestedDeadline: Date | undefined;
-  if (currentMonthlySavings > 0 && monthlyShortfall > 0) {
-    const remaining = goal.target_amount - goal.current_amount;
-    const actualMonthsNeeded = Math.ceil(remaining / currentMonthlySavings);
-    suggestedDeadline = new Date();
-    suggestedDeadline.setMonth(suggestedDeadline.getMonth() + actualMonthsNeeded);
-  }
+  const current = snapshots[0];  // Most recent
+  const previous = snapshots[1]; // Previous month
   
   return {
-    requiredMonthlySavings,
-    currentMonthlySavings,
-    monthlyShortfall,
-    monthsRemaining,
-    isAchievable: monthsRemaining > 0,
-    suggestedDeadline,
+    netWorth: {
+      value: Math.abs(((current.net_worth - previous.net_worth) / previous.net_worth) * 100),
+      isPositive: current.net_worth >= previous.net_worth
+    },
+    totalDebt: {
+      value: Math.abs(((current.total_debt - previous.total_debt) / previous.total_debt) * 100),
+      isPositive: current.total_debt <= previous.total_debt  // Less debt = positive
+    },
+    monthlyNet: {
+      value: Math.abs(...),
+      isPositive: currentMonthlyNet >= previousMonthlyNet
+    }
   };
-}
+}, [snapshots]);
 ```
 
 ---
 
-## UI Design
+## Cron Schedule Explained
 
-### GoalsOverviewCard - Behind Goal Item
 ```text
-+--------------------------------------------------+
-| 🚗 New Car                          [Behind] [✏️] |
-|--------------------------------------------------|
-| €3,000 / €15,000                           20%   |
-| [=====                               ] progress   |
-|                                                   |
-| ⚠️ Save €800/mo to meet your deadline             |
-|    (currently €500/mo - need €300 more)           |
-+--------------------------------------------------+
-```
+5 0 1 * *
+│ │ │ │ │
+│ │ │ │ └── Any day of week
+│ │ │ └──── Any month
+│ │ └────── Day 1 of month
+│ └──────── Hour 0 (midnight)
+└────────── Minute 5
 
-### ViewAllGoalsDialog - Expanded Recommendation
-```text
-+--------------------------------------------------+
-| 🚗 New Car                                        |
-| High Priority • Due: Aug 15, 2026                |
-|--------------------------------------------------|
-| €3,000 of €15,000                          20%   |
-| [=====                               ]            |
-| €500/month              ~24 months remaining      |
-|--------------------------------------------------|
-| ⚠️ RECOMMENDATION                                 |
-|                                                   |
-| To reach your goal by Aug 2026, you need to save |
-| €800/month instead of €500/month.                |
-|                                                   |
-| Monthly shortfall: €300                          |
-|                                                   |
-| [ Apply €800/month ]  [ Extend Deadline → Dec ]  |
-+--------------------------------------------------+
+= Runs at 00:05 AM on the 1st of every month
 ```
 
 ---
 
-## Edge Cases to Handle
+## Edge Cases Handled
 
-1. **No target date set**: No recommendation shown (status is "no_deadline")
-2. **Deadline already passed**: Show recommendation as "full amount needed now"
-3. **Goal already on track**: No recommendation needed
-4. **No current monthly contribution**: Show full required amount as recommendation
-5. **Goal completed**: No recommendation displayed
-6. **Zero months remaining**: Recommend saving the full remaining amount
+| Scenario | Solution |
+|----------|----------|
+| New user signs up mid-month | Auto-capture on first login creates their first snapshot |
+| Cron job fails | Login-based fallback ensures user gets snapshot |
+| User has no financial data | Snapshot created with zeros (valid baseline) |
+| User deletes all assets | Next snapshot reflects the change |
+| Timezone differences | UTC-based scheduling ensures consistency |
 
 ---
 
-## User Experience Flow
+## Security Considerations
 
-1. User creates a goal with a target date and monthly contribution
-2. System calculates if contribution is sufficient to meet deadline
-3. If behind: Display recommendation with required monthly amount
-4. User can:
-   - Click "Apply Recommendation" to update their monthly contribution
-   - Click "Extend Deadline" to adjust the target date instead
-   - Manually edit the goal to set their own amount
+1. **Bulk function auth**: Uses service role key verification, not user JWT
+2. **No user data exposure**: Bulk function runs server-side only
+3. **RLS respected**: Using service role client bypasses RLS appropriately for system operations
+4. **Cron secret**: Service role key used only in database-level cron job
 
