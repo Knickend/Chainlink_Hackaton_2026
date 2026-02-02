@@ -44,6 +44,7 @@ export function ProfitLossDetailDialog({
   const { assetsWithCostBasis, assetsWithoutCostBasis, pnlByCategory, totalPnL, totalPnLPercent } = pnlData;
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<AssetTransaction | null>(null);
+  const [editingAssetAvgCost, setEditingAssetAvgCost] = useState<number | undefined>(undefined);
 
   // Get transactions for a specific asset
   const getAssetTransactions = (asset: { id: string; symbol?: string | null; name: string }) => {
@@ -233,6 +234,11 @@ export function ProfitLossDetailDialog({
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setEditingTransaction(tx);
+                                                  // Calculate average cost per unit from asset
+                                                  const avgCost = asset.quantity && asset.cost_basis
+                                                    ? asset.cost_basis / asset.quantity
+                                                    : undefined;
+                                                  setEditingAssetAvgCost(avgCost);
                                                 }}
                                               >
                                                 <Pencil className="w-3 h-3" />
@@ -406,11 +412,17 @@ export function ProfitLossDetailDialog({
         <EditTransactionDialog
           transaction={editingTransaction}
           open={!!editingTransaction}
-          onOpenChange={(open) => !open && setEditingTransaction(null)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditingTransaction(null);
+              setEditingAssetAvgCost(undefined);
+            }
+          }}
           onSave={async (id, data) => {
             await onEditTransaction(id, data);
           }}
           formatValue={formatValue}
+          avgCostPerUnit={editingAssetAvgCost}
         />
       )}
     </Dialog>
