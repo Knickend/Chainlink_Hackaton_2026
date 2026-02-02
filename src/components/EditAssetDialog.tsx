@@ -22,6 +22,9 @@ const assetSchema = z.object({
   yield: z.number().min(0).max(100).optional(),
   currency: z.string().optional(),
   unit: z.string().optional(),
+  // Cost basis fields for P&L tracking
+  purchase_price_per_unit: z.number().min(0).optional(),
+  purchase_date: z.string().optional(),
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
@@ -91,6 +94,8 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
       yield: asset.yield,
       currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
       unit: asset.unit || 'oz',
+      purchase_price_per_unit: asset.purchase_price_per_unit,
+      purchase_date: asset.purchase_date || '',
     },
   });
 
@@ -118,6 +123,8 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
         yield: asset.yield,
         currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
         unit: asset.unit || 'oz',
+        purchase_price_per_unit: asset.purchase_price_per_unit,
+        purchase_date: asset.purchase_date || '',
       });
       setSelectedTicker(null);
     }
@@ -203,6 +210,11 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
       }
     }
 
+    // Calculate cost basis from purchase price if provided
+    const costBasis = data.purchase_price_per_unit && data.quantity 
+      ? data.purchase_price_per_unit * data.quantity 
+      : undefined;
+
     onUpdate(asset.id, {
       name: data.name,
       category: data.category,
@@ -211,6 +223,9 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
       quantity: data.quantity,
       yield: data.yield,
       unit: data.category === 'commodities' ? ((data.unit as CommodityUnit) || 'oz') : undefined,
+      cost_basis: costBasis,
+      purchase_date: data.purchase_date || undefined,
+      purchase_price_per_unit: data.purchase_price_per_unit,
     });
     setOpen(false);
     setSelectedTicker(null);
@@ -362,6 +377,51 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
                     </FormItem>
                   )}
                 />
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Price per Unit (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 45000"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
 
@@ -639,6 +699,51 @@ export function EditAssetDialog({ asset, onUpdate, livePrices, onCryptoPriceUpda
                     </FormItem>
                   )}
                 />
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Price per Share (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 150.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
 
