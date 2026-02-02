@@ -7,18 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSubscription } from '@/hooks/useSubscription';
 import { SubscriptionDialog } from '@/components/SubscriptionDialog';
+import { CancellationQuestionnaireDialog } from '@/components/settings/CancellationQuestionnaireDialog';
+import { useCancellationFeedback, CancellationSubmission } from '@/hooks/useCancellationFeedback';
 import { getPlanByTier, SubscriptionTier } from '@/lib/subscription';
 import { format } from 'date-fns';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 
 export function SubscriptionSection() {
   const {
@@ -34,9 +26,17 @@ export function SubscriptionSection() {
     resumeSubscription,
   } = useSubscription();
 
+  const { submitCancellation, isSubmitting: isCancelling } = useCancellationFeedback();
+  
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
+  const handleCancelWithFeedback = async (data: CancellationSubmission) => {
+    const success = await submitCancellation(data);
+    if (success) {
+      await cancelSubscription();
+    }
+  };
   const currentPlan = getPlanByTier(tier);
 
   // Fallback plan info for free tier
@@ -184,31 +184,15 @@ export function SubscriptionSection() {
         }}
       />
 
-      {/* Cancel Confirmation Dialog */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Subscription?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your subscription will remain active until the end of your current billing period
-              {currentPeriodEnd && ` (${format(currentPeriodEnd, 'MMMM d, yyyy')})`}. 
-              After that, you'll be downgraded to the Free plan.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                cancelSubscription();
-                setShowCancelDialog(false);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Cancel Subscription
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Cancellation Questionnaire Dialog */}
+      <CancellationQuestionnaireDialog
+        open={showCancelDialog}
+        onOpenChange={setShowCancelDialog}
+        currentTier={tier}
+        currentPeriodEnd={currentPeriodEnd}
+        onSubmit={handleCancelWithFeedback}
+        isSubmitting={isCancelling}
+      />
     </>
   );
 }
