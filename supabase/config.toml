@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.create-monthly-snapshot]
 verify_jwt = false
 
+[functions.create-bulk-snapshots]
+verify_jwt = false
+
 [functions.fetch-crypto-prices]
 verify_jwt = false
 
