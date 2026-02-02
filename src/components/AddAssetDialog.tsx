@@ -148,6 +148,12 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
     if (data.category === 'banking' && data.currency) {
       const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
       const usdValue = data.value * forexRate;
+      
+      // Calculate cost basis from initial deposit if provided
+      const bankingCostBasis = data.purchase_price_per_unit 
+        ? data.purchase_price_per_unit * forexRate 
+        : undefined;
+
       onAdd({
         name: data.name,
         category: data.category,
@@ -156,6 +162,9 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         quantity: data.value,
         yield: data.yield,
         stakingRate: data.stakingRate,
+        cost_basis: bankingCostBasis,
+        purchase_date: data.purchase_date || undefined,
+        purchase_price_per_unit: data.purchase_price_per_unit,
       });
     } else if (data.category === 'commodities') {
       // For commodities, store the unit
@@ -575,6 +584,51 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     )}
                   />
                 )}
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Price per Unit (USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 2,000.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Purchase Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
 
@@ -805,6 +859,51 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     </FormItem>
                   )}
                 />
+
+                {/* Cost Basis Section for P&L Tracking */}
+                <div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
+                  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
+                  
+                  <FormField
+                    control={form.control}
+                    name="purchase_price_per_unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Initial Deposit Amount</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 10,000.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="purchase_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Account Opening Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-secondary/50"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
 
