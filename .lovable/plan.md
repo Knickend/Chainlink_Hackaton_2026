@@ -1,109 +1,126 @@
 
-# Plan: Fix P&L Not Updating After Transaction Edit
+# Plan: Fix Realized P&L Calculation Using Average Cost Basis
 
-## Problem Analysis
+## Problem
 
-After editing a transaction, the P&L values displayed in the UI are not correctly updated. Based on the screenshots:
+When editing a sell transaction, changing the price should recalculate P&L based on the asset's **average purchase price**, not through proportional scaling. Currently:
 
-| State | Price | P&L Displayed |
-|-------|-------|---------------|
-| Before edit | @$10,000.00 | +$200.00 |
-| After edit | @$10,100.00 | +$200.00 (unchanged) |
+| Scenario | Sale Price | Expected P&L Calculation |
+|----------|-----------|-------------------------|
+| 4 buys of 0.5 BTC at different prices | Total 2 BTC, total cost $50,000 | Avg cost = $25,000/BTC |
+| Sell 0.2 BTC at $30,000 | Proceeds: $6,000 | P&L = $6,000 - (0.2 × $25,000) = +$1,000 |
+| Edit sale to $20,000 | Proceeds: $4,000 | P&L = $4,000 - (0.2 × $25,000) = -$1,000 |
 
-The user changed the price per unit from $10,000 to $10,100 (for 0.1 BTC, making total value change from $1,000 to $1,010), but the P&L display still shows the old value.
+The correct formula is:
+```
+Realized P&L = Sale Proceeds - (Quantity × Average Cost Per Unit)
+```
 
 ## Root Cause
 
-The issue has two parts:
-
-1. **UI displays `tx.realized_pnl` directly** - The transaction row in `ProfitLossDetailDialog.tsx` reads `tx.realized_pnl` from the transaction object. When price changes, the user may not manually update the realized P&L field, so it stays at the old value.
-
-2. **The realized P&L is not auto-recalculated** - When a user changes the price per unit or quantity of a sell transaction, the realized P&L should ideally be recalculated based on the cost basis. Currently, the form just passes whatever value is in the `realized_pnl` field.
+`EditTransactionDialog` currently only receives the transaction data, not the parent asset's cost basis. It cannot calculate the correct P&L because it doesn't know the average purchase price.
 
 ## Solution
 
-Auto-recalculate the realized P&L when quantity or price changes in the Edit Transaction dialog. For a sell transaction, the realized P&L should be:
-
-```text
-Realized P&L = (sell_price_per_unit - cost_basis_per_unit) × quantity_sold
-```
-
-However, since we may not have the original cost basis per unit for this specific transaction easily accessible, a simpler approach is to:
-
-1. **Recalculate total value correctly** (already done)
-2. **Allow users to edit realized P&L manually** (already done)
-3. **Show a warning when price/quantity changes but P&L remains unchanged**
-
-### Alternative Approach (Recommended)
-
-Since the realized P&L was likely calculated at the time of the original sale, when editing, we should provide a helper that suggests the new P&L based on the ratio of price change:
-
-```text
-new_pnl = original_pnl × (new_total_value / original_total_value)
-```
-
-This maintains the original profit margin percentage while adjusting for the new values.
+Pass the asset's average cost per unit to `EditTransactionDialog` and use it for P&L recalculation.
 
 ## Implementation Changes
 
-### 1. Modify `EditTransactionDialog.tsx`
+### 1. Modify EditTransactionDialog to accept cost basis info
 
-Add logic to automatically update the realized P&L when quantity or price per unit changes:
+Add a new optional prop `avgCostPerUnit`:
 
 ```typescript
-// Track original values to calculate P&L adjustments
-const originalTotalValue = transaction.quantity * transaction.price_per_unit;
-const originalRealizedPnl = transaction.realized_pnl || 0;
-
-// Watch for changes and suggest new P&L
-useEffect(() => {
-  if (transaction?.transaction_type === 'sell' && transaction.realized_pnl !== undefined) {
-    const newTotalValue = quantity * pricePerUnit;
-    if (originalTotalValue > 0 && newTotalValue !== originalTotalValue) {
-      // Calculate proportional P&L
-      const newPnl = originalRealizedPnl * (newTotalValue / originalTotalValue);
-      setValue('realized_pnl', Math.round(newPnl * 100) / 100);
-    }
-  }
-}, [quantity, pricePerUnit]);
+interface EditTransactionDialogProps {
+  transaction: AssetTransaction | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (id: string, data: EditTransactionFormData) => Promise<void>;
+  formatValue: (value: number) => string;
+  avgCostPerUnit?: number; // NEW: Average cost per unit from asset
+}
 ```
 
-### 2. Update the form to recalculate P&L on price/quantity changes
+### 2. Update P&L recalculation logic
 
-When the user changes the price per unit or quantity, automatically update the realized P&L proportionally. This ensures that:
-- If the original P&L was +$200 on a $1,000 sale (20% profit)
-- And the user corrects the sale to $1,010
-- The new P&L should be +$202 (maintaining 20% profit margin)
+Change the useEffect to use the correct formula:
+
+```typescript
+// Current (wrong):
+const newPnl = originalRealizedPnl * (newTotalValue / originalTotalValue);
+
+// Fixed:
+if (avgCostPerUnit && avgCostPerUnit > 0) {
+  const costBasisOfSoldUnits = quantity * avgCostPerUnit;
+  const newPnl = newTotalValue - costBasisOfSoldUnits;
+  setValue('realized_pnl', Math.round(newPnl * 100) / 100);
+}
+```
+
+### 3. Modify ProfitLossDetailDialog to pass cost basis
+
+When rendering the EditTransactionDialog, pass the current asset's average cost:
+
+```typescript
+<EditTransactionDialog
+  transaction={editingTransaction}
+  open={!!editingTransaction}
+  onOpenChange={(open) => !open && setEditingTransaction(null)}
+  onSave={async (id, data) => {
+    await onEditTransaction(id, data);
+  }}
+  formatValue={formatValue}
+  avgCostPerUnit={currentEditingAsset?.cost_basis && currentEditingAsset?.quantity 
+    ? currentEditingAsset.cost_basis / currentEditingAsset.quantity 
+    : undefined}
+/>
+```
+
+### 4. Track which asset's transaction is being edited
+
+Add state to track the current asset when editing:
+
+```typescript
+const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+
+// When opening edit dialog, also store the asset:
+onClick={(e) => {
+  e.stopPropagation();
+  setEditingTransaction(tx);
+  setEditingAsset(asset); // Store asset for cost basis lookup
+}}
+```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/EditTransactionDialog.tsx` | Add auto-recalculation of realized P&L when price/quantity changes |
+| `src/components/EditTransactionDialog.tsx` | Add `avgCostPerUnit` prop, fix P&L calculation formula |
+| `src/components/ProfitLossDetailDialog.tsx` | Track editing asset, pass `avgCostPerUnit` to dialog |
 
-## Technical Details
+## Data Flow
 
-### Current Flow
-1. User clicks edit on a transaction
-2. Form loads with original values
-3. User changes price_per_unit
-4. Total value updates (correctly)
-5. Realized P&L stays unchanged (bug)
-6. Save triggers update
-7. UI displays old P&L value
+```text
+Asset (from assetsWithCostBasis)
+├── cost_basis: $50,000
+├── quantity: 2 BTC
+└── avgCostPerUnit: $25,000/BTC
 
-### Fixed Flow
-1. User clicks edit on a transaction
-2. Form loads with original values
-3. User changes price_per_unit
-4. Total value updates (correctly)
-5. **Realized P&L auto-updates proportionally** (fix)
-6. Save triggers update with new P&L
-7. UI displays correct P&L value
+↓ User clicks edit on a sell transaction
 
-## Edge Cases Considered
+EditTransactionDialog
+├── Receives avgCostPerUnit: $25,000
+├── User changes price to $30,000 for 0.2 BTC
+├── newTotalValue: $6,000
+├── costBasisOfSold: 0.2 × $25,000 = $5,000
+└── newRealizedPnL: $6,000 - $5,000 = +$1,000 ✓
+```
 
-- **Zero original total value**: Don't recalculate (division by zero protection)
-- **Negative P&L**: Proportional adjustment works for both gains and losses
-- **User manually overrides**: Allow manual editing after auto-calculation
-- **Buy transactions**: Don't auto-calculate P&L (only applies to sell transactions)
+## Edge Cases
+
+| Case | Handling |
+|------|----------|
+| No cost basis available | Skip auto-recalculation, let user enter manually |
+| Buy transactions | Don't recalculate P&L (buys don't have realized P&L) |
+| Quantity changes | Recalculate: `(qty × price) - (qty × avgCost)` |
+| Asset not found | Fall back to proportional scaling or manual entry |
