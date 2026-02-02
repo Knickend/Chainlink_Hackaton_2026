@@ -520,6 +520,71 @@ const IndexContent = () => {
                   formatValue={formatValue}
                   onUpdateAsset={isDemo ? undefined : updateAsset}
                   onDeleteAsset={isDemo ? undefined : deleteAsset}
+                  onBuyMore={isDemo ? undefined : async (assetId, data) => {
+                    const asset = assets.find(a => a.id === assetId);
+                    if (!asset) return;
+                    
+                    // Record buy transaction
+                    await addTransaction({
+                      asset_id: assetId,
+                      transaction_type: 'buy',
+                      symbol: asset.symbol || asset.name,
+                      asset_name: asset.name,
+                      category: asset.category,
+                      quantity: data.quantity,
+                      price_per_unit: data.price_per_unit,
+                      total_value: data.quantity * data.price_per_unit,
+                      transaction_date: data.transaction_date,
+                    });
+                    
+                    // Update asset with new quantity and cost basis
+                    const newQuantity = (asset.quantity || 0) + data.quantity;
+                    const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
+                    
+                    await updateAsset(assetId, {
+                      quantity: newQuantity,
+                      cost_basis: newCostBasis,
+                      purchase_price_per_unit: newCostBasis / newQuantity,
+                    });
+                  }}
+                  onSell={isDemo ? undefined : async (assetId, data) => {
+                    const asset = assets.find(a => a.id === assetId);
+                    if (!asset) return;
+                    
+                    // Record the transaction
+                    await addTransaction({
+                      asset_id: assetId,
+                      transaction_type: 'sell',
+                      symbol: asset.symbol || asset.name,
+                      asset_name: asset.name,
+                      category: asset.category,
+                      quantity: data.quantity,
+                      price_per_unit: data.price_per_unit,
+                      total_value: data.total_value,
+                      realized_pnl: data.realized_pnl,
+                      transaction_date: data.transaction_date,
+                      notes: data.notes,
+                    });
+                    
+                    // Update or delete the asset
+                    const remainingQty = (asset.quantity || 0) - data.quantity;
+                    
+                    if (remainingQty <= 0) {
+                      // Full sale - delete asset
+                      await deleteAsset(assetId);
+                    } else {
+                      // Partial sale - reduce quantity and cost basis proportionally
+                      const originalQty = asset.quantity || 0;
+                      const newCostBasis = asset.cost_basis 
+                        ? asset.cost_basis * (remainingQty / originalQty)
+                        : undefined;
+                      
+                      await updateAsset(assetId, {
+                        quantity: remainingQty,
+                        cost_basis: newCostBasis,
+                      });
+                    }
+                  }}
                   livePrices={prices}
                   delay={index * 0.1}
                 />
