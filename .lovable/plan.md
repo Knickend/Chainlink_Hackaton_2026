@@ -1,141 +1,101 @@
 
-# Plan: Make Profit & Loss Card Full Width
+# Plan: Make All Dialogs Consistently Scrollable
 
 ## Problem
 
-The Profit & Loss card currently sits in a 3-column grid but only uses 1 column, leaving 2/3 of the row empty. The screenshot shows the card looking cramped on the left side with wasted space.
+Looking at the uploaded screenshots, the Add Asset dialog for cryptocurrency extends beyond the viewport. While you've already fixed `AddAssetDialog.tsx` with proper scrollable styling, other dialogs across the application are inconsistent - some have no scrolling at all, and others use different approaches.
 
-## Solution
+## Current State Analysis
 
-Remove the grid container and redesign the card layout to utilize the full dashboard width with a horizontal arrangement of stats.
+| Dialog | Scroll Behavior | Issue |
+|--------|-----------------|-------|
+| AddAssetDialog | Fixed header/footer, scrollable content | Already correct |
+| EditAssetDialog | No scroll | May overflow on mobile/small screens |
+| SellAssetDialog | No scroll | May overflow on mobile/small screens |
+| AddDebtDialog | No scroll | May overflow with 6 form fields |
+| EditDebtDialog | No scroll | May overflow with 6 form fields |
+| AddGoalDialog | `overflow-y-auto` on entire dialog | Whole dialog scrolls including header |
+| EditGoalDialog | `overflow-y-auto` on entire dialog | Whole dialog scrolls including header |
+| AddIncomeDialog | No scroll | May overflow on mobile |
+| AddExpenseDialog | No scroll | May overflow on mobile |
 
-## Changes Required
+## Target Pattern
 
-### 1. Update `src/pages/Index.tsx`
-
-Remove the grid wrapper around the P&L section. Change from:
+Apply the same consistent pattern used in `AddAssetDialog`:
 
 ```tsx
-<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-  <div className="lg:col-span-1">
-    {isPro ? (
-      <ProfitLossCard ... />
-    ) : !isDemo && (
-      <ProfitLossTeaser ... />
-    )}
-  </div>
-</div>
+<DialogContent className="sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
+  <DialogHeader className="flex-shrink-0">...</DialogHeader>
+  <Form>
+    <form className="flex flex-col flex-1 min-h-0">
+      <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
+        {/* Form fields */}
+      </div>
+      <div className="flex-shrink-0 pt-4">
+        {/* Submit button / footer */}
+      </div>
+    </form>
+  </Form>
+</DialogContent>
+```
+
+This ensures:
+- Dialog never exceeds 85% viewport height
+- Header stays fixed at top
+- Footer/submit button stays fixed at bottom
+- Only the form content scrolls
+- `pr-2` adds padding for scrollbar
+- `pb-2` adds bottom padding for better spacing
+
+## Files to Update
+
+| File | Changes |
+|------|---------|
+| `src/components/EditAssetDialog.tsx` | Add scroll container pattern |
+| `src/components/SellAssetDialog.tsx` | Add scroll container pattern |
+| `src/components/AddDebtDialog.tsx` | Add scroll container pattern |
+| `src/components/EditDebtDialog.tsx` | Add scroll container pattern |
+| `src/components/AddGoalDialog.tsx` | Refactor to fixed header/footer pattern |
+| `src/components/EditGoalDialog.tsx` | Refactor to fixed header/footer pattern |
+| `src/components/AddIncomeDialog.tsx` | Add scroll container pattern |
+| `src/components/AddExpenseDialog.tsx` | Add scroll container pattern |
+
+## Detailed Changes
+
+### 1. EditAssetDialog.tsx
+
+Change DialogContent from:
+```tsx
+<DialogContent className="glass-card border-primary/20 sm:max-w-[425px]">
 ```
 
 To:
-
 ```tsx
-<div className="mb-8">
-  {isPro ? (
-    <ProfitLossCard ... />
-  ) : !isDemo && (
-    <ProfitLossTeaser ... />
-  )}
-</div>
+<DialogContent className="glass-card border-primary/20 sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
 ```
 
-### 2. Update `src/components/ProfitLossCard.tsx`
+Wrap form fields in scrollable container with fixed footer.
 
-Redesign the card layout to use horizontal space effectively:
+### 2. SellAssetDialog.tsx
 
-**Current layout (stacked, narrow):**
-```text
-+---------------------------+
-|  $ Profit & Loss    [PRO] |
-+---------------------------+
-|       Total P&L           |
-|    +$204,355.80           |
-|       +399.9%             |
-|  +----------+ +--------+  |
-|  |Unrealized| |Realized|  |
-|  |+$204,355 | |+$0.00  |  |
-|  +----------+ +--------+  |
-|  [View Details]           |
-+---------------------------+
-```
+Same pattern - add `max-h-[85vh] flex flex-col overflow-hidden` to DialogContent and restructure form.
 
-**New layout (horizontal, full-width):**
-```text
-+-------------------------------------------------------------------------------+
-|  $ Profit & Loss                                                        [PRO] |
-+-------------------------------------------------------------------------------+
-|   Total P&L           |    Unrealized P&L      |    Realized P&L      | [View |
-|  +$204,355.80         |   +$204,355.80         |   +$0.00             |Details]|
-|     +399.9%           |      +399.9%           |      0.0%            |        |
-+-------------------------------------------------------------------------------+
-```
+### 3. AddDebtDialog.tsx & EditDebtDialog.tsx
 
-**Code structure:**
-```tsx
-<Card className="glass-card border-primary/20">
-  <CardHeader className="pb-2">
-    <div className="flex items-center justify-between">
-      <CardTitle>...</CardTitle>
-      <ProBadge />
-    </div>
-  </CardHeader>
-  <CardContent>
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-      {/* Total P&L - main stat */}
-      <div className="flex items-center gap-4">
-        <TrendingUp/Down icon />
-        <div>
-          <p className="text-sm text-muted-foreground">Total P&L</p>
-          <span className="text-2xl font-bold">+$204,355.80</span>
-          <span className="text-sm">+399.9%</span>
-        </div>
-      </div>
-      
-      {/* Unrealized & Realized - side by side */}
-      <div className="flex gap-4 md:gap-8">
-        <div className="bg-secondary/30 rounded-lg p-4">
-          <p>Unrealized</p>
-          <p>+$204,355.80</p>
-        </div>
-        <div className="bg-secondary/30 rounded-lg p-4">
-          <p>Realized</p>
-          <p>+$0.00</p>
-        </div>
-      </div>
-      
-      {/* View Details button */}
-      <Button variant="outline">
-        View Details
-        <ChevronRight />
-      </Button>
-    </div>
-  </CardContent>
-</Card>
-```
+Add scroll pattern. Both have 6 form fields which may overflow on smaller screens.
 
-### 3. Update `src/components/ProfitLossTeaser.tsx` (if needed)
+### 4. AddGoalDialog.tsx & EditGoalDialog.tsx
 
-Apply similar full-width styling to maintain visual consistency when the teaser is shown to non-Pro users.
+Currently use `max-h-[90vh] overflow-y-auto` on the entire DialogContent. Change to 85vh and add the fixed header/footer pattern so submit button stays visible.
 
-## Visual Comparison
+### 5. AddIncomeDialog.tsx & AddExpenseDialog.tsx
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| Width | 1/3 of dashboard | Full width |
-| Layout | Vertical/stacked | Horizontal flow |
-| Stats | Centered, narrow boxes | Row of spacious stat blocks |
-| Button | Full width at bottom | Right-aligned with stats |
+Add scroll pattern for consistency, even though they have fewer fields.
 
-## Responsive Behavior
+## Technical Notes
 
-- **Desktop (lg+)**: Horizontal layout with all elements in a row
-- **Tablet (md)**: May wrap to 2 rows if needed
-- **Mobile**: Stack vertically (similar to current layout)
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/pages/Index.tsx` | Remove grid wrapper (lines 380-395) |
-| `src/components/ProfitLossCard.tsx` | Redesign to horizontal layout |
-| `src/components/ProfitLossTeaser.tsx` | Apply matching full-width styling |
+- Using `max-h-[85vh]` instead of `90vh` for better mobile compatibility
+- `flex-shrink-0` on header ensures it never collapses
+- `min-h-0` on form is critical for flex child overflow to work correctly
+- `pr-2` provides space for scrollbar without overlapping content
+- Footer section uses `pt-4` for consistent spacing from scrollable content
