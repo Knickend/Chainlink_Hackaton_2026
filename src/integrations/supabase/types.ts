@@ -381,6 +381,7 @@ export type Database = {
           assets_breakdown: Json | null
           created_at: string
           id: string
+          monthly_debt_payments: number
           net_worth: number
           snapshot_month: string
           total_assets: number
@@ -393,6 +394,7 @@ export type Database = {
           assets_breakdown?: Json | null
           created_at?: string
           id?: string
+          monthly_debt_payments?: number
           net_worth?: number
           snapshot_month: string
           total_assets?: number
@@ -405,6 +407,7 @@ export type Database = {
           assets_breakdown?: Json | null
           created_at?: string
           id?: string
+          monthly_debt_payments?: number
           net_worth?: number
           snapshot_month?: string
           total_assets?: number

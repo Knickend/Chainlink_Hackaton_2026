@@ -239,13 +239,23 @@ export const UNIT_SYMBOLS: Record<DisplayUnit, string> = {
 };
 
 // Helper to calculate conversion rates from live prices
-export function calculateConversionRates(btcPrice: number, goldPrice: number): Record<DisplayUnit, number> {
+// Accepts optional live forex rates for consistent conversions
+export function calculateConversionRates(
+  btcPrice: number, 
+  goldPrice: number,
+  liveForexRates?: Record<string, number>
+): Record<DisplayUnit, number> {
+  // For EUR/GBP: API returns USD→Currency rate (e.g., 0.84459 means 1 USD = 0.84459 EUR)
+  // So to convert FROM USD to EUR, we multiply by this rate
+  const eurRate = liveForexRates?.EUR ?? 0.92;
+  const gbpRate = liveForexRates?.GBP ?? 0.79;
+  
   return {
     USD: 1,
     BTC: 1 / btcPrice,
     GOLD: 1 / goldPrice,
-    EUR: 0.92,
-    GBP: 0.79,
+    EUR: eurRate,
+    GBP: gbpRate,
   };
 }
 

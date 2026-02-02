@@ -21,6 +21,7 @@ export interface PortfolioSnapshot {
   total_debt: number;
   total_income: number;
   total_expenses: number;
+  monthly_debt_payments: number;
   assets_breakdown: AssetsBreakdown;
   created_at: string;
 }
