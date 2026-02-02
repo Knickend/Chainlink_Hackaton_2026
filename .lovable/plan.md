@@ -1,126 +1,216 @@
 
-# Plan: Fix Realized P&L Calculation Using Average Cost Basis
 
-## Problem
+# Plan: Complete Net Cash Flow Calculation Fix
 
-When editing a sell transaction, changing the price should recalculate P&L based on the asset's **average purchase price**, not through proportional scaling. Currently:
+## Summary of All Changes
 
-| Scenario | Sale Price | Expected P&L Calculation |
-|----------|-----------|-------------------------|
-| 4 buys of 0.5 BTC at different prices | Total 2 BTC, total cost $50,000 | Avg cost = $25,000/BTC |
-| Sell 0.2 BTC at $30,000 | Proceeds: $6,000 | P&L = $6,000 - (0.2 × $25,000) = +$1,000 |
-| Edit sale to $20,000 | Proceeds: $4,000 | P&L = $4,000 - (0.2 × $25,000) = -$1,000 |
+This plan addresses the three issues from the previous discussion plus the new requirement to include debt payments:
 
-The correct formula is:
+1. **Monthly Income UI Enhancement**: Display total income with recurring/one-time breakdown
+2. **SATS Conversion Bug Fix**: Normalize currency strings to prevent 1:1 SATS-to-USD conversion
+3. **Net Cash Flow Formula Update**: Include debt payments in the calculation
+
+**Corrected Formula:**
 ```
-Realized P&L = Sale Proceeds - (Quantity × Average Cost Per Unit)
+Net Cash Flow = Monthly Income (recurring + non-recurring) - Monthly Expenses (recurring + non-recurring) - Monthly Debt Payments
 ```
 
-## Root Cause
+---
 
-`EditTransactionDialog` currently only receives the transaction data, not the parent asset's cost basis. It cannot calculate the correct P&L because it doesn't know the average purchase price.
+## Current State Analysis
 
-## Solution
+### usePortfolio.ts (lines 114-119)
+```typescript
+// Debt metrics will be passed from useDebts hook when integrated
+const totalDebt = 0;           // ← Hardcoded!
+const monthlyDebtPayments = 0; // ← Hardcoded!
+const monthlyInterestExpense = 0;
 
-Pass the asset's average cost per unit to `EditTransactionDialog` and use it for P&L recalculation.
+const monthlyNetIncome = totalIncome - totalExpenses - monthlyDebtPayments;
+```
+
+The hook has placeholders for debt values but never receives actual debt data.
+
+### Index.tsx (line 183)
+```typescript
+const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
+```
+
+This works correctly because it uses `demoMonthlyPayments` from `useDebts()`, but the `metrics.monthlyNetIncome` from the hook is incorrect.
+
+---
 
 ## Implementation Changes
 
-### 1. Modify EditTransactionDialog to accept cost basis info
+### File 1: `src/lib/types.ts`
 
-Add a new optional prop `avgCostPerUnit`:
+**Add new fields to PortfolioMetrics interface:**
 
 ```typescript
-interface EditTransactionDialogProps {
-  transaction: AssetTransaction | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSave: (id: string, data: EditTransactionFormData) => Promise<void>;
-  formatValue: (value: number) => string;
-  avgCostPerUnit?: number; // NEW: Average cost per unit from asset
+export interface PortfolioMetrics {
+  totalNetWorth: number;
+  totalIncome: number;
+  totalExpenses: number;
+  totalDebt: number;
+  monthlyDebtPayments: number;
+  monthlyInterestExpense: number;
+  monthlyNetIncome: number;
+  yearlyYield: number;
+  // NEW: Breakdown fields for UI display
+  recurringIncome: number;
+  oneTimeIncome: number;
+  recurringExpenses: number;
+  oneTimeExpenses: number;
 }
 ```
 
-### 2. Update P&L recalculation logic
+---
 
-Change the useEffect to use the correct formula:
+### File 2: `src/hooks/usePortfolio.ts`
 
+**Changes:**
+
+1. **Normalize currency strings** to fix SATS bug (lines 95-106, 108-112)
+2. **Calculate separate recurring/one-time totals** for income and expenses
+3. **Accept debt data as parameter** to include in metrics
+
+**Updated hook signature:**
 ```typescript
-// Current (wrong):
-const newPnl = originalRealizedPnl * (newTotalValue / originalTotalValue);
-
-// Fixed:
-if (avgCostPerUnit && avgCostPerUnit > 0) {
-  const costBasisOfSoldUnits = quantity * avgCostPerUnit;
-  const newPnl = newTotalValue - costBasisOfSoldUnits;
-  setValue('realized_pnl', Math.round(newPnl * 100) / 100);
-}
+export function usePortfolio(
+  livePrices?: LivePrices, 
+  isDemo = false,
+  debtData?: { monthlyPayments: number; monthlyInterest: number }
+)
 ```
 
-### 3. Modify ProfitLossDetailDialog to pass cost basis
-
-When rendering the EditTransactionDialog, pass the current asset's average cost:
-
+**Updated metrics calculation:**
 ```typescript
-<EditTransactionDialog
-  transaction={editingTransaction}
-  open={!!editingTransaction}
-  onOpenChange={(open) => !open && setEditingTransaction(null)}
-  onSave={async (id, data) => {
-    await onEditTransaction(id, data);
-  }}
-  formatValue={formatValue}
-  avgCostPerUnit={currentEditingAsset?.cost_basis && currentEditingAsset?.quantity 
-    ? currentEditingAsset.cost_basis / currentEditingAsset.quantity 
-    : undefined}
+// Normalize currency and calculate income with breakdown
+const recurringIncome = income
+  .filter(inc => inc.is_recurring)
+  .reduce((sum, inc) => {
+    const currency = (inc.currency || 'USD').trim().toUpperCase();
+    if (currency === 'BTC' || currency === 'SATS') {
+      return sum + convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
+    }
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (inc.amount * rate);
+  }, 0);
+
+const oneTimeIncome = income
+  .filter(inc => !inc.is_recurring)
+  .reduce((sum, inc) => {
+    const currency = (inc.currency || 'USD').trim().toUpperCase();
+    if (currency === 'BTC' || currency === 'SATS') {
+      return sum + convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
+    }
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (inc.amount * rate);
+  }, 0);
+
+const totalIncome = recurringIncome + oneTimeIncome;
+
+// Same pattern for expenses
+const recurringExpenses = expenses
+  .filter(exp => exp.is_recurring)
+  .reduce((sum, exp) => {
+    const currency = (exp.currency || 'USD').trim().toUpperCase();
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (exp.amount * rate);
+  }, 0);
+
+const oneTimeExpenses = expenses
+  .filter(exp => !exp.is_recurring)
+  .reduce((sum, exp) => {
+    const currency = (exp.currency || 'USD').trim().toUpperCase();
+    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
+    return sum + (exp.amount * rate);
+  }, 0);
+
+const totalExpenses = recurringExpenses + oneTimeExpenses;
+
+// Use passed debt data
+const monthlyDebtPayments = debtData?.monthlyPayments || 0;
+const monthlyInterestExpense = debtData?.monthlyInterest || 0;
+
+// Correct formula with debt payments
+const monthlyNetIncome = totalIncome - totalExpenses - monthlyDebtPayments;
+
+return {
+  // ... existing fields
+  recurringIncome,
+  oneTimeIncome,
+  recurringExpenses,
+  oneTimeExpenses,
+};
+```
+
+---
+
+### File 3: `src/pages/Index.tsx`
+
+**Changes:**
+
+1. **Pass debt data to usePortfolio** (line ~152)
+2. **Update Monthly Income StatCard** to show breakdown (lines 320-328)
+
+**Pass debt data:**
+```typescript
+const {
+  // ... existing destructuring
+} = usePortfolio(prices, isDemo, { 
+  monthlyPayments: demoMonthlyPayments, 
+  monthlyInterest: demoMonthlyInterest 
+});
+```
+
+**Update StatCard subtitle:**
+```typescript
+<StatCard
+  title="Monthly Income"
+  value={formatValue(metrics.totalIncome)}
+  subtitle={`Recurring: ${formatValue(metrics.recurringIncome)} | One-time: ${formatValue(metrics.oneTimeIncome)}`}
+  icon={TrendingUp}
+  trend={isDemo ? undefined : metricTrends?.totalIncome || undefined}
+  variant="success"
+  delay={0.1}
 />
 ```
 
-### 4. Track which asset's transaction is being edited
+---
 
-Add state to track the current asset when editing:
-
-```typescript
-const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-
-// When opening edit dialog, also store the asset:
-onClick={(e) => {
-  e.stopPropagation();
-  setEditingTransaction(tx);
-  setEditingAsset(asset); // Store asset for cost basis lookup
-}}
-```
-
-## Files to Modify
+## Files to Modify Summary
 
 | File | Changes |
 |------|---------|
-| `src/components/EditTransactionDialog.tsx` | Add `avgCostPerUnit` prop, fix P&L calculation formula |
-| `src/components/ProfitLossDetailDialog.tsx` | Track editing asset, pass `avgCostPerUnit` to dialog |
+| `src/lib/types.ts` | Add `recurringIncome`, `oneTimeIncome`, `recurringExpenses`, `oneTimeExpenses` to PortfolioMetrics |
+| `src/hooks/usePortfolio.ts` | 1. Normalize currency with `.trim().toUpperCase()`<br>2. Calculate recurring/one-time breakdowns<br>3. Accept `debtData` parameter<br>4. Use debt payments in net income formula |
+| `src/pages/Index.tsx` | 1. Pass debt data to usePortfolio<br>2. Update Monthly Income StatCard subtitle |
 
-## Data Flow
+---
 
-```text
-Asset (from assetsWithCostBasis)
-├── cost_basis: $50,000
-├── quantity: 2 BTC
-└── avgCostPerUnit: $25,000/BTC
+## Expected Results
 
-↓ User clicks edit on a sell transaction
+### Before Fix (Current Bug)
+- 250,000 SATS × 1 = **$250,000** (wrong!)
+- Debt payments not factored into metrics calculation
 
-EditTransactionDialog
-├── Receives avgCostPerUnit: $25,000
-├── User changes price to $30,000 for 0.2 BTC
-├── newTotalValue: $6,000
-├── costBasisOfSold: 0.2 × $25,000 = $5,000
-└── newRealizedPnL: $6,000 - $5,000 = +$1,000 ✓
+### After Fix
+- 250,000 SATS ÷ 100,000,000 × $96,000 = **~$240** (correct)
+- Debt payments properly subtracted from net income
+
+### UI Display
+**Monthly Income Card:**
+```
+$7,898.00
+Recurring: $7,574.00 | One-time: $324.00
 ```
 
-## Edge Cases
+### Net Cash Flow Calculation
+```
+Net Cash Flow = $7,898 (total income) 
+              - $5,200 (total expenses) 
+              - $850 (debt payments)
+              = $1,848
+```
 
-| Case | Handling |
-|------|----------|
-| No cost basis available | Skip auto-recalculation, let user enter manually |
-| Buy transactions | Don't recalculate P&L (buys don't have realized P&L) |
-| Quantity changes | Recalculate: `(qty × price) - (qty × avgCost)` |
-| Asset not found | Fall back to proportional scaling or manual entry |
