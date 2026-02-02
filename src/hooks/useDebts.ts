@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Debt, DebtType, DisplayUnit, FOREX_RATES_TO_USD, BankingCurrency, convertCurrency, UNIT_SYMBOLS, DEFAULT_CONVERSION_RATES, calculateConversionRates } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
-export function useDebts() {
+export function useDebts(liveForexRates?: Record<string, number>) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -148,26 +148,44 @@ export function useDebts() {
     }
   }, [user, toast]);
 
-  // Calculate totals in USD (for consistent portfolio metrics)
-  const totalDebt = debts.reduce((sum, d) => {
-    const currency = d.currency || 'USD';
-    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
-    return sum + (d.principal_amount * rate);
-  }, 0);
+  // Helper to convert currency amount to USD using live rates when available
+  const convertToUSD = useCallback((amount: number, currency: string): number => {
+    const normalizedCurrency = (currency || 'USD').trim().toUpperCase();
+    
+    // USD needs no conversion
+    if (normalizedCurrency === 'USD') return amount;
+    
+    // Use live rate if available (API returns USD→Currency, we need Currency→USD)
+    if (liveForexRates?.[normalizedCurrency] && liveForexRates[normalizedCurrency] > 0) {
+      return amount * (1 / liveForexRates[normalizedCurrency]);
+    }
+    
+    // Fallback to static rates
+    const rate = FOREX_RATES_TO_USD[normalizedCurrency as BankingCurrency] || 1;
+    return amount * rate;
+  }, [liveForexRates]);
+
+  // Calculate totals in USD using live rates when available
+  const totalDebt = useMemo(() => {
+    return debts.reduce((sum, d) => {
+      return sum + convertToUSD(d.principal_amount, d.currency || 'USD');
+    }, 0);
+  }, [debts, convertToUSD]);
   
-  const monthlyPayments = debts.reduce((sum, d) => {
-    if (!d.monthly_payment) return sum;
-    const currency = d.currency || 'USD';
-    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
-    return sum + (d.monthly_payment * rate);
-  }, 0);
+  const monthlyPayments = useMemo(() => {
+    return debts.reduce((sum, d) => {
+      if (!d.monthly_payment) return sum;
+      return sum + convertToUSD(d.monthly_payment, d.currency || 'USD');
+    }, 0);
+  }, [debts, convertToUSD]);
   
-  const monthlyInterest = debts.reduce((sum, d) => {
-    const currency = d.currency || 'USD';
-    const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
-    const monthlyRate = d.interest_rate / 100 / 12;
-    return sum + (d.principal_amount * rate * monthlyRate);
-  }, 0);
+  const monthlyInterest = useMemo(() => {
+    return debts.reduce((sum, d) => {
+      const monthlyRate = d.interest_rate / 100 / 12;
+      const interestInCurrency = d.principal_amount * monthlyRate;
+      return sum + convertToUSD(interestInCurrency, d.currency || 'USD');
+    }, 0);
+  }, [debts, convertToUSD]);
 
   return {
     debts,
