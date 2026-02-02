@@ -214,6 +214,11 @@ export interface PortfolioMetrics {
   monthlyInterestExpense: number;
   monthlyNetIncome: number;
   yearlyYield: number;
+  // Breakdown fields for UI display
+  recurringIncome: number;
+  oneTimeIncome: number;
+  recurringExpenses: number;
+  oneTimeExpenses: number;
 }
 
 // Default conversion rates (updated dynamically with live prices)
