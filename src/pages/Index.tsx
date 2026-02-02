@@ -477,7 +477,7 @@ const IndexContent = () => {
               formatValue={formatValue}
               onUpdateDebt={isDemo ? undefined : updateDebt}
               onDeleteDebt={isDemo ? undefined : deleteDebt}
-              actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number }) => addDebt({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })} displayUnit={displayUnit} />}
+              actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number; currency: string }) => addDebt(data)} />}
               delay={0.2}
               displayUnit={displayUnit}
             />
