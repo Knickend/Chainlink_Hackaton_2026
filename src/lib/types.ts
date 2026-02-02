@@ -159,6 +159,8 @@ export interface Income {
   amount: number; // in original currency (can be BTC, SATS, or fiat)
   type: 'work' | 'passive' | 'investment' | 'mining';
   currency: string; // 'USD', 'EUR', 'GBP', 'BTC', 'SATS', etc.
+  is_recurring: boolean; // true for monthly recurring, false for one-time
+  income_date?: string; // ISO date string for one-time income
 }
 
 export interface Expense {

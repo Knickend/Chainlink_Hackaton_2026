@@ -37,12 +37,13 @@ export function IncomeExpenseCard({
   
   // Count recurring vs one-time for expenses
   const expenseItems = !isIncome ? (items as Expense[]) : [];
-  const recurringCount = expenseItems.filter(e => e.is_recurring).length;
-  const oneTimeCount = expenseItems.filter(e => !e.is_recurring).length;
+  const recurringExpenseCount = expenseItems.filter(e => e.is_recurring).length;
+  const oneTimeExpenseCount = expenseItems.filter(e => !e.is_recurring).length;
   
-  // Count income types
+  // Count recurring vs one-time for income
   const incomeItems = isIncome ? (items as Income[]) : [];
-  const workIncomeCount = incomeItems.filter(i => i.type === 'work').length;
+  const recurringIncomeCount = incomeItems.filter(i => i.is_recurring).length;
+  const oneTimeIncomeCount = incomeItems.filter(i => !i.is_recurring).length;
   
   // Helper to format a value with its stored currency (for display in native currency)
   const formatNativeValue = useCallback((amount: number, itemCurrency: string): string => {
@@ -134,18 +135,18 @@ export function IncomeExpenseCard({
         </div>
         <div className="text-center border-x border-border/50">
           <p className="font-semibold">
-            {isIncome ? items.length : recurringCount}
+            {isIncome ? recurringIncomeCount : recurringExpenseCount}
           </p>
           <p className="text-xs text-muted-foreground">
-            {isIncome ? 'sources' : 'recurring'}
+            recurring
           </p>
         </div>
         <div className="text-center">
           <p className="font-semibold">
-            {isIncome ? workIncomeCount : oneTimeCount}
+            {isIncome ? oneTimeIncomeCount : oneTimeExpenseCount}
           </p>
           <p className="text-xs text-muted-foreground">
-            {isIncome ? 'work income' : 'non-recurring'}
+            non-recurring
           </p>
         </div>
       </div>
@@ -153,8 +154,10 @@ export function IncomeExpenseCard({
       {/* Row 3: List Items */}
       <div className="space-y-2 max-h-[180px] overflow-y-auto">
         {items.map((item) => {
-          const isExpense = !isIncome && 'is_recurring' in item;
-          const expense = isExpense ? (item as Expense) : null;
+          const isExpenseItem = !isIncome && 'is_recurring' in item;
+          const expense = isExpenseItem ? (item as Expense) : null;
+          const isIncomeItem = isIncome && 'is_recurring' in item;
+          const incomeItem = isIncomeItem ? (item as Income) : null;
           
           return (
             <div
@@ -169,6 +172,23 @@ export function IncomeExpenseCard({
                   <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
                     {item.type}
                   </span>
+                )}
+                {incomeItem && (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "text-[10px] px-1.5 py-0 h-4",
+                      incomeItem.is_recurring 
+                        ? "border-muted-foreground/30 text-muted-foreground" 
+                        : "border-primary/50 text-primary"
+                    )}
+                  >
+                    {incomeItem.is_recurring ? (
+                      <><Repeat className="w-2.5 h-2.5 mr-0.5" />Recurring</>
+                    ) : (
+                      <><Zap className="w-2.5 h-2.5 mr-0.5" />Non-recurring</>
+                    )}
+                  </Badge>
                 )}
                 {expense && (
                   <Badge 
