@@ -38,6 +38,7 @@ interface EditTransactionDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (id: string, data: EditTransactionFormData) => Promise<void>;
   formatValue: (value: number) => string;
+  avgCostPerUnit?: number;
 }
 
 export function EditTransactionDialog({
@@ -46,6 +47,7 @@ export function EditTransactionDialog({
   onOpenChange,
   onSave,
   formatValue,
+  avgCostPerUnit,
 }: EditTransactionDialogProps) {
   const {
     register,
@@ -88,19 +90,21 @@ export function EditTransactionDialog({
   }, [transaction, reset]);
 
   // Auto-recalculate realized P&L when quantity or price changes (for sell transactions)
+  // Uses average cost basis: P&L = Sale Proceeds - (Quantity × Average Cost Per Unit)
   useEffect(() => {
     if (
       transaction?.transaction_type === 'sell' &&
-      transaction.realized_pnl !== undefined &&
-      originalTotalValue > 0
+      avgCostPerUnit &&
+      avgCostPerUnit > 0
     ) {
-      const newTotalValue = (quantity || 0) * (pricePerUnit || 0);
-      if (newTotalValue !== originalTotalValue) {
-        const newPnl = originalRealizedPnl * (newTotalValue / originalTotalValue);
-        setValue('realized_pnl', Math.round(newPnl * 100) / 100);
-      }
+      const qty = quantity || 0;
+      const price = pricePerUnit || 0;
+      const newTotalValue = qty * price;
+      const costBasisOfSoldUnits = qty * avgCostPerUnit;
+      const newPnl = newTotalValue - costBasisOfSoldUnits;
+      setValue('realized_pnl', Math.round(newPnl * 100) / 100);
     }
-  }, [quantity, pricePerUnit, transaction, originalTotalValue, originalRealizedPnl, setValue]);
+  }, [quantity, pricePerUnit, transaction, avgCostPerUnit, setValue]);
 
   const onSubmit = async (data: EditTransactionFormData) => {
     if (!transaction) return;
