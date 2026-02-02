@@ -86,12 +86,13 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
           <Pencil className="w-3 h-3" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="glass-card border-success/20 sm:max-w-[425px]">
-        <DialogHeader>
+      <DialogContent className="glass-card border-success/20 sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-success">Edit Income Source</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
             <FormField
               control={form.control}
               name="source"
@@ -201,9 +202,13 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
               )}
             />
 
-            <Button type="submit" className="w-full bg-success hover:bg-success/90">
-              Save Changes
-            </Button>
+            </div>
+
+            <div className="pt-4 flex-shrink-0">
+              <Button type="submit" className="w-full bg-success hover:bg-success/90">
+                Save Changes
+              </Button>
+            </div>
           </form>
         </Form>
       </DialogContent>

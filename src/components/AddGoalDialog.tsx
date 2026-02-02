@@ -95,8 +95,8 @@ export function AddGoalDialog({ onAdd, disabled }: AddGoalDialogProps) {
           Add Goal
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CategoryIcon className="w-5 h-5 text-primary" />
             Add Financial Goal
@@ -106,7 +106,8 @@ export function AddGoalDialog({ onAdd, disabled }: AddGoalDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
           <div className="space-y-2">
             <Label htmlFor="name">Goal Name</Label>
             <Input
@@ -239,9 +240,13 @@ export function AddGoalDialog({ onAdd, disabled }: AddGoalDialogProps) {
             />
           </div>
 
-          <Button type="submit" className="w-full">
-            Add Goal
-          </Button>
+          </div>
+
+          <div className="pt-4 flex-shrink-0">
+            <Button type="submit" className="w-full">
+              Add Goal
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
