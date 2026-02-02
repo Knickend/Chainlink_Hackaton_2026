@@ -56,6 +56,45 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_job_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          error_message: string | null
+          execution_time: string
+          failed_count: number | null
+          id: string
+          job_name: string
+          processed_count: number | null
+          status: string
+          succeeded_count: number | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          error_message?: string | null
+          execution_time?: string
+          failed_count?: number | null
+          id?: string
+          job_name: string
+          processed_count?: number | null
+          status: string
+          succeeded_count?: number | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          error_message?: string | null
+          execution_time?: string
+          failed_count?: number | null
+          id?: string
+          job_name?: string
+          processed_count?: number | null
+          status?: string
+          succeeded_count?: number | null
+        }
+        Relationships: []
+      }
       debts: {
         Row: {
           created_at: string
