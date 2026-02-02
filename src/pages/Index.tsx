@@ -55,7 +55,7 @@ const IndexContent = () => {
   const { startTutorial, hasCompletedTutorial, isActive: isTutorialActive } = useTutorialContext();
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts();
+  
   
   // Demo mode when user is not logged in
   const isDemo = !user;
@@ -125,6 +125,9 @@ const IndexContent = () => {
   }, [portfolioInitial.assets]);
   
   const { prices, isLoading: pricesLoading, lastUpdated, error: pricesError, isCached, refetch: refetchPrices, addStockPrice } = useLivePrices(15 * 60 * 1000, additionalCryptoSymbols);
+  
+  // Pass live forex rates to useDebts for consistent currency conversions
+  const { debts, totalDebt, monthlyPayments, monthlyInterest, addDebt, updateDebt, deleteDebt, loading: debtsLoading } = useDebts(prices.forex);
   
   // Use portfolio with live prices for accurate values
   const {
