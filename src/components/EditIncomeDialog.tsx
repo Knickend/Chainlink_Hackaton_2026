@@ -13,7 +13,7 @@ import { Income, DisplayUnit, BANKING_CURRENCIES, BITCOIN_CURRENCIES, isBitcoinC
 const incomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
   amount: z.number().min(0.00000001, 'Amount must be positive'),
-  type: z.enum(['work', 'passive', 'investment', 'mining'] as const),
+  type: z.enum(['work', 'passive', 'investment', 'mining', 'other'] as const),
   currency: z.string().min(1, 'Currency is required'),
 });
 
@@ -30,6 +30,7 @@ const incomeTypes = [
   { value: 'passive', label: 'Passive Income' },
   { value: 'investment', label: 'Investment Income' },
   { value: 'mining', label: 'Bitcoin Mining' },
+  { value: 'other', label: 'Other' },
 ];
 
 // Combine fiat and bitcoin currencies for the selector
