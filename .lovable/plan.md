@@ -1,171 +1,166 @@
 
-# Plan: Add Detailed Transaction View per Asset in P&L Dialog
+# Plan: Add Edit and Delete Transaction Options in P&L Dialog
 
 ## Overview
 
-When a user clicks on an asset (like Bitcoin) in the "Profit & Loss Details" dialog, they will see an expanded view showing all buy and sell transactions for that specific asset. This provides a complete history of trades and helps users understand how their P&L was built up over time.
+Add the ability to edit or delete individual transactions directly from the expanded asset view in the Profit & Loss Details dialog. Each transaction row will have edit (pencil) and delete (trash) icons that appear on hover.
 
 ## Current State
 
 | Component | Behavior |
 |-----------|----------|
-| ProfitLossDetailDialog | Shows asset list with P&L summary |
-| Asset row | Static display, not clickable |
-| Transaction data | Available in `useAssetTransactions` hook but not passed to the dialog |
+| ProfitLossDetailDialog | Shows transaction list when asset is expanded |
+| Transaction row | Display only - no actions available |
+| useAssetTransactions | Has `deleteTransaction` but no `updateTransaction` |
+| DeleteConfirmDialog | Reusable delete confirmation component exists |
 
 ## Proposed Solution
 
-Transform each asset row in the "By Asset" tab into an expandable section that reveals the transaction history when clicked.
+1. Add an `updateTransaction` function to the `useAssetTransactions` hook
+2. Create a new `EditTransactionDialog` component for editing transactions
+3. Modify `ProfitLossDetailDialog` to show edit/delete icons on each transaction row
+4. Pass callbacks from Index.tsx through the component chain
 
 ## UI Design
 
 ```text
-+------------------------------------------+
-| Bitcoin                     +$289,734.09 |
-| crypto                          +3292.4% |
-+------------------------------------------+
-    ↓ (when clicked, expands to show)
-+------------------------------------------+
-| Transaction History                      |
-|------------------------------------------|
-| ▲ BUY   | 2.5 BTC  | @$8,800  | Jan 2023 |
-| ▼ SELL  | 0.5 BTC  | @$45,000 | Dec 2024 |
-|         |          | P&L: +$18,100        |
-| ▲ BUY   | 1.0 BTC  | @$32,000 | Mar 2024 |
-+------------------------------------------+
-| Current Position: 3.0 BTC                |
-| Avg Cost: $10,933/unit                   |
-+------------------------------------------+
++----------------------------------------------------------+
+| Transaction History                                       |
+|----------------------------------------------------------|
+| ▼ SELL  0.5 BTC      @$78,954.00   Feb 2, 2026  [✏️] [🗑] |
+|                      P&L: +$35,477.00                     |
+|----------------------------------------------------------|
+| ▼ SELL  0.1 Bitcoin  @$10,000.00   Feb 2, 2026  [✏️] [🗑] |
+|                      P&L: +$200.00                        |
++----------------------------------------------------------+
 ```
 
 ## Detailed Changes
 
-### 1. Modify ProfitLossDetailDialog.tsx
+### 1. Add `updateTransaction` to useAssetTransactions.ts
 
-**Add new props to receive transactions:**
-```tsx
+```typescript
+interface UpdateTransactionData {
+  quantity?: number;
+  price_per_unit?: number;
+  total_value?: number;
+  realized_pnl?: number;
+  transaction_date?: string;
+  notes?: string;
+}
+
+const updateTransaction = useCallback(async (id: string, data: UpdateTransactionData) => {
+  // Update in Supabase and local state
+}, [user, toast]);
+```
+
+### 2. Create EditTransactionDialog.tsx
+
+A new dialog component allowing users to edit:
+- Quantity
+- Price per unit (auto-calculates total value)
+- Transaction date
+- Notes (optional)
+- Realized P&L (for sell transactions only)
+
+Features:
+- Pre-populated form with current transaction values
+- Form validation using Zod
+- Auto-calculate total value when quantity or price changes
+- Follows existing dialog patterns (fixed header/footer, scrollable content)
+
+### 3. Modify ProfitLossDetailDialog.tsx
+
+**Add new props:**
+```typescript
 interface ProfitLossDetailDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  pnlData: ProfitLossData;
-  formatValue: (value: number, showSign?: boolean) => string;
-  transactions?: AssetTransaction[];  // NEW
+  // ... existing props
+  onEditTransaction?: (transaction: AssetTransaction) => void;
+  onDeleteTransaction?: (transactionId: string) => void;
 }
 ```
 
-**Add state to track expanded asset:**
-```tsx
-const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
+**Add action buttons to each transaction row:**
+- Pencil icon for edit (opens EditTransactionDialog)
+- Trash icon for delete (uses DeleteConfirmDialog)
+- Icons appear on hover with smooth opacity transition
+- Stop event propagation to prevent collapsible toggle
+
+**Add state for edit dialog:**
+```typescript
+const [editingTransaction, setEditingTransaction] = useState<AssetTransaction | null>(null);
 ```
 
-**Create helper to filter transactions by asset:**
-```tsx
-const getAssetTransactions = (asset: Asset) => {
-  return transactions
-    .filter(t => 
-      t.asset_id === asset.id || 
-      (t.symbol === asset.symbol && t.asset_name === asset.name)
-    )
-    .sort((a, b) => 
-      new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
-    );
-};
-```
+### 4. Update ProfitLossCard.tsx
 
-**Transform asset row into expandable section:**
-- Import `Collapsible, CollapsibleTrigger, CollapsibleContent` from shadcn/ui
-- Import `ChevronDown, ArrowUpRight, ArrowDownLeft` icons
-- Wrap each asset row in a Collapsible component
-- Add click handler to toggle expansion
-- Show transaction list when expanded
-
-**Transaction row design:**
-Each transaction shows:
-- Type icon (up arrow for buy, down arrow for sell)
-- Type label (BUY/SELL)
-- Quantity and symbol
-- Price per unit
-- Date
-- Realized P&L (for sells only)
-
-### 2. Modify ProfitLossCard.tsx
-
-Pass transactions to the detail dialog:
-
-```tsx
+Pass new callbacks through to ProfitLossDetailDialog:
+```typescript
 <ProfitLossDetailDialog
-  open={showDetails}
-  onOpenChange={setShowDetails}
-  pnlData={pnlData}
-  formatValue={formatValue}
-  transactions={transactions}  // NEW
+  // ... existing props
+  onEditTransaction={onEditTransaction}
+  onDeleteTransaction={onDeleteTransaction}
 />
 ```
 
-### 3. Modify Index.tsx
+### 5. Update Index.tsx
 
-Pass transactions to ProfitLossCard:
+- Destructure `updateTransaction` and `deleteTransaction` from `useAssetTransactions`
+- Pass callbacks to `ProfitLossCard`:
 
-```tsx
+```typescript
 <ProfitLossCard 
   pnlData={pnlData} 
   formatValue={formatValue} 
-  delay={0.25}
-  transactions={transactions}  // NEW
+  transactions={transactions}
+  onEditTransaction={(tx) => updateTransaction(tx.id, tx)}
+  onDeleteTransaction={(id) => deleteTransaction(id)}
 />
 ```
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/EditTransactionDialog.tsx` | Dialog for editing transaction details |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/ProfitLossDetailDialog.tsx` | Add expandable transaction history for each asset |
-| `src/components/ProfitLossCard.tsx` | Accept and pass transactions prop |
-| `src/pages/Index.tsx` | Pass transactions to ProfitLossCard |
+| `src/hooks/useAssetTransactions.ts` | Add `updateTransaction` function |
+| `src/components/ProfitLossDetailDialog.tsx` | Add edit/delete icons to transaction rows |
+| `src/components/ProfitLossCard.tsx` | Pass callbacks to detail dialog |
+| `src/pages/Index.tsx` | Wire up update/delete callbacks |
 
-## Expanded Asset Detail View
+## EditTransactionDialog Form Fields
 
-When an asset is expanded, show:
+| Field | Type | Validation |
+|-------|------|------------|
+| Quantity | number input | Required, > 0 |
+| Price per unit | number input | Required, >= 0 |
+| Total value | computed display | Auto-calculated |
+| Transaction date | date picker | Required |
+| Notes | textarea | Optional, max 500 chars |
+| Realized P&L | number input | Only for sell transactions |
 
-1. **Transaction History Table**
-   - Date
-   - Type (Buy/Sell badge)
-   - Quantity
-   - Price per unit
-   - Total value
-   - Realized P&L (for sells)
+## Transaction Row Layout (Updated)
 
-2. **Position Summary** (at bottom of expanded section)
-   - Current quantity held
-   - Average cost per unit
-   - Current value
-   - Total cost basis
-
-## Visual Indicators
-
-| Element | Design |
-|---------|--------|
-| Expandable row | Add subtle chevron icon that rotates on expand |
-| Buy transaction | Green up-arrow icon, "BUY" badge |
-| Sell transaction | Red down-arrow icon, "SELL" badge |
-| Realized P&L | Green/red text based on profit/loss |
-| No transactions | "No transactions recorded" message |
-
-## Empty State
-
-If an asset has no transactions (e.g., only cost basis was entered manually):
 ```text
-+------------------------------------------+
-| No transactions recorded for this asset. |
-| Use Buy/Sell from the asset card to      |
-| track your trades.                       |
-+------------------------------------------+
++---------------------------------------------------------------+
+| [icon] [BADGE] quantity symbol      @price  date    [✏️] [🗑] |
+|                                     P&L: ±value               |
++---------------------------------------------------------------+
 ```
+
+- Edit/delete icons use `opacity-0 group-hover:opacity-100` for hover reveal
+- Icons are positioned on the right side of the row
+- Click handlers use `e.stopPropagation()` to prevent row expansion
 
 ## Technical Notes
 
-- Transactions are matched to assets by `asset_id` first, then by `symbol` + `asset_name` as fallback
-- The transaction list is sorted by date (newest first)
-- Collapsible animation provides smooth expand/collapse
-- Only one asset can be expanded at a time (accordion behavior optional)
-- Performance: transactions are filtered only when asset is expanded
+- The DeleteConfirmDialog component is reused for delete confirmation
+- Edit dialog uses react-hook-form with zod validation (consistent with other dialogs)
+- Total value is auto-calculated: `quantity * price_per_unit`
+- For sell transactions, users can optionally adjust the realized P&L
+- Transactions are matched by ID for updates
+- After edit/delete, the local state is updated immediately for responsive UI
