@@ -1,175 +1,180 @@
 
-# Plan: Add Cost Basis Fields to Commodities and Banking Categories
+# Plan: Add Buy and Sell Actions to Edit Asset Dialog
 
-## Problem
+## Overview
 
-The Add Asset dialog is missing cost basis input fields for the Commodities and Banking categories. Currently only Stocks and Crypto have these fields, which means users cannot track profit and loss for commodities (gold, silver, etc.) or banking assets.
+Transform the Edit Asset dialog into a comprehensive asset management hub by adding Buy More and Sell options. This allows users to manage their position directly from the asset card without navigating to the View All Assets table.
 
 ## Current State
 
-| Category | Cost Basis Fields | P&L Tracking |
-|----------|------------------|--------------|
-| Stocks | Purchase Price per Share, Purchase Date | Yes |
-| Crypto | Purchase Price per Unit, Purchase Date | Yes |
-| Commodities | None | No |
-| Banking | None | No |
+| Component | Current Capability |
+|-----------|-------------------|
+| EditAssetDialog | Edit asset details (name, quantity, cost basis) |
+| SellAssetDialog | Sell assets (only accessible from View All Assets table) |
+| AddAssetDialog | Add new assets |
 
-## Solution
+The sell functionality exists but is only accessible through the ViewAllAssetsDialog table. There is no "Buy More" functionality at all - users must manually update quantities.
 
-Add the same cost basis input section to both Commodities and Banking categories in the Add Asset dialog.
+## Proposed Solution
 
-## Changes Required
+Add a tabbed interface or action buttons within the Edit Asset dialog to provide three distinct modes:
 
-### 1. Add Cost Basis to Commodities Category
+1. **Edit** - Current behavior (default)
+2. **Buy More** - Add to existing position and adjust cost basis
+3. **Sell** - Reduce or close position with P&L tracking
 
-Insert after the price info block (around line 577, after the closing of the price display section):
+## UI Design Options
 
-```tsx
-{/* Cost Basis Section for P&L Tracking */}
-<div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
-  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
-  
-  <FormField
-    control={form.control}
-    name="purchase_price_per_unit"
-    render={({ field }) => (
-      <FormItem>
-        <FormLabel className="text-sm">Purchase Price per Unit (USD)</FormLabel>
-        <FormControl>
-          <Input
-            type="number"
-            step="0.01"
-            placeholder="e.g., 2,000.00"
-            {...field}
-            value={field.value ?? ''}
-            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-            className="bg-secondary/50"
-          />
-        </FormControl>
-        <FormMessage />
-      </FormItem>
-    )}
-  />
+### Option A: Tab-Based Interface (Recommended)
 
-  <FormField
-    control={form.control}
-    name="purchase_date"
-    render={({ field }) => (
-      <FormItem>
-        <FormLabel className="text-sm">Purchase Date</FormLabel>
-        <FormControl>
-          <Input
-            type="date"
-            {...field}
-            className="bg-secondary/50"
-          />
-        </FormControl>
-        <FormMessage />
-      </FormItem>
-    )}
-  />
-</div>
+```text
++------------------------------------------+
+|  Edit Asset                         [X]  |
++------------------------------------------+
+|  [ Edit ]  [ Buy More ]  [ Sell ]        |
++------------------------------------------+
+|  <Content based on selected tab>         |
++------------------------------------------+
 ```
 
-### 2. Add Cost Basis to Banking Category
+### Option B: Action Buttons in Header
 
-Insert after the Interest Rate field (around line 807):
+Keep existing edit form and add action buttons that open nested dialogs.
 
+**Recommendation**: Option A provides a cleaner, more integrated experience.
+
+## Detailed Changes
+
+### 1. Modify EditAssetDialog.tsx
+
+**Add Tab State and UI**:
+- Import `Tabs, TabsList, TabsTrigger, TabsContent` from shadcn/ui
+- Add state: `const [activeTab, setActiveTab] = useState<'edit' | 'buy' | 'sell'>('edit')`
+- Wrap form content in TabsContent components
+
+**Add New Props**:
 ```tsx
-{/* Cost Basis Section for P&L Tracking */}
-<div className="space-y-3 p-3 rounded-lg border border-border/50 bg-secondary/10">
-  <p className="text-xs font-medium text-muted-foreground">Cost Basis (optional - for P&L tracking)</p>
-  
-  <FormField
-    control={form.control}
-    name="purchase_price_per_unit"
-    render={({ field }) => (
-      <FormItem>
-        <FormLabel className="text-sm">Initial Deposit Amount</FormLabel>
-        <FormControl>
-          <Input
-            type="number"
-            step="0.01"
-            placeholder="e.g., 10,000.00"
-            {...field}
-            value={field.value ?? ''}
-            onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-            className="bg-secondary/50"
-          />
-        </FormControl>
-        <FormMessage />
-      </FormItem>
-    )}
-  />
-
-  <FormField
-    control={form.control}
-    name="purchase_date"
-    render={({ field }) => (
-      <FormItem>
-        <FormLabel className="text-sm">Account Opening Date</FormLabel>
-        <FormControl>
-          <Input
-            type="date"
-            {...field}
-            className="bg-secondary/50"
-          />
-        </FormControl>
-        <FormMessage />
-      </FormItem>
-    )}
-  />
-</div>
+interface EditAssetDialogProps {
+  asset: Asset;
+  onUpdate: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
+  onBuyMore?: (assetId: string, data: BuyMoreData) => Promise<void>;
+  onSell?: (assetId: string, data: SellData) => Promise<void>;
+  livePrices?: LivePrices;
+  onCryptoPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
+}
 ```
 
-### 3. Update onSubmit Handler for Banking
+**Buy More Tab Content**:
+- Quantity to add input
+- Purchase price per unit input
+- Purchase date input
+- Preview showing: new total quantity, updated cost basis
+- Submit button: "Confirm Purchase"
 
-The current banking submit logic (lines 148-159) does not include cost basis calculation. Update to:
+**Sell Tab Content**:
+- Quantity to sell input (with max = current quantity)
+- Sale price per unit input (pre-filled with live price)
+- Sale date input
+- P&L preview (cost basis of sold units vs sale proceeds)
+- Notes field
+- Submit button: "Confirm Sale"
 
+### 2. Create Buy More Logic
+
+When buying more of an existing asset:
+
+```text
+New Quantity = Old Quantity + Buy Quantity
+New Cost Basis = Old Cost Basis + (Buy Quantity × Buy Price)
+New Avg Price/Unit = New Cost Basis / New Quantity
+```
+
+### 3. Update AssetCategoryCard.tsx
+
+Pass the new handlers to EditAssetDialog:
+- `onBuyMore` prop
+- `onSell` prop
+
+### 4. Update Index.tsx
+
+Implement the handlers in the main page:
+
+**handleBuyMore**:
 ```tsx
-if (data.category === 'banking' && data.currency) {
-  const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
-  const usdValue = data.value * forexRate;
+async (assetId, data) => {
+  const asset = assets.find(a => a.id === assetId);
+  if (!asset) return;
   
-  // Calculate cost basis from initial deposit if provided
-  const costBasis = data.purchase_price_per_unit 
-    ? data.purchase_price_per_unit * forexRate 
-    : undefined;
-
-  onAdd({
-    name: data.name,
-    category: data.category,
-    value: usdValue,
-    symbol: data.currency,
-    quantity: data.value,
-    yield: data.yield,
-    stakingRate: data.stakingRate,
-    cost_basis: costBasis,
-    purchase_date: data.purchase_date || undefined,
-    purchase_price_per_unit: data.purchase_price_per_unit,
+  // Record buy transaction
+  await addTransaction({
+    asset_id: assetId,
+    transaction_type: 'buy',
+    symbol: asset.symbol || asset.name,
+    asset_name: asset.name,
+    category: asset.category,
+    quantity: data.quantity,
+    price_per_unit: data.price_per_unit,
+    total_value: data.quantity * data.price_per_unit,
+    transaction_date: data.transaction_date,
+  });
+  
+  // Update asset
+  const newQuantity = (asset.quantity || 0) + data.quantity;
+  const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
+  
+  await updateAsset(assetId, {
+    quantity: newQuantity,
+    cost_basis: newCostBasis,
+    purchase_price_per_unit: newCostBasis / newQuantity,
   });
 }
 ```
 
-## File to Modify
+**handleSell**:
+Reuse existing sell logic from ViewAllAssetsDialog.
+
+### 5. Restrict Tabs by Asset Category
+
+Only show Buy/Sell tabs for tradeable categories:
+- Stocks
+- Crypto
+- Commodities
+
+Hide for Banking (use Edit only).
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/AddAssetDialog.tsx` | Add cost basis sections to commodities and banking categories, update banking submit handler |
+| `src/components/EditAssetDialog.tsx` | Add tabs, buy/sell forms, new props |
+| `src/components/AssetCategoryCard.tsx` | Pass onBuyMore and onSell to EditAssetDialog |
+| `src/pages/Index.tsx` | Implement handleBuyMore and handleSell handlers |
 
-## User-Friendly Labels
+## Visual Flow
 
-To make the fields more intuitive for each category:
-
-| Category | Price Field Label | Date Field Label |
-|----------|------------------|------------------|
-| Stocks | Purchase Price per Share | Purchase Date |
-| Crypto | Purchase Price per Unit | Purchase Date |
-| Commodities | Purchase Price per Unit | Purchase Date |
-| Banking | Initial Deposit Amount | Account Opening Date |
+```text
+User clicks pencil icon on asset card
+         |
+         v
+    Edit Asset Dialog opens
+         |
+         v
++---------------------+
+|     Tab Bar         |
+| [Edit][Buy][Sell]   |
++---------------------+
+         |
+    +----+----+----+
+    |    |    |    |
+    v    v    v    v
+  Edit  Buy  Sell
+  Form  Form Form
+```
 
 ## Technical Notes
 
-- The cost basis for commodities will be calculated as `purchase_price_per_unit * quantity` (already handled in existing submit logic)
-- For banking, cost basis represents the initial deposit which can be compared to current balance to track gains from interest
-- The fields remain optional (no validation requirements) to avoid forcing users who don't need P&L tracking
+- The existing SellAssetDialog component could be reused, but integrating directly into EditAssetDialog provides a cleaner UX
+- Buy transactions record a 'buy' type in asset_transactions table (already supported by the schema)
+- Cost basis recalculation follows standard weighted average cost method
+- Tabs only show for market-priced categories (stocks, crypto, commodities)
+- Banking assets remain edit-only since they don't have tradeable quantities
