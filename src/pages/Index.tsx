@@ -179,8 +179,8 @@ const IndexContent = () => {
 
   // Calculate adjusted net worth (assets - debt)
   const adjustedNetWorth = metrics.totalNetWorth - demoTotalDebt;
-  // Adjusted monthly net (income - expenses - debt payments)
-  const adjustedMonthlyNet = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
+  // Net Cash Flow = Income - Expenses - Debt Payments
+  const netCashFlow = metrics.totalIncome - metrics.totalExpenses - demoMonthlyPayments;
 
   return (
     <>
@@ -320,18 +320,18 @@ const IndexContent = () => {
           <StatCard
             title="Monthly Income"
             value={formatValue(metrics.totalIncome)}
-            subtitle="From all sources"
+            subtitle={`Recurring: ${formatValue(metrics.recurringIncome)} | One-time: ${formatValue(metrics.oneTimeIncome)}`}
             icon={TrendingUp}
             trend={isDemo ? undefined : metricTrends?.totalIncome || undefined}
             variant="success"
             delay={0.1}
           />
           <StatCard
-            title="Monthly Net"
-            value={formatValue(adjustedMonthlyNet)}
-            subtitle="After all expenses"
+            title="Net Cash Flow"
+            value={formatValue(netCashFlow)}
+            subtitle="Income − Expenses − Debt"
             icon={PiggyBank}
-            trend={isDemo ? { value: 8.2, isPositive: adjustedMonthlyNet >= 0 } : metricTrends?.monthlyNet || undefined}
+            trend={isDemo ? { value: 8.2, isPositive: netCashFlow >= 0 } : metricTrends?.monthlyNet || undefined}
             delay={0.2}
           />
           <YieldBreakdownCard
@@ -421,7 +421,7 @@ const IndexContent = () => {
           <div className="mb-8" data-tutorial="investment-strategy-card">
             {isPro ? (
               <InvestmentStrategyCard
-                freeMonthlyIncome={adjustedMonthlyNet}
+                freeMonthlyIncome={netCashFlow}
                 formatValue={formatValue}
                 debts={demoDebts}
                 monthlyPayments={demoMonthlyPayments}
@@ -430,7 +430,7 @@ const IndexContent = () => {
               />
             ) : (
               <InvestmentStrategyTeaser
-                freeMonthlyIncome={adjustedMonthlyNet}
+                freeMonthlyIncome={netCashFlow}
                 formatValue={formatValue}
                 onUpgrade={() => setShowSubscriptionDialog(true)}
                 delay={0.3}

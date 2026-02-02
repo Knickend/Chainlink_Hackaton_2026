@@ -91,32 +91,56 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const metrics: PortfolioMetrics = useMemo(() => {
     const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
     
-    // Convert income/expenses to USD for totals (they may have different currencies)
-    const totalIncome = income.reduce((sum, inc) => {
-      const currency = inc.currency || 'USD';
+    // Helper function to convert income amount to USD with normalized currency handling
+    const convertIncomeToUSD = (inc: typeof income[0]): number => {
+      const currency = (inc.currency || 'USD').trim().toUpperCase();
       
       // Handle Bitcoin currencies (BTC and SATS)
-      if (isBitcoinCurrency(currency)) {
-        return sum + convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
+      if (currency === 'BTC' || currency === 'SATS') {
+        return convertBtcToUSD(inc.amount, currency as BitcoinCurrency, btcPrice);
       }
       
       // Handle fiat currencies
       const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
-      return sum + (inc.amount * rate);
-    }, 0);
+      return inc.amount * rate;
+    };
     
-    const totalExpenses = expenses.reduce((sum, exp) => {
-      const currency = exp.currency || 'USD';
+    // Helper function to convert expense amount to USD with normalized currency handling
+    const convertExpenseToUSD = (exp: typeof expenses[0]): number => {
+      const currency = (exp.currency || 'USD').trim().toUpperCase();
       const rate = FOREX_RATES_TO_USD[currency as BankingCurrency] || 1;
-      return sum + (exp.amount * rate);
-    }, 0);
+      return exp.amount * rate;
+    };
     
-    // Debt metrics will be passed from useDebts hook when integrated
+    // Calculate income with recurring/one-time breakdown
+    const recurringIncome = income
+      .filter(inc => inc.is_recurring)
+      .reduce((sum, inc) => sum + convertIncomeToUSD(inc), 0);
+    
+    const oneTimeIncome = income
+      .filter(inc => !inc.is_recurring)
+      .reduce((sum, inc) => sum + convertIncomeToUSD(inc), 0);
+    
+    const totalIncome = recurringIncome + oneTimeIncome;
+    
+    // Calculate expenses with recurring/one-time breakdown
+    const recurringExpenses = expenses
+      .filter(exp => exp.is_recurring)
+      .reduce((sum, exp) => sum + convertExpenseToUSD(exp), 0);
+    
+    const oneTimeExpenses = expenses
+      .filter(exp => !exp.is_recurring)
+      .reduce((sum, exp) => sum + convertExpenseToUSD(exp), 0);
+    
+    const totalExpenses = recurringExpenses + oneTimeExpenses;
+    
+    // Debt metrics - these will be combined with useDebts in Index.tsx
     const totalDebt = 0;
     const monthlyDebtPayments = 0;
     const monthlyInterestExpense = 0;
     
-    const monthlyNetIncome = totalIncome - totalExpenses - monthlyDebtPayments;
+    // Base net income (without debt payments - debt subtracted in Index.tsx)
+    const monthlyNetIncome = totalIncome - totalExpenses;
     
     const yearlyYield = assets.reduce((sum, asset) => {
       if (asset.yield) {
@@ -134,6 +158,10 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
       monthlyInterestExpense,
       monthlyNetIncome,
       yearlyYield,
+      recurringIncome,
+      oneTimeIncome,
+      recurringExpenses,
+      oneTimeExpenses,
     };
   }, [assets, income, expenses, btcPrice]);
 
