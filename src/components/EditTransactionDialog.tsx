@@ -70,6 +70,10 @@ export function EditTransactionDialog({
   const transactionDate = watch('transaction_date');
   const totalValue = (quantity || 0) * (pricePerUnit || 0);
 
+  // Track original values for P&L recalculation
+  const originalTotalValue = transaction ? transaction.quantity * transaction.price_per_unit : 0;
+  const originalRealizedPnl = transaction?.realized_pnl || 0;
+
   // Reset form when transaction changes
   useEffect(() => {
     if (transaction) {
@@ -82,6 +86,21 @@ export function EditTransactionDialog({
       });
     }
   }, [transaction, reset]);
+
+  // Auto-recalculate realized P&L when quantity or price changes (for sell transactions)
+  useEffect(() => {
+    if (
+      transaction?.transaction_type === 'sell' &&
+      transaction.realized_pnl !== undefined &&
+      originalTotalValue > 0
+    ) {
+      const newTotalValue = (quantity || 0) * (pricePerUnit || 0);
+      if (newTotalValue !== originalTotalValue) {
+        const newPnl = originalRealizedPnl * (newTotalValue / originalTotalValue);
+        setValue('realized_pnl', Math.round(newPnl * 100) / 100);
+      }
+    }
+  }, [quantity, pricePerUnit, transaction, originalTotalValue, originalRealizedPnl, setValue]);
 
   const onSubmit = async (data: EditTransactionFormData) => {
     if (!transaction) return;
