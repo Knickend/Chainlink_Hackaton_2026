@@ -1,69 +1,79 @@
 
-# Add FAQ Section to Landing Page
+# Add Currency Selector to Expense Dialogs
 
 ## Overview
-Add a Frequently Asked Questions section to the landing page between the Pricing section and the Footer. The FAQ will use an accordion-style design that matches the premium dark theme with gold accents.
+Add a currency selection dropdown to both the Add Expense and Edit Expense dialogs, matching the income dialog pattern. This will allow you to track expenses in their native currency (EUR, GBP, CHF, etc.) rather than only in the global display unit.
 
 ## What You'll Get
-- An interactive accordion FAQ section with smooth animations
-- Common questions about the product, pricing, security, and getting started
-- A new navigation link in the header for quick access
-- Design consistent with the existing glassmorphism aesthetic
+- Currency dropdown in the Add Recurring Expense dialog
+- Currency dropdown in the Edit Expense dialog  
+- Currency dropdown in the Add One-Time Expense dialog
+- Dynamic label updates showing the selected currency symbol (e.g., "Monthly Amount (€)")
+- All fiat currencies available (20 options: USD, EUR, GBP, CHF, JPY, etc.)
 
 ---
 
 ## Implementation Details
 
-### New Component: FAQSection.tsx
-Create a new component at `src/components/landing/FAQSection.tsx` that includes:
-- Section header matching other landing sections (title with gradient text)
-- Accordion items using the existing shadcn/ui Accordion component
-- Motion animations for scroll-into-view effects (matching FeaturesSection pattern)
-- Glass card styling for each FAQ item
-
-### Suggested FAQ Questions
-1. **What assets can I track?** - Crypto, stocks, ETFs, real estate, precious metals, and more
-2. **Is my data secure?** - SOC 2 Type II compliance, encryption, no third-party sharing
-3. **Can I try before subscribing?** - Free tier and demo mode available
-4. **How do live prices work?** - Real-time updates for 50+ cryptocurrencies, stocks, gold, silver
-5. **Can I cancel anytime?** - Yes, no hidden fees or long-term commitments
-6. **What payment methods do you accept?** - Major credit cards through secure payment processing
-
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/components/landing/FAQSection.tsx` | **Create** - New FAQ component with accordion |
-| `src/pages/Landing.tsx` | Add FAQ import, navigation link, and render between Pricing and Footer |
+| File | Changes |
+|------|---------|
+| `src/components/AddExpenseDialog.tsx` | Add currency field to form, add currency selector dropdown, update amount label to show selected currency symbol |
+| `src/components/EditExpenseDialog.tsx` | Add currency field to form, add currency selector dropdown, update amount label dynamically |
+| `src/components/AddOneTimeExpenseDialog.tsx` | Add currency field to form, add currency selector dropdown, update amount label dynamically |
 
----
+### Key Changes
 
-## Visual Preview
+**Form Schema Update:**
+- Add `currency: z.string().min(1, 'Currency is required')` to zod schema
+- Default value: `'USD'`
 
-```text
-+----------------------------------------------------------+
-|                    Frequently Asked                       |
-|                      Questions                            |
-|                                                           |
-|  +------------------------------------------------------+ |
-|  | What assets can I track with InControl?           [+]| |
-|  +------------------------------------------------------+ |
-|  | Is my financial data secure?                      [+]| |
-|  +------------------------------------------------------+ |
-|  | Can I try InControl before subscribing?           [+]| |
-|  +------------------------------------------------------+ |
-|  | How do the live price updates work?               [+]| |
-|  +------------------------------------------------------+ |
-|  | Can I cancel my subscription anytime?             [+]| |
-|  +------------------------------------------------------+ |
-+----------------------------------------------------------+
+**New Currency Selector Field:**
+- Position after Category field (matching income dialog layout)
+- Uses `BANKING_CURRENCIES` from `@/lib/types`
+- Displays format: `€ - Euro`, `£ - British Pound`, etc.
+
+**Dynamic Label:**
+- Watch the currency field using `useWatch`
+- Update "Monthly Amount" label to show the selected currency symbol
+
+### Code Pattern (from AddIncomeDialog)
+```tsx
+// Watch currency to update label
+const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+const currencySymbol = BANKING_CURRENCIES.find(c => c.value === selectedCurrency)?.symbol || '$';
+
+// Currency field in form
+<FormField
+  control={form.control}
+  name="currency"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Currency</FormLabel>
+      <Select onValueChange={field.onChange} value={field.value}>
+        <FormControl>
+          <SelectTrigger className="bg-secondary/50">
+            <SelectValue placeholder="Select currency" />
+          </SelectTrigger>
+        </FormControl>
+        <SelectContent className="max-h-[300px]">
+          {BANKING_CURRENCIES.map((currency) => (
+            <SelectItem key={currency.value} value={currency.value}>
+              {currency.symbol} - {currency.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
 ```
 
 ---
 
-## Design Notes
-- Uses the existing `glass-card` styling for accordion items
-- Gold/primary color accent on hover and open states
-- Smooth accordion animations using Radix UI primitives
-- Framer Motion for scroll-triggered entrance animations
-- Responsive layout that works on mobile and desktop
+## Notes
+- The database already has a `currency` column in the expenses table
+- The `usePortfolioData` hook already handles saving/loading the currency field
+- No backend changes required
