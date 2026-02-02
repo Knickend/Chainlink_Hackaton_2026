@@ -9,14 +9,18 @@ import { ProfitLossDetailDialog } from './ProfitLossDetailDialog';
 import { AssetTransaction } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+import { UpdateTransactionData } from '@/hooks/useAssetTransactions';
+
 interface ProfitLossCardProps {
   pnlData: ProfitLossData;
   formatValue: (value: number, showSign?: boolean) => string;
   delay?: number;
   transactions?: AssetTransaction[];
+  onEditTransaction?: (id: string, data: UpdateTransactionData) => Promise<any>;
+  onDeleteTransaction?: (id: string) => Promise<void>;
 }
 
-export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions = [] }: ProfitLossCardProps) {
+export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions = [], onEditTransaction, onDeleteTransaction }: ProfitLossCardProps) {
   const [showDetails, setShowDetails] = useState(false);
   
   const { totalPnL, totalUnrealizedPnL, totalRealizedPnL, totalPnLPercent } = pnlData;
@@ -138,6 +142,8 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions =
         pnlData={pnlData}
         formatValue={formatValue}
         transactions={transactions}
+        onEditTransaction={onEditTransaction}
+        onDeleteTransaction={onDeleteTransaction}
       />
     </>
   );

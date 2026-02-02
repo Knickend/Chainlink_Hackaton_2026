@@ -93,7 +93,7 @@ const IndexContent = () => {
   } = usePortfolioHistory();
 
   // Asset transactions for P&L tracking
-  const { transactions, loading: transactionsLoading, addTransaction } = useAssetTransactions();
+  const { transactions, loading: transactionsLoading, addTransaction, updateTransaction, deleteTransaction } = useAssetTransactions();
   
   // Auto-create snapshot for current month if missing (on login)
   const hasTriedAutoSnapshot = useRef(false);
@@ -384,6 +384,8 @@ const IndexContent = () => {
               formatValue={formatValue} 
               delay={0.25}
               transactions={transactions}
+              onEditTransaction={isDemo ? undefined : updateTransaction}
+              onDeleteTransaction={isDemo ? undefined : deleteTransaction}
             />
           ) : !isDemo && (
             <ProfitLossTeaser 

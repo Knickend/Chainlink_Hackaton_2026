@@ -18,6 +18,15 @@ export interface CreateTransactionData {
   notes?: string;
 }
 
+export interface UpdateTransactionData {
+  quantity?: number;
+  price_per_unit?: number;
+  total_value?: number;
+  realized_pnl?: number;
+  transaction_date?: string;
+  notes?: string;
+}
+
 export function useAssetTransactions() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -133,6 +142,58 @@ export function useAssetTransactions() {
     }
   }, [user, toast]);
 
+  const updateTransaction = useCallback(async (id: string, data: UpdateTransactionData) => {
+    if (!user) return null;
+
+    try {
+      const updateData: Record<string, any> = {};
+      if (data.quantity !== undefined) updateData.quantity = data.quantity;
+      if (data.price_per_unit !== undefined) updateData.price_per_unit = data.price_per_unit;
+      if (data.total_value !== undefined) updateData.total_value = data.total_value;
+      if (data.realized_pnl !== undefined) updateData.realized_pnl = data.realized_pnl;
+      if (data.transaction_date !== undefined) updateData.transaction_date = data.transaction_date;
+      if (data.notes !== undefined) updateData.notes = data.notes || null;
+
+      const { data: updatedTransaction, error } = await supabase
+        .from('asset_transactions')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const transaction: AssetTransaction = {
+        id: updatedTransaction.id,
+        user_id: updatedTransaction.user_id,
+        asset_id: updatedTransaction.asset_id || undefined,
+        transaction_type: updatedTransaction.transaction_type as TransactionType,
+        symbol: updatedTransaction.symbol,
+        asset_name: updatedTransaction.asset_name,
+        category: updatedTransaction.category,
+        quantity: Number(updatedTransaction.quantity),
+        price_per_unit: Number(updatedTransaction.price_per_unit),
+        total_value: Number(updatedTransaction.total_value),
+        realized_pnl: updatedTransaction.realized_pnl ? Number(updatedTransaction.realized_pnl) : undefined,
+        transaction_date: updatedTransaction.transaction_date,
+        notes: updatedTransaction.notes || undefined,
+        created_at: updatedTransaction.created_at,
+      };
+
+      setTransactions(prev => prev.map(t => t.id === id ? transaction : t));
+      toast({ title: 'Transaction updated' });
+      
+      return transaction;
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error updating transaction',
+        description: error.message,
+      });
+      return null;
+    }
+  }, [user, toast]);
+
   const deleteTransaction = useCallback(async (id: string) => {
     if (!user) return;
 
@@ -159,6 +220,7 @@ export function useAssetTransactions() {
     transactions,
     loading,
     addTransaction,
+    updateTransaction,
     deleteTransaction,
     refetch: fetchTransactions,
   };

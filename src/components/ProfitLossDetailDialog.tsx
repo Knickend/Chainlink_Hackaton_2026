@@ -3,13 +3,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { TrendingUp, TrendingDown, AlertCircle, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, ChevronDown, ArrowUpRight, ArrowDownRight, Pencil, Trash2 } from 'lucide-react';
 import { ProfitLossData } from '@/hooks/useProfitLoss';
 import { AssetTransaction } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { EditTransactionDialog } from './EditTransactionDialog';
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { UpdateTransactionData } from '@/hooks/useAssetTransactions';
 
 interface ProfitLossDetailDialogProps {
   open: boolean;
@@ -17,6 +21,8 @@ interface ProfitLossDetailDialogProps {
   pnlData: ProfitLossData;
   formatValue: (value: number, showSign?: boolean) => string;
   transactions?: AssetTransaction[];
+  onEditTransaction?: (id: string, data: UpdateTransactionData) => Promise<any>;
+  onDeleteTransaction?: (id: string) => Promise<void>;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -32,9 +38,12 @@ export function ProfitLossDetailDialog({
   pnlData,
   formatValue,
   transactions = [],
+  onEditTransaction,
+  onDeleteTransaction,
 }: ProfitLossDetailDialogProps) {
   const { assetsWithCostBasis, assetsWithoutCostBasis, pnlByCategory, totalPnL, totalPnLPercent } = pnlData;
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<AssetTransaction | null>(null);
 
   // Get transactions for a specific asset
   const getAssetTransactions = (asset: { id: string; symbol?: string | null; name: string }) => {
@@ -174,7 +183,7 @@ export function ProfitLossDetailDialog({
                                   {assetTransactions.map(tx => (
                                     <div 
                                       key={tx.id}
-                                      className="flex items-center justify-between p-2 bg-background/50 rounded border border-border/50"
+                                      className="group flex items-center justify-between p-2 bg-background/50 rounded border border-border/50"
                                     >
                                       <div className="flex items-center gap-2">
                                         {tx.transaction_type === 'buy' ? (
@@ -196,20 +205,57 @@ export function ProfitLossDetailDialog({
                                           {tx.quantity} {tx.symbol}
                                         </span>
                                       </div>
-                                      <div className="text-right">
-                                        <p className="text-sm">
-                                          @{formatValue(tx.price_per_unit)}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {format(new Date(tx.transaction_date), 'MMM d, yyyy')}
-                                        </p>
-                                        {tx.transaction_type === 'sell' && tx.realized_pnl !== undefined && (
-                                          <p className={cn(
-                                            'text-xs font-medium',
-                                            tx.realized_pnl >= 0 ? 'text-success' : 'text-destructive'
-                                          )}>
-                                            P&L: {tx.realized_pnl >= 0 ? '+' : ''}{formatValue(tx.realized_pnl)}
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-right">
+                                          <p className="text-sm">
+                                            @{formatValue(tx.price_per_unit)}
                                           </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {format(new Date(tx.transaction_date), 'MMM d, yyyy')}
+                                          </p>
+                                          {tx.transaction_type === 'sell' && tx.realized_pnl !== undefined && (
+                                            <p className={cn(
+                                              'text-xs font-medium',
+                                              tx.realized_pnl >= 0 ? 'text-success' : 'text-destructive'
+                                            )}>
+                                              P&L: {tx.realized_pnl >= 0 ? '+' : ''}{formatValue(tx.realized_pnl)}
+                                            </p>
+                                          )}
+                                        </div>
+                                        {/* Edit/Delete buttons */}
+                                        {(onEditTransaction || onDeleteTransaction) && (
+                                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {onEditTransaction && (
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingTransaction(tx);
+                                                }}
+                                              >
+                                                <Pencil className="w-3 h-3" />
+                                              </Button>
+                                            )}
+                                            {onDeleteTransaction && (
+                                              <DeleteConfirmDialog
+                                                title="Delete transaction?"
+                                                description={`Are you sure you want to delete this ${tx.transaction_type} transaction for ${tx.quantity} ${tx.symbol}? This action cannot be undone.`}
+                                                onConfirm={() => onDeleteTransaction(tx.id)}
+                                                trigger={
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </Button>
+                                                }
+                                              />
+                                            )}
+                                          </div>
                                         )}
                                       </div>
                                     </div>
@@ -354,6 +400,19 @@ export function ProfitLossDetailDialog({
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Edit Transaction Dialog */}
+      {onEditTransaction && (
+        <EditTransactionDialog
+          transaction={editingTransaction}
+          open={!!editingTransaction}
+          onOpenChange={(open) => !open && setEditingTransaction(null)}
+          onSave={async (id, data) => {
+            await onEditTransaction(id, data);
+          }}
+          formatValue={formatValue}
+        />
+      )}
     </Dialog>
   );
 }
