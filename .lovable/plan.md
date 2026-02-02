@@ -1,131 +1,142 @@
 
+# Plan: Fix Voice Command Dashboard Sync Issue
 
-# Plan: Add Web Speech API Fallback for Voice Features
+## Problem Analysis
 
-## Overview
+The voice command successfully added the income to the database (verified: "rental house" $600 exists in the `income` table), but the dashboard didn't update because of a **state synchronization issue**.
 
-Add the browser's native Web Speech API as a fallback for speech recognition (STT) and speech synthesis (TTS) when ElevenLabs is unavailable or fails. This will ensure the voice features continue to work even without an active ElevenLabs subscription.
+### Root Cause
 
-## How It Works
+The `FinancialAdvisorChat` component creates its **own instance** of `usePortfolio`:
 
-The system will:
-1. **Try ElevenLabs first** - Attempt to use the high-quality ElevenLabs API
-2. **Detect failures** - Catch 401 errors, quota exceeded, or network issues
-3. **Fall back to Web Speech API** - Automatically switch to the browser's native speech capabilities
-4. **Show a subtle indicator** - Let users know they're using the fallback (optional toast)
-
-## Changes Required
-
-### 1. Update `useVoiceChat.ts` Hook
-
-Add fallback logic for both STT and TTS:
-
-**Speech-to-Text (STT) Fallback:**
-- Use `SpeechRecognition` API (built into Chrome, Edge, Safari)
-- Instead of recording and sending audio to ElevenLabs, directly capture speech as text
-- Continuous listening with automatic transcription
-
-**Text-to-Speech (TTS) Fallback:**
-- Use `SpeechSynthesis` API (built into all modern browsers)
-- Select a natural-sounding voice from available system voices
-- Convert assistant responses to spoken audio locally
-
-### 2. Create Web Speech Utility Functions
-
-New helper functions to:
-- Check browser support for Web Speech API
-- Initialize and manage `SpeechRecognition` instance
-- Select the best available voice for `SpeechSynthesis`
-- Handle browser-specific quirks (Chrome requires HTTPS, Safari has different API)
-
-### 3. Update `FinancialAdvisorChat.tsx`
-
-- Add visual indicator when using fallback mode
-- Handle the different flow (Web Speech API transcribes in real-time vs. recording then sending)
-- Show warning if browser doesn't support Web Speech API
-
-## User Experience
-
-| Scenario | What Happens |
-|----------|--------------|
-| ElevenLabs works | High-quality voice with "George" voice |
-| ElevenLabs fails | Automatic fallback with browser voice |
-| No Web Speech support | Text mode only, with info message |
-
-## Browser Support
-
-| Browser | STT Support | TTS Support |
-|---------|-------------|-------------|
-| Chrome/Edge | Yes | Yes |
-| Safari | Yes | Yes |
-| Firefox | No | Yes |
-| Mobile Chrome | Yes | Yes |
-| Mobile Safari | Yes | Yes |
-
-For Firefox users (no STT), the system will show a message suggesting Chrome or Safari.
-
-## Technical Details
-
-```text
-+------------------+     Success     +------------------+
-|  User speaks     | --------------> |  ElevenLabs STT  |
-+------------------+                 +------------------+
-        |                                    |
-        | 401/Error                          v
-        v                            +------------------+
-+------------------+                 |  Transcribed     |
-|  Web Speech API  | --------------> |  Text            |
-|  (SpeechRecog)   |                 +------------------+
-+------------------+                          |
-                                              v
-                                     +------------------+
-                                     |  Parse Command   |
-                                     |  (parse-voice-   |
-                                     |   command)       |
-                                     +------------------+
-                                              |
-                                              v
-                                     +------------------+
-                                     |  Execute Action  |
-                                     |  or Chat         |
-                                     +------------------+
-                                              |
-                                              v
-                                     +------------------+
-                                     |  Response Text   |
-                                     +------------------+
-                                              |
-                           +-----------------+-----------------+
-                           |                                   |
-                           v                                   v
-                   +------------------+               +------------------+
-                   |  ElevenLabs TTS  |               |  Web Speech TTS  |
-                   |  (George voice)  |               |  (System voice)  |
-                   +------------------+               +------------------+
-                           |                                   |
-                           +-----------------+-----------------+
-                                             |
-                                             v
-                                     +------------------+
-                                     |  Audio Playback  |
-                                     +------------------+
+```typescript
+// In FinancialAdvisorChat.tsx (line 77-90)
+const {
+  assets,
+  income,
+  expenses,
+  addAsset,
+  updateAsset,
+  ...
+} = usePortfolio();
 ```
 
-## Files to Create/Modify
+Meanwhile, `Index.tsx` creates a **separate instance**:
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/lib/webSpeechApi.ts` | Create | Utility functions for Web Speech API |
-| `src/hooks/useVoiceChat.ts` | Modify | Add fallback logic and state management |
-| `src/components/FinancialAdvisorChat.tsx` | Modify | UI updates for fallback indicator |
+```typescript
+// In Index.tsx (line 145)
+const { ... } = usePortfolio(prices, isDemo);
+```
 
-## Voice Commands Still Supported
+When `addIncome` is called via voice command:
+1. Data is inserted into Supabase successfully
+2. `FinancialAdvisorChat`'s local state is updated
+3. But `Index.tsx`'s state remains unchanged (separate hook instance)
 
-All existing voice commands will work identically:
-- "Add $5,000 to my savings account"
-- "What's my net worth?"
-- "Delete my Netflix expense"
-- "Add a goal to save $10,000 for a vacation"
+## Solution
 
-The only difference is the voice quality (system voice vs. ElevenLabs premium voice).
+Pass the portfolio data and actions from `Index.tsx` to `FinancialAdvisorChat` as props, ensuring both use the same state.
 
+### Changes Required
+
+#### 1. Update `FinancialAdvisorChat` to accept props
+
+Add optional props for portfolio data and actions. When provided, use them instead of creating a new hook instance:
+
+```typescript
+interface FinancialAdvisorChatProps {
+  portfolioData?: {
+    assets: Asset[];
+    income: Income[];
+    expenses: Expense[];
+    addAsset: (data: any) => Promise<void>;
+    updateAsset: (id: string, data: any) => Promise<void>;
+    deleteAsset: (id: string) => Promise<void>;
+    addIncome: (data: any) => Promise<void>;
+    // ... other actions
+  };
+  debtsData?: {
+    debts: Debt[];
+    addDebt: (data: any) => Promise<void>;
+    // ... other actions
+  };
+  goalsData?: {
+    goals: Goal[];
+    addGoal: (data: any) => Promise<void>;
+    // ... other actions
+  };
+}
+```
+
+#### 2. Update `Index.tsx` to pass portfolio data
+
+Pass the existing portfolio, debts, and goals data to the chat component:
+
+```typescript
+<FinancialAdvisorChat
+  portfolioData={{
+    assets,
+    income,
+    expenses,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    addIncome,
+    updateIncome,
+    deleteIncome,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+  }}
+  debtsData={{
+    debts: demoDebts,
+    addDebt,
+    updateDebt,
+    deleteDebt,
+  }}
+  goalsData={{
+    goals: demoGoals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+  }}
+/>
+```
+
+#### 3. Conditional hook usage in `FinancialAdvisorChat`
+
+Use the passed props when available, otherwise fall back to own hooks (for standalone usage):
+
+```typescript
+export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: FinancialAdvisorChatProps) {
+  // Only create hooks if data not passed as props
+  const internalPortfolio = usePortfolio();
+  const internalDebts = useDebts();
+  const internalGoals = useGoals();
+  
+  // Use props if provided, otherwise use internal hooks
+  const assets = portfolioData?.assets ?? internalPortfolio.assets;
+  const income = portfolioData?.income ?? internalPortfolio.income;
+  const addIncome = portfolioData?.addIncome ?? internalPortfolio.addIncome;
+  // ... etc
+}
+```
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/FinancialAdvisorChat.tsx` | Accept optional portfolio/debts/goals props |
+| `src/pages/Index.tsx` | Pass portfolio/debts/goals data to chat component |
+
+## Why This Works
+
+After the change:
+1. Voice command calls `addIncome` 
+2. This is the **same function** from `Index.tsx`'s `usePortfolio` instance
+3. When it updates local state, the dashboard updates immediately
+4. Database insert still happens (unchanged)
+
+## Alternative Considered
+
+Using React Query with cache invalidation was considered, but would require more extensive refactoring. The prop-passing approach is simpler and maintains the existing architecture.
