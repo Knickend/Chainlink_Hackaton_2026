@@ -1,87 +1,69 @@
 
-# Add Sales Bot Analytics to Admin Dashboard
+# Add FAQ Section to Landing Page
 
 ## Overview
-Add tracking for the AI sales assistant ("Alex") on the landing page so you can see engagement metrics like total conversations, messages sent, peak usage times, and conversion actions.
+Add a Frequently Asked Questions section to the landing page between the Pricing section and the Footer. The FAQ will use an accordion-style design that matches the premium dark theme with gold accents.
 
-## What You'll Be Able to See
-- Total conversations started
-- Total messages exchanged
-- Unique visitors who interacted
-- Conversations over time (trend chart)
-- Peak usage hours
-- Sign-up button clicks from the chat
+## What You'll Get
+- An interactive accordion FAQ section with smooth animations
+- Common questions about the product, pricing, security, and getting started
+- A new navigation link in the header for quick access
+- Design consistent with the existing glassmorphism aesthetic
 
 ---
 
-## Technical Implementation
+## Implementation Details
 
-### Step 1: Create Database Table
-Create a `sales_bot_interactions` table to log each conversation event:
+### New Component: FAQSection.tsx
+Create a new component at `src/components/landing/FAQSection.tsx` that includes:
+- Section header matching other landing sections (title with gradient text)
+- Accordion items using the existing shadcn/ui Accordion component
+- Motion animations for scroll-into-view effects (matching FeaturesSection pattern)
+- Glass card styling for each FAQ item
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | uuid | Primary key |
-| session_id | text | Groups messages in same conversation |
-| event_type | text | 'conversation_start', 'message', 'cta_click' |
-| visitor_ip_hash | text | Anonymized visitor identifier |
-| message_role | text | 'user' or 'assistant' |
-| created_at | timestamp | When the event occurred |
+### Suggested FAQ Questions
+1. **What assets can I track?** - Crypto, stocks, ETFs, real estate, precious metals, and more
+2. **Is my data secure?** - SOC 2 Type II compliance, encryption, no third-party sharing
+3. **Can I try before subscribing?** - Free tier and demo mode available
+4. **How do live prices work?** - Real-time updates for 50+ cryptocurrencies, stocks, gold, silver
+5. **Can I cancel anytime?** - Yes, no hidden fees or long-term commitments
+6. **What payment methods do you accept?** - Major credit cards through secure payment processing
 
-### Step 2: Update Edge Function
-Modify `supabase/functions/sales-bot/index.ts` to:
-- Generate a session ID for each conversation
-- Log each message exchange to the database
-- Track using hashed IP for privacy (no PII stored)
+### Files to Modify
 
-### Step 3: Track CTA Clicks (Frontend)
-Update `SalesChatBot.tsx` to call a logging endpoint when users click:
-- "Sign Up Free" button
-- "View Demo" button
-
-### Step 4: Add Admin Dashboard Section
-Create a new "Sales Bot" tab or section in the admin dashboard showing:
-- **Stat cards**: Total conversations, Total messages, Unique visitors, CTA clicks
-- **Trend chart**: Conversations per day over the last 30 days
-- **Hourly heatmap**: Peak engagement times
-
-### Step 5: Analytics Hook
-Create `useAdminSalesBotAnalytics.ts` to fetch and aggregate the data.
-
----
-
-## File Changes Summary
-
-| File | Action |
+| File | Change |
 |------|--------|
-| `supabase/migrations/` | Create `sales_bot_interactions` table |
-| `supabase/functions/sales-bot/index.ts` | Add logging to database |
-| `src/components/landing/SalesChatBot.tsx` | Track CTA button clicks |
-| `src/hooks/useAdminSalesBotAnalytics.ts` | New hook for fetching analytics |
-| `src/components/admin/SalesBotAnalytics.tsx` | New component for displaying stats |
-| `src/pages/Admin.tsx` | Add new tab for Sales Bot analytics |
+| `src/components/landing/FAQSection.tsx` | **Create** - New FAQ component with accordion |
+| `src/pages/Landing.tsx` | Add FAQ import, navigation link, and render between Pricing and Footer |
 
 ---
 
-## Privacy Considerations
-- Visitor IPs are hashed (not stored in plain text)
-- No message content is stored (only metadata)
-- Data is only accessible to admins
-
----
-
-## Expected Dashboard Preview
+## Visual Preview
 
 ```text
-+------------------+------------------+------------------+------------------+
-|  Conversations   |    Messages      |   Unique Users   |   CTA Clicks     |
-|       47         |       234        |       38         |       12         |
-+------------------+------------------+------------------+------------------+
-
-[======== Conversations Over Time (Line Chart) ========]
-
-| Hour | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
-|------|-----|-----|-----|-----|-----|-----|-----|
-|  9AM |  2  |  3  |  1  |  4  |  2  |  1  |  0  |
-|  ...                                            |
++----------------------------------------------------------+
+|                    Frequently Asked                       |
+|                      Questions                            |
+|                                                           |
+|  +------------------------------------------------------+ |
+|  | What assets can I track with InControl?           [+]| |
+|  +------------------------------------------------------+ |
+|  | Is my financial data secure?                      [+]| |
+|  +------------------------------------------------------+ |
+|  | Can I try InControl before subscribing?           [+]| |
+|  +------------------------------------------------------+ |
+|  | How do the live price updates work?               [+]| |
+|  +------------------------------------------------------+ |
+|  | Can I cancel my subscription anytime?             [+]| |
+|  +------------------------------------------------------+ |
++----------------------------------------------------------+
 ```
+
+---
+
+## Design Notes
+- Uses the existing `glass-card` styling for accordion items
+- Gold/primary color accent on hover and open states
+- Smooth accordion animations using Radix UI primitives
+- Framer Motion for scroll-triggered entrance animations
+- Responsive layout that works on mobile and desktop
