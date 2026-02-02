@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Clock, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Calendar, Activity } from 'lucide-react';
+import { Clock, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Calendar, Activity, Play, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCronJobLogs, CronJobLog } from '@/hooks/useCronJobLogs';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const statusConfig = {
   success: {
@@ -75,6 +78,35 @@ function StatCard({
 
 export function CronJobMonitor() {
   const { data: logs, isLoading, refetch, isRefetching } = useCronJobLogs();
+  const [isTriggering, setIsTriggering] = useState(false);
+
+  // Manual trigger function
+  const handleManualTrigger = async () => {
+    setIsTriggering(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-bulk-snapshots');
+      
+      if (error) {
+        console.error('Failed to trigger bulk snapshots:', error);
+        toast.error('Failed to trigger bulk snapshots', {
+          description: error.message,
+        });
+        return;
+      }
+
+      toast.success('Bulk snapshots created', {
+        description: `Processed ${data.processed} users: ${data.succeeded} succeeded, ${data.failed} failed`,
+      });
+      
+      // Refresh the logs
+      await refetch();
+    } catch (err) {
+      console.error('Error triggering bulk snapshots:', err);
+      toast.error('Error triggering bulk snapshots');
+    } finally {
+      setIsTriggering(false);
+    }
+  };
 
   // Calculate stats
   const totalRuns = logs?.length || 0;
@@ -157,15 +189,30 @@ export function CronJobMonitor() {
               Recent cron job executions and their results
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isRefetching}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleManualTrigger}
+              disabled={isTriggering}
+            >
+              {isTriggering ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 mr-2" />
+              )}
+              Run Now
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {logs && logs.length > 0 ? (
