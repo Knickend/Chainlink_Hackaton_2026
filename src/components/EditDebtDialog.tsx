@@ -88,12 +88,13 @@ export function EditDebtDialog({ debt, onUpdate }: EditDebtDialogProps) {
           <Pencil className="w-3.5 h-3.5" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Edit Debt</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
             <FormField
               control={form.control}
               name="name"
@@ -221,7 +222,9 @@ export function EditDebtDialog({ debt, onUpdate }: EditDebtDialogProps) {
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-4">
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 flex-shrink-0">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>

@@ -111,8 +111,8 @@ export function EditGoalDialog({ goal, onUpdate, trigger }: EditGoalDialogProps)
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CategoryIcon className="w-5 h-5 text-primary" />
             Edit Goal
@@ -122,7 +122,8 @@ export function EditGoalDialog({ goal, onUpdate, trigger }: EditGoalDialogProps)
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
           <div className="space-y-2">
             <Label htmlFor="edit-name">Goal Name</Label>
             <Input
@@ -280,9 +281,13 @@ export function EditGoalDialog({ goal, onUpdate, trigger }: EditGoalDialogProps)
             />
           </div>
 
-          <Button type="submit" className="w-full">
-            Save Changes
-          </Button>
+          </div>
+
+          <div className="pt-4 flex-shrink-0">
+            <Button type="submit" className="w-full">
+              Save Changes
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

@@ -105,8 +105,8 @@ export function SellAssetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-primary/20 sm:max-w-[425px]">
-        <DialogHeader>
+      <DialogContent className="glass-card border-primary/20 sm:max-w-[425px] max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-primary" />
             Sell {asset.name}
@@ -114,7 +114,8 @@ export function SellAssetDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 pb-2">
             <FormField
               control={form.control}
               name="quantity"
@@ -258,7 +259,9 @@ export function SellAssetDialog({
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-2">
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 flex-shrink-0">
               <Button
                 type="button"
                 variant="outline"
