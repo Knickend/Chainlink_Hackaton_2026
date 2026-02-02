@@ -6,9 +6,11 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { HeroSection } from '@/components/landing/HeroSection';
 import { FeaturesSection } from '@/components/landing/FeaturesSection';
 import { PricingSection } from '@/components/landing/PricingSection';
+import { FAQSection } from '@/components/landing/FAQSection';
 import { Footer } from '@/components/landing/Footer';
 import { SalesChatBot } from '@/components/landing/SalesChatBot';
 import { BetaBanner } from '@/components/landing/BetaBanner';
+
 const Landing = () => {
   const navigate = useNavigate();
 
@@ -44,6 +46,12 @@ const Landing = () => {
             >
               Pricing
             </a>
+            <a
+              href="#faq"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
+            >
+              FAQ
+            </a>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -73,6 +81,7 @@ const Landing = () => {
         <HeroSection />
         <FeaturesSection />
         <PricingSection />
+        <FAQSection />
       </main>
 
       <Footer />
