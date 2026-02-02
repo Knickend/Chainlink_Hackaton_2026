@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
@@ -13,12 +13,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { ProBadge } from './ProBadge';
 import { cn } from '@/lib/utils';
-import { DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+import { BANKING_CURRENCIES } from '@/lib/types';
 
 const expenseSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   amount: z.number().min(0.01, 'Amount must be positive'),
   category: z.string().min(1, 'Category is required'),
+  currency: z.string().min(1, 'Currency is required'),
   expense_date: z.date({
     required_error: 'Date is required',
   }),
@@ -27,8 +28,7 @@ const expenseSchema = z.object({
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
 interface AddOneTimeExpenseDialogProps {
-  onAdd: (expense: { name: string; amount: number; category: string; is_recurring: false; expense_date: string }) => void;
-  displayUnit: DisplayUnit;
+  onAdd: (expense: { name: string; amount: number; category: string; currency: string; is_recurring: false; expense_date: string }) => void;
 }
 
 const expenseCategories = [
@@ -44,7 +44,7 @@ const expenseCategories = [
   'Other',
 ];
 
-export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpenseDialogProps) {
+export function AddOneTimeExpenseDialog({ onAdd }: AddOneTimeExpenseDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -52,15 +52,20 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
       name: '',
       amount: undefined as unknown as number,
       category: '',
+      currency: 'USD',
       expense_date: new Date(),
     },
   });
+
+  const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+  const currencySymbol = BANKING_CURRENCIES.find(c => c.value === selectedCurrency)?.symbol || '$';
 
   const onSubmit = (data: ExpenseFormData) => {
     onAdd({ 
       name: data.name,
       amount: data.amount,
       category: data.category,
+      currency: data.currency,
       is_recurring: false,
       expense_date: format(data.expense_date, 'yyyy-MM-dd'),
     });
@@ -68,6 +73,7 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
       name: '',
       amount: undefined as unknown as number,
       category: '',
+      currency: 'USD',
       expense_date: new Date(),
     });
     setOpen(false);
@@ -110,7 +116,7 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+                  <FormLabel>Amount ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -121,6 +127,31 @@ export function AddOneTimeExpenseDialog({ onAdd, displayUnit }: AddOneTimeExpens
                       className="bg-secondary/50"
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      {BANKING_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          {currency.symbol} - {currency.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

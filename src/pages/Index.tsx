@@ -454,9 +454,8 @@ const IndexContent = () => {
               formatValue={formatValue}
               actionButton={isDemo ? undefined : (
                 <AddExpenseDropdown
-                  onAddRecurring={(data) => addExpense({ ...data, is_recurring: true, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })}
-                  onAddOneTime={(data) => addExpense({ ...data, currency: displayUnit === 'BTC' || displayUnit === 'GOLD' ? 'USD' : displayUnit })}
-                  displayUnit={displayUnit}
+                  onAddRecurring={(data) => addExpense({ ...data, is_recurring: true })}
+                  onAddOneTime={(data) => addExpense(data)}
                   isPro={isPro}
                   onUpgrade={() => setShowSubscriptionDialog(true)}
                 />

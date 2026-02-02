@@ -202,7 +202,7 @@ export function IncomeExpenseCard({
                     />
                   )}
                   {!isIncome && 'name' in item && onUpdateExpense && (
-                    <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} displayUnit={displayUnit} />
+                    <EditExpenseDialog expense={item as Expense} onUpdate={onUpdateExpense} />
                   )}
                   {!isIncome && onDeleteExpense && (
                     <DeleteConfirmDialog
