@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 interface AssetsBreakdown {
@@ -27,8 +27,9 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // Verify service role authorization (cron job will use service role key)
+    // Verify authorization
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -38,19 +39,49 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    
-    // Accept either service role key or validate it's coming from a system context
-    // For pg_cron, we pass the service role key directly
-    if (token !== supabaseServiceKey) {
-      // If not service role key, reject
-      console.log('Unauthorized: Token does not match service role key');
+    let isAuthorized = false;
+    let triggeredBy = 'unknown';
+
+    // Check if it's the service role key (from cron job)
+    if (token === supabaseServiceKey) {
+      isAuthorized = true;
+      triggeredBy = 'cron';
+      console.log('Authorized with service role key (cron job)');
+    } else {
+      // Check if it's a valid admin user JWT
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } }
+      });
+      
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      
+      if (!userError && user) {
+        // Check if user has admin role
+        const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: roleData } = await serviceClient
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'admin')
+          .single();
+        
+        if (roleData) {
+          isAuthorized = true;
+          triggeredBy = 'admin';
+          console.log(`Authorized as admin user: ${user.id}`);
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      console.log('Unauthorized: Not service role or admin user');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Service role required' }),
+        JSON.stringify({ error: 'Unauthorized - Admin or service role required' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Authorized with service role key - starting bulk snapshot creation');
+    console.log(`Starting bulk snapshot creation (triggered by: ${triggeredBy})`);
 
     // Create service role client for data fetching (bypasses RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -188,7 +219,7 @@ Deno.serve(async (req) => {
       processed_count: profiles.length,
       succeeded_count: succeeded,
       failed_count: failed,
-      details: { snapshot_month: snapshotMonth, results }
+      details: { snapshot_month: snapshotMonth, triggered_by: triggeredBy, results }
     });
 
     return new Response(
