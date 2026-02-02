@@ -25,7 +25,7 @@ import { DisplayUnit, BANKING_CURRENCIES, BITCOIN_CURRENCIES, isBitcoinCurrency 
 const recurringIncomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
   amount: z.number().min(0.00000001, 'Amount must be positive'),
-  type: z.enum(['work', 'passive', 'investment', 'mining'] as const),
+  type: z.enum(['work', 'passive', 'investment', 'mining', 'other'] as const),
   currency: z.string().min(1, 'Currency is required'),
 });
 
@@ -33,7 +33,7 @@ const recurringIncomeSchema = z.object({
 const oneTimeIncomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
   amount: z.number().min(0.00000001, 'Amount must be positive'),
-  type: z.enum(['work', 'passive', 'investment', 'mining'] as const),
+  type: z.enum(['work', 'passive', 'investment', 'mining', 'other'] as const),
   currency: z.string().min(1, 'Currency is required'),
   income_date: z.date({
     required_error: 'Date is required',
@@ -44,8 +44,8 @@ type RecurringIncomeFormData = z.infer<typeof recurringIncomeSchema>;
 type OneTimeIncomeFormData = z.infer<typeof oneTimeIncomeSchema>;
 
 interface AddIncomeDropdownProps {
-  onAddRecurring: (data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining'; currency: string; is_recurring: true }) => void;
-  onAddOneTime: (data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining'; currency: string; is_recurring: false; income_date: string }) => void;
+  onAddRecurring: (data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining' | 'other'; currency: string; is_recurring: true }) => void;
+  onAddOneTime: (data: { source: string; amount: number; type: 'work' | 'passive' | 'investment' | 'mining' | 'other'; currency: string; is_recurring: false; income_date: string }) => void;
   displayUnit: DisplayUnit;
   isPro: boolean;
   onUpgrade?: () => void;
@@ -56,6 +56,7 @@ const incomeTypes = [
   { value: 'passive', label: 'Passive Income' },
   { value: 'investment', label: 'Investment Income' },
   { value: 'mining', label: 'Bitcoin Mining' },
+  { value: 'other', label: 'Other' },
 ];
 
 const oneTimeIncomeTypes = [
@@ -63,6 +64,7 @@ const oneTimeIncomeTypes = [
   { value: 'passive', label: 'One-time Dividend' },
   { value: 'investment', label: 'Capital Gain' },
   { value: 'mining', label: 'Mining Payout' },
+  { value: 'other', label: 'Other' },
 ];
 
 // Combine fiat and bitcoin currencies for the selector
