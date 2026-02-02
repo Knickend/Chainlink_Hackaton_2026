@@ -1,111 +1,141 @@
 
+# Plan: Make Profit & Loss Card Full Width
 
-# Plan: Integrate Sell Asset Flow
+## Problem
 
-## Overview
+The Profit & Loss card currently sits in a 3-column grid but only uses 1 column, leaving 2/3 of the row empty. The screenshot shows the card looking cramped on the left side with wasted space.
 
-The infrastructure for selling assets already exists - we have the `SellAssetDialog`, `useAssetTransactions` hook, and the `asset_transactions` database table. What's needed is connecting these pieces to the UI so users can trigger the sell flow.
+## Solution
 
-## Current State
+Remove the grid container and redesign the card layout to utilize the full dashboard width with a horizontal arrangement of stats.
 
-| Component | Status |
-|-----------|--------|
-| `SellAssetDialog.tsx` | Created - handles form, P&L preview |
-| `useAssetTransactions.ts` | Created - manages transactions in DB |
-| `asset_transactions` table | Created - stores buy/sell history |
-| UI integration | Missing - no way to trigger sell |
+## Changes Required
 
-## Implementation
+### 1. Update `src/pages/Index.tsx`
 
-### 1. Add Sell Button to ViewAllAssetsDialog
+Remove the grid wrapper around the P&L section. Change from:
 
-Add a "Sell" button in the actions column next to Edit and Delete buttons. This should only appear for assets that have a quantity (sellable assets like stocks, crypto, commodities).
-
-```text
-+--------------------------------------------------+
-| Name    | Symbol | Category | Qty  | Value | Actions     |
-+--------------------------------------------------+
-| Tesla   | TSLA   | Stocks   | 10   | $2,500| [Edit][Sell][Del]|
-| Bitcoin | BTC    | Crypto   | 0.5  | $50k  | [Edit][Sell][Del]|
-| Savings | -      | Banking  | -    | $10k  | [Edit][Del]      |
-+--------------------------------------------------+
+```tsx
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+  <div className="lg:col-span-1">
+    {isPro ? (
+      <ProfitLossCard ... />
+    ) : !isDemo && (
+      <ProfitLossTeaser ... />
+    )}
+  </div>
+</div>
 ```
 
-### 2. Wire Up the Sell Flow
+To:
 
-When user clicks Sell:
-1. Open `SellAssetDialog` with the selected asset
-2. User enters quantity to sell and sale price
-3. On confirm:
-   - Record transaction via `useAssetTransactions.addTransaction()`
-   - Update or delete the asset via `updateAsset()` or `deleteAsset()`
-   - Refresh P&L data
-
-### 3. Handle Partial vs Full Sales
-
-- **Partial sale**: Reduce asset quantity and cost basis proportionally
-- **Full sale**: Delete the asset entirely
-
-```text
-Example: Sell 5 of 10 shares at $100/share
-- Original: quantity=10, cost_basis=$800 ($80/share)
-- After: quantity=5, cost_basis=$400
-- Transaction: realized_pnl = (5 × $100) - (5 × $80) = $100
+```tsx
+<div className="mb-8">
+  {isPro ? (
+    <ProfitLossCard ... />
+  ) : !isDemo && (
+    <ProfitLossTeaser ... />
+  )}
+</div>
 ```
+
+### 2. Update `src/components/ProfitLossCard.tsx`
+
+Redesign the card layout to use horizontal space effectively:
+
+**Current layout (stacked, narrow):**
+```text
++---------------------------+
+|  $ Profit & Loss    [PRO] |
++---------------------------+
+|       Total P&L           |
+|    +$204,355.80           |
+|       +399.9%             |
+|  +----------+ +--------+  |
+|  |Unrealized| |Realized|  |
+|  |+$204,355 | |+$0.00  |  |
+|  +----------+ +--------+  |
+|  [View Details]           |
++---------------------------+
+```
+
+**New layout (horizontal, full-width):**
+```text
++-------------------------------------------------------------------------------+
+|  $ Profit & Loss                                                        [PRO] |
++-------------------------------------------------------------------------------+
+|   Total P&L           |    Unrealized P&L      |    Realized P&L      | [View |
+|  +$204,355.80         |   +$204,355.80         |   +$0.00             |Details]|
+|     +399.9%           |      +399.9%           |      0.0%            |        |
++-------------------------------------------------------------------------------+
+```
+
+**Code structure:**
+```tsx
+<Card className="glass-card border-primary/20">
+  <CardHeader className="pb-2">
+    <div className="flex items-center justify-between">
+      <CardTitle>...</CardTitle>
+      <ProBadge />
+    </div>
+  </CardHeader>
+  <CardContent>
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+      {/* Total P&L - main stat */}
+      <div className="flex items-center gap-4">
+        <TrendingUp/Down icon />
+        <div>
+          <p className="text-sm text-muted-foreground">Total P&L</p>
+          <span className="text-2xl font-bold">+$204,355.80</span>
+          <span className="text-sm">+399.9%</span>
+        </div>
+      </div>
+      
+      {/* Unrealized & Realized - side by side */}
+      <div className="flex gap-4 md:gap-8">
+        <div className="bg-secondary/30 rounded-lg p-4">
+          <p>Unrealized</p>
+          <p>+$204,355.80</p>
+        </div>
+        <div className="bg-secondary/30 rounded-lg p-4">
+          <p>Realized</p>
+          <p>+$0.00</p>
+        </div>
+      </div>
+      
+      {/* View Details button */}
+      <Button variant="outline">
+        View Details
+        <ChevronRight />
+      </Button>
+    </div>
+  </CardContent>
+</Card>
+```
+
+### 3. Update `src/components/ProfitLossTeaser.tsx` (if needed)
+
+Apply similar full-width styling to maintain visual consistency when the teaser is shown to non-Pro users.
+
+## Visual Comparison
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Width | 1/3 of dashboard | Full width |
+| Layout | Vertical/stacked | Horizontal flow |
+| Stats | Centered, narrow boxes | Row of spacious stat blocks |
+| Button | Full width at bottom | Right-aligned with stats |
+
+## Responsive Behavior
+
+- **Desktop (lg+)**: Horizontal layout with all elements in a row
+- **Tablet (md)**: May wrap to 2 rows if needed
+- **Mobile**: Stack vertically (similar to current layout)
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/ViewAllAssetsDialog.tsx` | Add sell button, integrate SellAssetDialog, pass new props |
-| `src/pages/Index.tsx` | Pass transaction hook and sell handler to ViewAllAssetsDialog |
-
-## New Props for ViewAllAssetsDialog
-
-```typescript
-interface ViewAllAssetsDialogProps {
-  // ... existing props
-  onSellAsset?: (assetId: string, data: {
-    quantity: number;
-    price_per_unit: number;
-    total_value: number;
-    realized_pnl?: number;
-    transaction_date: string;
-    notes?: string;
-  }) => Promise<void>;
-  livePrices?: LivePrices;
-}
-```
-
-## User Experience Flow
-
-1. User opens "View All Assets" dialog
-2. Clicks "Sell" button on an asset (e.g., Tesla stock)
-3. Sell dialog opens showing:
-   - Current quantity owned
-   - Current market price (from live prices)
-   - Fields for quantity to sell and sale price
-   - Real-time P&L calculation preview
-4. User confirms sale
-5. Transaction is recorded to database
-6. Asset quantity/cost basis updated (or deleted if full sale)
-7. Toast notification confirms the sale with realized P&L
-8. P&L card on dashboard reflects the change
-
-## Technical Details
-
-### Sell Handler Function
-
-The sell handler in `Index.tsx` will:
-1. Call `addTransaction()` from `useAssetTransactions` to record the sale
-2. Calculate new quantity and cost basis
-3. Call `updateAsset()` or `deleteAsset()` as appropriate
-4. The `useProfitLoss` hook will automatically recalculate totals
-
-### Cost Basis Reduction Formula
-
-```text
-new_quantity = old_quantity - sold_quantity
-new_cost_basis = old_cost_basis × (new_quantity / old_quantity)
-```
-
+| File | Change |
+|------|--------|
+| `src/pages/Index.tsx` | Remove grid wrapper (lines 380-395) |
+| `src/components/ProfitLossCard.tsx` | Redesign to horizontal layout |
+| `src/components/ProfitLossTeaser.tsx` | Apply matching full-width styling |
