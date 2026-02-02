@@ -383,6 +383,7 @@ const IndexContent = () => {
               pnlData={pnlData} 
               formatValue={formatValue} 
               delay={0.25}
+              transactions={transactions}
             />
           ) : !isDemo && (
             <ProfitLossTeaser 
