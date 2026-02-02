@@ -267,6 +267,28 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
               />
             )}
 
+            {selectedCategory === 'crypto' && (
+              <FormField
+                control={form.control}
+                name="symbol"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Search Cryptocurrency</FormLabel>
+                    <FormControl>
+                      <TickerSearchInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onSelect={handleTickerSelect}
+                        placeholder="Search by name or symbol (BTC, ETH...)"
+                        assetType="crypto"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             <FormField
               control={form.control}
               name="name"
@@ -275,7 +297,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   <FormLabel>Asset Name</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder={selectedCategory === 'stocks' || selectedCategory === 'commodities' ? 'Auto-filled from search' : 'e.g., Chase Savings'} 
+                      placeholder={selectedCategory === 'stocks' || selectedCategory === 'commodities' || selectedCategory === 'crypto' ? 'Auto-filled from search' : 'e.g., Chase Savings'} 
                       {...field} 
                       className="bg-secondary/50"
                       readOnly={(selectedCategory === 'stocks' || selectedCategory === 'commodities' || selectedCategory === 'crypto') && !!selectedTicker}
@@ -288,25 +310,6 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
 
             {selectedCategory === 'crypto' && (
               <>
-                <FormField
-                  control={form.control}
-                  name="symbol"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Search Cryptocurrency</FormLabel>
-                      <FormControl>
-                        <TickerSearchInput
-                          value={field.value || ''}
-                          onChange={field.onChange}
-                          onSelect={handleTickerSelect}
-                          placeholder="Search by name or symbol (BTC, ETH...)"
-                          assetType="crypto"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}
