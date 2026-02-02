@@ -93,7 +93,7 @@ const IndexContent = () => {
   } = usePortfolioHistory();
 
   // Asset transactions for P&L tracking
-  const { transactions, loading: transactionsLoading } = useAssetTransactions();
+  const { transactions, loading: transactionsLoading, addTransaction } = useAssetTransactions();
   
   // Auto-create snapshot for current month if missing (on login)
   const hasTriedAutoSnapshot = useRef(false);
@@ -448,6 +448,44 @@ const IndexContent = () => {
                 formatValue={formatValue}
                 onUpdateAsset={isDemo ? undefined : updateAsset}
                 onDeleteAsset={isDemo ? undefined : deleteAsset}
+                onSellAsset={isDemo ? undefined : async (assetId, data) => {
+                  const asset = assets.find(a => a.id === assetId);
+                  if (!asset) return;
+                  
+                  // Record the transaction
+                  await addTransaction({
+                    asset_id: assetId,
+                    transaction_type: 'sell',
+                    symbol: asset.symbol || asset.name,
+                    asset_name: asset.name,
+                    category: asset.category,
+                    quantity: data.quantity,
+                    price_per_unit: data.price_per_unit,
+                    total_value: data.total_value,
+                    realized_pnl: data.realized_pnl,
+                    transaction_date: data.transaction_date,
+                    notes: data.notes,
+                  });
+                  
+                  // Update or delete the asset
+                  const remainingQty = (asset.quantity || 0) - data.quantity;
+                  
+                  if (remainingQty <= 0) {
+                    // Full sale - delete asset
+                    await deleteAsset(assetId);
+                  } else {
+                    // Partial sale - reduce quantity and cost basis proportionally
+                    const originalQty = asset.quantity || 0;
+                    const newCostBasis = asset.cost_basis 
+                      ? asset.cost_basis * (remainingQty / originalQty)
+                      : undefined;
+                    
+                    await updateAsset(assetId, {
+                      quantity: remainingQty,
+                      cost_basis: newCostBasis,
+                    });
+                  }
+                }}
                 livePrices={prices}
               />
               {isDemo ? (
