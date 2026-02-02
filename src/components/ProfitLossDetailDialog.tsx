@@ -150,12 +150,14 @@ export function ProfitLossDetailDialog({
                                 "w-4 h-4 text-muted-foreground transition-transform",
                                 isExpanded && "rotate-180"
                               )} />
-                              <div className="text-left">
-                                <p className="font-medium">{asset.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {asset.symbol ? `${asset.symbol} • ` : ''}{asset.category}
-                                </p>
-                              </div>
+                            <div className="text-left">
+                              <p className="font-medium">{asset.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {asset.quantity && asset.symbol 
+                                  ? `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}` 
+                                  : asset.symbol || asset.category}
+                              </p>
+                            </div>
                             </div>
                             <div className="text-right">
                               <p className={cn(
