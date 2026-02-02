@@ -1,76 +1,111 @@
 
-# Plan: Make Add Asset Dialog Scrollable
 
-## Problem
+# Plan: Integrate Sell Asset Flow
 
-The Add Asset dialog becomes too tall when adding stocks/crypto with cost basis fields, causing the "Add Asset" button to be cut off at the bottom of the screen.
+## Overview
 
-## Solution
+The infrastructure for selling assets already exists - we have the `SellAssetDialog`, `useAssetTransactions` hook, and the `asset_transactions` database table. What's needed is connecting these pieces to the UI so users can trigger the sell flow.
 
-Add a scrollable area inside the dialog content with a constrained maximum height, ensuring the submit button is always visible regardless of how many form fields are displayed.
+## Current State
 
-## Changes Required
+| Component | Status |
+|-----------|--------|
+| `SellAssetDialog.tsx` | Created - handles form, P&L preview |
+| `useAssetTransactions.ts` | Created - manages transactions in DB |
+| `asset_transactions` table | Created - stores buy/sell history |
+| UI integration | Missing - no way to trigger sell |
 
-### File: `src/components/AddAssetDialog.tsx`
+## Implementation
 
-1. **Add max-height and overflow to DialogContent**
-   - Add `max-h-[85vh]` to limit height to 85% of viewport
-   - Add `overflow-y-auto` to enable vertical scrolling
+### 1. Add Sell Button to ViewAllAssetsDialog
 
-2. **Alternative approach (better UX)**: Wrap the form content in a ScrollArea
-   - Keep the DialogHeader fixed at the top
-   - Make the form fields scrollable
-   - Keep the submit button visible at the bottom (sticky footer)
-
-### Implementation Details
-
-The recommended approach is to structure the dialog with:
-- Fixed header (DialogHeader)
-- Scrollable middle section (form fields) with `max-h-[60vh] overflow-y-auto`
-- Fixed footer (submit button)
+Add a "Sell" button in the actions column next to Edit and Delete buttons. This should only appear for assets that have a quantity (sellable assets like stocks, crypto, commodities).
 
 ```text
-+----------------------------------+
-|  Add New Asset         [X]       |  <- Fixed header
-+----------------------------------+
-|  Category                        |
-|  [Stocks & ETFs        v]        |
-|                                  |
-|  Search Stock/ETF                |
-|  [TSLA                  ]        |  <- Scrollable area
-|                                  |     max-h-[60vh]
-|  ... more fields ...             |
-|                                  |
-+----------------------------------+
-|  [    Add Asset     ]            |  <- Fixed footer
-+----------------------------------+
++--------------------------------------------------+
+| Name    | Symbol | Category | Qty  | Value | Actions     |
++--------------------------------------------------+
+| Tesla   | TSLA   | Stocks   | 10   | $2,500| [Edit][Sell][Del]|
+| Bitcoin | BTC    | Crypto   | 0.5  | $50k  | [Edit][Sell][Del]|
+| Savings | -      | Banking  | -    | $10k  | [Edit][Del]      |
++--------------------------------------------------+
 ```
 
-### Code Changes
+### 2. Wire Up the Sell Flow
 
-Modify line 212 and wrap the form content:
+When user clicks Sell:
+1. Open `SellAssetDialog` with the selected asset
+2. User enters quantity to sell and sale price
+3. On confirm:
+   - Record transaction via `useAssetTransactions.addTransaction()`
+   - Update or delete the asset via `updateAsset()` or `deleteAsset()`
+   - Refresh P&L data
 
-```tsx
-<DialogContent className="glass-card border-primary/20 sm:max-w-[425px] max-h-[90vh] flex flex-col">
-  <DialogHeader>
-    <DialogTitle className="gradient-text">Add New Asset</DialogTitle>
-  </DialogHeader>
-  <Form {...form}>
-    <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
-      <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-        {/* All form fields here */}
-      </div>
-      <Button type="submit" className="w-full bg-primary hover:bg-primary/90 mt-4 flex-shrink-0">
-        Add Asset
-      </Button>
-    </form>
-  </Form>
-</DialogContent>
+### 3. Handle Partial vs Full Sales
+
+- **Partial sale**: Reduce asset quantity and cost basis proportionally
+- **Full sale**: Delete the asset entirely
+
+```text
+Example: Sell 5 of 10 shares at $100/share
+- Original: quantity=10, cost_basis=$800 ($80/share)
+- After: quantity=5, cost_basis=$400
+- Transaction: realized_pnl = (5 × $100) - (5 × $80) = $100
 ```
 
-## Benefits
+## Files to Modify
 
-- Submit button always visible without scrolling to the bottom
-- Works on all screen sizes including mobile
-- Maintains visual consistency with other dialogs
-- Form fields scroll independently while header and button stay fixed
+| File | Changes |
+|------|---------|
+| `src/components/ViewAllAssetsDialog.tsx` | Add sell button, integrate SellAssetDialog, pass new props |
+| `src/pages/Index.tsx` | Pass transaction hook and sell handler to ViewAllAssetsDialog |
+
+## New Props for ViewAllAssetsDialog
+
+```typescript
+interface ViewAllAssetsDialogProps {
+  // ... existing props
+  onSellAsset?: (assetId: string, data: {
+    quantity: number;
+    price_per_unit: number;
+    total_value: number;
+    realized_pnl?: number;
+    transaction_date: string;
+    notes?: string;
+  }) => Promise<void>;
+  livePrices?: LivePrices;
+}
+```
+
+## User Experience Flow
+
+1. User opens "View All Assets" dialog
+2. Clicks "Sell" button on an asset (e.g., Tesla stock)
+3. Sell dialog opens showing:
+   - Current quantity owned
+   - Current market price (from live prices)
+   - Fields for quantity to sell and sale price
+   - Real-time P&L calculation preview
+4. User confirms sale
+5. Transaction is recorded to database
+6. Asset quantity/cost basis updated (or deleted if full sale)
+7. Toast notification confirms the sale with realized P&L
+8. P&L card on dashboard reflects the change
+
+## Technical Details
+
+### Sell Handler Function
+
+The sell handler in `Index.tsx` will:
+1. Call `addTransaction()` from `useAssetTransactions` to record the sale
+2. Calculate new quantity and cost basis
+3. Call `updateAsset()` or `deleteAsset()` as appropriate
+4. The `useProfitLoss` hook will automatically recalculate totals
+
+### Cost Basis Reduction Formula
+
+```text
+new_quantity = old_quantity - sold_quantity
+new_cost_basis = old_cost_basis × (new_quantity / old_quantity)
+```
+
