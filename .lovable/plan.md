@@ -1,48 +1,68 @@
 
-# Integrate Financial Goals into Investment Strategy
+
+# Add Recommended Monthly Savings for Goals Behind Schedule
 
 ## Overview
-Connect the Financial Goals feature with the Investment Strategy advisor so Pro users get a unified view of where their money should go each month. Currently, goals and investment allocations operate independently, meaning the recommended investment amounts don't account for savings toward goals.
+Enhance the financial goal planner to provide actionable recommendations when a user is behind on their goal. When a goal's current monthly contribution is insufficient to meet the target date, the system will calculate and display the recommended monthly savings amount needed to get back on track.
 
 ## What You'll Get
-- A new "Goal Savings" allocation category in the Investment Strategy
-- Smart detection of Emergency Fund goals that links to the Emergency Fund allocation
-- Summary of total monthly goal contributions in the strategy view
-- Option to include/exclude goal contributions from the investment strategy calculation
-- Visual indicator showing goal funding vs investment allocation balance
+- **Recommended amount calculation**: Automatically compute the required monthly savings to meet the target date
+- **Visual recommendation display**: Show the recommended amount prominently when a goal is "Behind"
+- **Shortfall indicator**: Display how much more per month is needed compared to current contribution
+- **Quick-apply action**: Button to update the monthly contribution to the recommended amount
+- **Smart tooltips**: Explain why the goal is behind and what the recommendation means
 
 ---
 
 ## Implementation Approach
 
-### 1. Enhance Investment Preferences with Goals Awareness
+### 1. Add Calculation Functions to goalAnalysis.ts
 
-**Update `useInvestmentPreferences` hook:**
-- Accept goals data as a parameter
-- Calculate total monthly contributions from active goals
-- Separate Emergency Fund goals from other savings goals
-- Provide a `goalAwareAllocations` calculation that includes goal contributions
+Create new utility functions to calculate:
+- **Required monthly savings**: Based on remaining amount and months until target date
+- **Monthly shortfall**: Difference between current and required contribution
+- **Feasibility check**: Whether the recommended amount is achievable based on available income
 
-### 2. Add Goal Savings Category to Allocations
+```text
+calculateRequiredMonthlySavings(goal):
+  remaining = target_amount - current_amount
+  monthsUntilDeadline = months between now and target_date
+  
+  if monthsUntilDeadline <= 0:
+    return remaining (need full amount now)
+  
+  return remaining / monthsUntilDeadline
 
-**Modify allocation calculation logic:**
-- Add a "Goal Savings" category showing monthly contributions toward non-emergency goals
-- Link Emergency Fund category goals to the Emergency Fund allocation
-- Show how goal contributions impact available investment funds
+getGoalRecommendation(goal):
+  returns {
+    requiredMonthlySavings: number
+    currentMonthlySavings: number (or 0)
+    monthlyShortfall: number
+    canMeetDeadline: boolean
+    adjustedDeadline: Date (if cannot meet current deadline)
+  }
+```
 
-### 3. Update Investment Strategy Card Display
+### 2. Update useGoals Hook
 
-**Enhance `InvestmentStrategyCard` component:**
-- Display linked goals under each allocation category (e.g., "Emergency Fund" shows linked goal progress)
-- Show total goal contributions alongside investment allocations
-- Add visual indicator when goals impact recommended allocations
+Add new helper function to the hook:
+- `calculateRecommendedSavings(goal: Goal): GoalRecommendation`
+- Return the recommendation data alongside existing calculations
 
-### 4. Connect Goals in the Investment Preferences Dialog
+### 3. Enhance Goal Display Components
 
-**Update `InvestmentPreferencesDialog` component:**
-- Show active goals and their monthly contributions
-- Allow users to toggle whether goals are included in strategy calculations
-- Display how goal funding affects the remaining investable amount
+**GoalsOverviewCard.tsx**:
+- Show recommendation badge/indicator for goals with "Behind" status
+- Display compact recommendation text: "Save €X/mo to stay on track"
+
+**ViewAllGoalsDialog.tsx**:
+- Add expanded recommendation section for "Behind" goals
+- Show current vs. recommended comparison
+- Include "Apply Recommendation" button to update monthly contribution
+
+**EditGoalDialog.tsx**:
+- Add recommendation callout when editing a "Behind" goal
+- Pre-fill option to use the recommended amount
 
 ---
 
@@ -52,78 +72,134 @@ Connect the Financial Goals feature with the Investment Strategy advisor so Pro 
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useInvestmentPreferences.ts` | Add goals parameter, calculate goal-aware allocations, separate emergency fund goals |
-| `src/components/InvestmentStrategyCard.tsx` | Pass goals data, display goal integration section, show linked goals |
-| `src/components/InvestmentPreferencesDialog.tsx` | Add goals summary panel, toggle for including goals in calculations |
-| `src/pages/Index.tsx` | Pass goals to InvestmentStrategyCard |
-| `src/lib/goalAnalysis.ts` | **Create** - New utility for analyzing goal funding requirements |
+| `src/lib/goalAnalysis.ts` | Add `calculateRequiredMonthlySavings`, `getGoalRecommendation` functions |
+| `src/hooks/useGoals.ts` | Add `calculateRecommendedSavings` helper, export recommendation type |
+| `src/components/GoalsOverviewCard.tsx` | Display recommendation for behind goals |
+| `src/components/ViewAllGoalsDialog.tsx` | Add recommendation section with apply button |
+| `src/components/EditGoalDialog.tsx` | Show recommendation callout, add quick-apply option |
 
-### Key Logic Changes
+### New Types
 
-**Goal-Aware Allocation Calculation:**
-```text
-freeMonthlyIncome = income - expenses - debtPayments
-goalContributions = sum of all active goal monthly_contribution values
-emergencyFundGoalContribution = sum of goals where category = 'emergency'
-
-adjustedInvestable = freeMonthlyIncome - goalContributions
-  (or optionally keep separate and show both)
-
-Investment allocations can then:
-1. Subtract goal contributions from investable amount
-2. Link emergency fund goals to emergency fund allocation percentage
-3. Show "Goal Savings" as a distinct category
+```typescript
+interface GoalRecommendation {
+  requiredMonthlySavings: number;     // What's needed to meet the deadline
+  currentMonthlySavings: number;       // Current contribution (or 0)
+  monthlyShortfall: number;            // Difference between required and current
+  monthsRemaining: number;             // Months until target date
+  isAchievable: boolean;               // Based on months remaining (>0)
+  suggestedDeadline?: Date;            // If current deadline can't be met
+}
 ```
 
-**Emergency Fund Linking:**
-- Detect goals with `category: 'emergency'`
-- Show these goals under the Emergency Fund allocation row
-- Calculate if user is on track to hit emergency fund target
+### Key Calculation Logic
 
-### New UI Elements
+```typescript
+function calculateRequiredMonthlySavings(goal: Goal): number {
+  if (!goal.target_date) return 0;
+  
+  const remaining = goal.target_amount - goal.current_amount;
+  if (remaining <= 0) return 0; // Goal already reached
+  
+  const now = new Date();
+  const targetDate = new Date(goal.target_date);
+  const monthsRemaining = differenceInMonths(targetDate, now);
+  
+  if (monthsRemaining <= 0) {
+    // Deadline passed or is this month - need full amount
+    return remaining;
+  }
+  
+  return Math.ceil(remaining / monthsRemaining);
+}
 
-**In Investment Strategy Card:**
-```text
-+----------------------------------------------+
-| Investment Strategy                    [Edit] |
-| Based on €2,500/mo free income               |
-+----------------------------------------------+
-| Goal Savings                     15%   €375  |
-|   └── New Car (€200/mo)                      |
-|   └── Holiday Fund (€175/mo)                 |
-+----------------------------------------------+
-| Stocks/ETFs                      35%   €875  |
-| Emergency Fund                   20%   €500  |
-|   └── Emergency Goal: 45% funded             |
-| Crypto                           20%   €500  |
-| Commodities                      10%   €250  |
-+----------------------------------------------+
-| Total Investable: €2,125/month               |
-+----------------------------------------------+
+function getGoalRecommendation(goal: Goal): GoalRecommendation {
+  const requiredMonthlySavings = calculateRequiredMonthlySavings(goal);
+  const currentMonthlySavings = goal.monthly_contribution || 0;
+  const monthlyShortfall = Math.max(0, requiredMonthlySavings - currentMonthlySavings);
+  
+  // Calculate months remaining
+  const now = new Date();
+  const targetDate = goal.target_date ? new Date(goal.target_date) : null;
+  const monthsRemaining = targetDate ? differenceInMonths(targetDate, now) : 0;
+  
+  // If current contribution exists, calculate when goal would actually be met
+  let suggestedDeadline: Date | undefined;
+  if (currentMonthlySavings > 0 && monthlyShortfall > 0) {
+    const remaining = goal.target_amount - goal.current_amount;
+    const actualMonthsNeeded = Math.ceil(remaining / currentMonthlySavings);
+    suggestedDeadline = new Date();
+    suggestedDeadline.setMonth(suggestedDeadline.getMonth() + actualMonthsNeeded);
+  }
+  
+  return {
+    requiredMonthlySavings,
+    currentMonthlySavings,
+    monthlyShortfall,
+    monthsRemaining,
+    isAchievable: monthsRemaining > 0,
+    suggestedDeadline,
+  };
+}
 ```
 
 ---
 
-## Database Changes
-No database changes required. All goal data already exists in the `financial_goals` table with the necessary fields (`monthly_contribution`, `category`, `target_amount`, `current_amount`).
+## UI Design
 
----
+### GoalsOverviewCard - Behind Goal Item
+```text
++--------------------------------------------------+
+| 🚗 New Car                          [Behind] [✏️] |
+|--------------------------------------------------|
+| €3,000 / €15,000                           20%   |
+| [=====                               ] progress   |
+|                                                   |
+| ⚠️ Save €800/mo to meet your deadline             |
+|    (currently €500/mo - need €300 more)           |
++--------------------------------------------------+
+```
 
-## User Experience Flow
-
-1. User creates financial goals with monthly contribution amounts
-2. User opens Investment Strategy (Pro feature)
-3. Strategy automatically detects goal contributions
-4. Emergency Fund goals link to Emergency Fund allocation
-5. Other goals appear as "Goal Savings" category
-6. User can adjust whether goals reduce investable amount or are shown separately
+### ViewAllGoalsDialog - Expanded Recommendation
+```text
++--------------------------------------------------+
+| 🚗 New Car                                        |
+| High Priority • Due: Aug 15, 2026                |
+|--------------------------------------------------|
+| €3,000 of €15,000                          20%   |
+| [=====                               ]            |
+| €500/month              ~24 months remaining      |
+|--------------------------------------------------|
+| ⚠️ RECOMMENDATION                                 |
+|                                                   |
+| To reach your goal by Aug 2026, you need to save |
+| €800/month instead of €500/month.                |
+|                                                   |
+| Monthly shortfall: €300                          |
+|                                                   |
+| [ Apply €800/month ]  [ Extend Deadline → Dec ]  |
++--------------------------------------------------+
+```
 
 ---
 
 ## Edge Cases to Handle
 
-- Goals without monthly contributions (no impact on strategy)
-- Completed goals (excluded from calculations)
-- Goal contributions exceeding free income (warning state)
-- No goals set (strategy works as currently)
-- Emergency fund goal larger than emergency fund allocation (suggest adjustment)
+1. **No target date set**: No recommendation shown (status is "no_deadline")
+2. **Deadline already passed**: Show recommendation as "full amount needed now"
+3. **Goal already on track**: No recommendation needed
+4. **No current monthly contribution**: Show full required amount as recommendation
+5. **Goal completed**: No recommendation displayed
+6. **Zero months remaining**: Recommend saving the full remaining amount
+
+---
+
+## User Experience Flow
+
+1. User creates a goal with a target date and monthly contribution
+2. System calculates if contribution is sufficient to meet deadline
+3. If behind: Display recommendation with required monthly amount
+4. User can:
+   - Click "Apply Recommendation" to update their monthly contribution
+   - Click "Extend Deadline" to adjust the target date instead
+   - Manually edit the goal to set their own amount
+
