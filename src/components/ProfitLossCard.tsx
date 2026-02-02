@@ -19,7 +19,13 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0 }: ProfitLossCa
   
   const { totalPnL, totalUnrealizedPnL, totalRealizedPnL, totalPnLPercent } = pnlData;
   const isPositive = totalPnL >= 0;
+  const isUnrealizedPositive = totalUnrealizedPnL >= 0;
+  const isRealizedPositive = totalRealizedPnL >= 0;
   const hasData = pnlData.assetsWithCostBasis.length > 0 || totalRealizedPnL !== 0;
+
+  // Calculate individual percentages for unrealized/realized
+  const totalCostBasis = pnlData.assetsWithCostBasis.reduce((sum, a) => sum + (a.cost_basis || 0), 0);
+  const unrealizedPercent = totalCostBasis > 0 ? (totalUnrealizedPnL / totalCostBasis) * 100 : 0;
 
   return (
     <>
@@ -28,7 +34,7 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0 }: ProfitLossCa
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay }}
       >
-        <Card className="glass-card border-primary/20 h-full">
+        <Card className="glass-card border-primary/20">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -38,64 +44,78 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0 }: ProfitLossCa
               <ProBadge />
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             {hasData ? (
-              <>
-                {/* Total P&L */}
-                <div className="text-center py-2">
-                  <p className="text-sm text-muted-foreground mb-1">Total P&L</p>
-                  <div className="flex items-center justify-center gap-2">
-                    {isPositive ? (
-                      <TrendingUp className="w-5 h-5 text-success" />
-                    ) : (
-                      <TrendingDown className="w-5 h-5 text-destructive" />
-                    )}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                {/* Total P&L - main stat */}
+                <div className="flex items-center gap-4">
+                  {isPositive ? (
+                    <div className="p-3 rounded-full bg-success/10">
+                      <TrendingUp className="w-6 h-6 text-success" />
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-full bg-destructive/10">
+                      <TrendingDown className="w-6 h-6 text-destructive" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total P&L</p>
                     <span className={cn(
                       'text-2xl font-bold',
                       isPositive ? 'text-success' : 'text-destructive'
                     )}>
                       {isPositive ? '+' : ''}{formatValue(totalPnL)}
                     </span>
+                    <p className={cn(
+                      'text-sm font-medium',
+                      isPositive ? 'text-success' : 'text-destructive'
+                    )}>
+                      {isPositive ? '+' : ''}{totalPnLPercent.toFixed(1)}%
+                    </p>
                   </div>
-                  <p className={cn(
-                    'text-sm font-medium',
-                    isPositive ? 'text-success' : 'text-destructive'
-                  )}>
-                    {isPositive ? '+' : ''}{totalPnLPercent.toFixed(1)}%
-                  </p>
                 </div>
 
-                {/* Unrealized vs Realized */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                {/* Unrealized & Realized - side by side */}
+                <div className="flex gap-4 md:gap-6">
+                  <div className="bg-secondary/30 rounded-lg p-4 min-w-[140px]">
                     <p className="text-xs text-muted-foreground mb-1">Unrealized</p>
                     <p className={cn(
-                      'text-sm font-semibold',
-                      totalUnrealizedPnL >= 0 ? 'text-success' : 'text-destructive'
+                      'text-lg font-semibold',
+                      isUnrealizedPositive ? 'text-success' : 'text-destructive'
                     )}>
-                      {totalUnrealizedPnL >= 0 ? '+' : ''}{formatValue(totalUnrealizedPnL)}
+                      {isUnrealizedPositive ? '+' : ''}{formatValue(totalUnrealizedPnL)}
+                    </p>
+                    <p className={cn(
+                      'text-xs',
+                      isUnrealizedPositive ? 'text-success/80' : 'text-destructive/80'
+                    )}>
+                      {isUnrealizedPositive ? '+' : ''}{unrealizedPercent.toFixed(1)}%
                     </p>
                   </div>
-                  <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                  <div className="bg-secondary/30 rounded-lg p-4 min-w-[140px]">
                     <p className="text-xs text-muted-foreground mb-1">Realized</p>
                     <p className={cn(
-                      'text-sm font-semibold',
-                      totalRealizedPnL >= 0 ? 'text-success' : 'text-destructive'
+                      'text-lg font-semibold',
+                      isRealizedPositive ? 'text-success' : 'text-destructive'
                     )}>
-                      {totalRealizedPnL >= 0 ? '+' : ''}{formatValue(totalRealizedPnL)}
+                      {isRealizedPositive ? '+' : ''}{formatValue(totalRealizedPnL)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      From sales
                     </p>
                   </div>
                 </div>
 
+                {/* View Details button */}
                 <Button
-                  variant="ghost"
-                  className="w-full justify-between text-muted-foreground hover:text-foreground"
+                  variant="outline"
+                  className="gap-2 md:w-auto"
                   onClick={() => setShowDetails(true)}
                 >
                   View Details
                   <ChevronRight className="w-4 h-4" />
                 </Button>
-              </>
+              </div>
             ) : (
               <div className="text-center py-6">
                 <p className="text-muted-foreground text-sm">

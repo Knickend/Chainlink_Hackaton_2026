@@ -15,7 +15,7 @@ export function ProfitLossTeaser({ onUpgrade, delay = 0 }: ProfitLossTeaserProps
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay }}
     >
-      <Card className="glass-card border-primary/20 h-full relative overflow-hidden">
+      <Card className="glass-card border-primary/20 relative overflow-hidden">
         {/* Blurred preview content */}
         <div className="blur-sm pointer-events-none select-none">
           <CardHeader className="pb-2">
@@ -26,25 +26,38 @@ export function ProfitLossTeaser({ onUpgrade, delay = 0 }: ProfitLossTeaserProps
               </CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-center py-2">
-              <p className="text-sm text-muted-foreground mb-1">Total P&L</p>
-              <div className="flex items-center justify-center gap-2">
-                <TrendingUp className="w-5 h-5 text-success" />
-                <span className="text-2xl font-bold text-success">+$12,450.32</span>
+          <CardContent>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              {/* Total P&L - main stat */}
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-full bg-success/10">
+                  <TrendingUp className="w-6 h-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total P&L</p>
+                  <span className="text-2xl font-bold text-success">+$12,450.32</span>
+                  <p className="text-sm font-medium text-success">+8.2%</p>
+                </div>
               </div>
-              <p className="text-sm font-medium text-success">+8.2%</p>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-secondary/30 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">Unrealized</p>
-                <p className="text-sm font-semibold text-success">+$10,200.00</p>
+              {/* Unrealized & Realized - side by side */}
+              <div className="flex gap-4 md:gap-6">
+                <div className="bg-secondary/30 rounded-lg p-4 min-w-[140px]">
+                  <p className="text-xs text-muted-foreground mb-1">Unrealized</p>
+                  <p className="text-lg font-semibold text-success">+$10,200.00</p>
+                  <p className="text-xs text-success/80">+7.1%</p>
+                </div>
+                <div className="bg-secondary/30 rounded-lg p-4 min-w-[140px]">
+                  <p className="text-xs text-muted-foreground mb-1">Realized</p>
+                  <p className="text-lg font-semibold text-success">+$2,250.32</p>
+                  <p className="text-xs text-muted-foreground">From sales</p>
+                </div>
               </div>
-              <div className="bg-secondary/30 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">Realized</p>
-                <p className="text-sm font-semibold text-success">+$2,250.32</p>
-              </div>
+
+              {/* View Details button placeholder */}
+              <Button variant="outline" className="gap-2 md:w-auto">
+                View Details
+              </Button>
             </div>
           </CardContent>
         </div>

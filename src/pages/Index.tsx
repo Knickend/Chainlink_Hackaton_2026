@@ -377,21 +377,19 @@ const IndexContent = () => {
         </div>
 
         {/* P&L Overview - Pro Feature */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <div className="lg:col-span-1">
-            {isPro ? (
-              <ProfitLossCard 
-                pnlData={pnlData} 
-                formatValue={formatValue} 
-                delay={0.25}
-              />
-            ) : !isDemo && (
-              <ProfitLossTeaser 
-                onUpgrade={() => setShowSubscriptionDialog(true)} 
-                delay={0.25}
-              />
-            )}
-          </div>
+        <div className="mb-8">
+          {isPro ? (
+            <ProfitLossCard 
+              pnlData={pnlData} 
+              formatValue={formatValue} 
+              delay={0.25}
+            />
+          ) : !isDemo && (
+            <ProfitLossTeaser 
+              onUpgrade={() => setShowSubscriptionDialog(true)} 
+              delay={0.25}
+            />
+          )}
         </div>
 
         {/* Financial Goals */}
