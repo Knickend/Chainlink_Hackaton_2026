@@ -180,6 +180,17 @@ Deno.serve(async (req) => {
 
     console.log('Bulk snapshot creation completed:', summary);
 
+    // Log execution to cron_job_logs
+    const status = failed === 0 ? 'success' : (succeeded > 0 ? 'partial' : 'failed');
+    await supabase.from('cron_job_logs').insert({
+      job_name: 'create-bulk-snapshots',
+      status,
+      processed_count: profiles.length,
+      succeeded_count: succeeded,
+      failed_count: failed,
+      details: { snapshot_month: snapshotMonth, results }
+    });
+
     return new Response(
       JSON.stringify(summary),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
