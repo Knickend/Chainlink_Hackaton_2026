@@ -1,214 +1,232 @@
 
 
-# Plan: Subscription Cancellation Questionnaire
+# Plan: Profit & Loss Overview
 
 ## Overview
 
-Add a multi-step cancellation flow that collects user feedback when they cancel their subscription. The questionnaire data will be stored in a new database table and displayed in a dedicated section of the admin dashboard.
+Add a comprehensive Profit & Loss (P&L) tracking feature that shows users their realized and unrealized gains/losses across their portfolio. This will require tracking cost basis (purchase price) for assets and introducing a transaction history to record when assets are sold.
 
-## User Experience Flow
+## Current System Analysis
 
-When users click "Cancel Subscription":
+The current asset tracking system:
+- Stores assets with `value`, `quantity`, and `symbol`
+- Does NOT track purchase price/cost basis
+- Does NOT record transaction history (buys/sells)
+- Uses live prices to calculate current value dynamically
 
-1. **Step 1**: Show questionnaire dialog asking why they're leaving
-2. **Step 2**: Collect the reason with optional additional feedback
-3. **Step 3**: Confirm cancellation with the feedback submitted
-4. The subscription is then canceled as before
+To implement proper P&L tracking, we need to add:
+1. **Cost basis tracking** for each asset
+2. **Transaction history** for recording sells/partial sells
+3. **P&L calculation logic** for unrealized and realized gains
 
-## Questionnaire Design
+## Database Schema Changes
 
-The questionnaire will include:
-
-**Primary Reason (required, single selection):**
-- Too expensive
-- Missing features I need
-- Found a better alternative
-- Not using it enough
-- Technical issues / bugs
-- Poor customer support
-- Just trying it out
-- Other
-
-**Optional Follow-up:**
-- Text field for additional details
-- "What could we have done better?" (optional textarea)
-- "Would you consider returning if we addressed your concerns?" (Yes/No/Maybe)
-
-## Database Changes
-
-Create a new `subscription_cancellations` table:
+### 1. Add cost basis to assets table
 
 ```sql
-create table public.subscription_cancellations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  previous_tier text not null,
-  primary_reason text not null,
-  additional_feedback text,
-  would_return text,
-  created_at timestamp with time zone default now()
-);
-
--- Enable RLS
-alter table public.subscription_cancellations enable row level security;
-
--- Users can insert their own cancellation feedback
-create policy "Users can insert own cancellation feedback"
-  on public.subscription_cancellations
-  for insert
-  to authenticated
-  with check (auth.uid() = user_id);
-
--- Admins can view all cancellation feedback
-create policy "Admins can view all cancellations"
-  on public.subscription_cancellations
-  for select
-  using (has_role(auth.uid(), 'admin'));
+ALTER TABLE public.assets 
+ADD COLUMN cost_basis numeric,
+ADD COLUMN purchase_date date,
+ADD COLUMN purchase_price_per_unit numeric;
 ```
 
-## Technical Implementation
+- `cost_basis`: Total amount paid for the asset (quantity x purchase price)
+- `purchase_date`: When the asset was acquired
+- `purchase_price_per_unit`: Price paid per unit at purchase
 
-### New Files to Create
+### 2. Create asset_transactions table
 
-| File | Purpose |
-|------|---------|
-| `src/components/settings/CancellationQuestionnaireDialog.tsx` | Multi-step questionnaire dialog |
-| `src/components/admin/CancellationFeedback.tsx` | Admin dashboard section showing cancellation reasons |
-| `src/hooks/useCancellationFeedback.ts` | Hook to submit and fetch cancellation data |
+```sql
+CREATE TABLE public.asset_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  asset_id uuid REFERENCES public.assets(id) ON DELETE SET NULL,
+  transaction_type text NOT NULL CHECK (transaction_type IN ('buy', 'sell')),
+  symbol text NOT NULL,
+  asset_name text NOT NULL,
+  category text NOT NULL,
+  quantity numeric NOT NULL,
+  price_per_unit numeric NOT NULL,
+  total_value numeric NOT NULL,
+  realized_pnl numeric,
+  transaction_date date NOT NULL DEFAULT CURRENT_DATE,
+  notes text,
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### Files to Modify
+This table will:
+- Record all buy/sell transactions
+- Calculate and store realized P&L when selling
+- Maintain history even if original asset is deleted
 
-| File | Change |
-|------|--------|
-| `src/components/settings/SubscriptionSection.tsx` | Replace simple AlertDialog with questionnaire flow |
-| `src/hooks/useSubscription.ts` | Update `cancelSubscription` to accept feedback data |
-| `src/pages/Admin.tsx` | Add new "Churn" tab for cancellation analytics |
-| `src/integrations/supabase/types.ts` | Will auto-update after migration |
+## P&L Calculation Logic
 
-## Component Design
-
-### CancellationQuestionnaireDialog
-
-A multi-step dialog component:
+### Unrealized P&L (per asset)
 
 ```text
-+------------------------------------------+
-|  Why are you leaving?                    |
-|  [Step 1 of 2]                           |
-+------------------------------------------+
-|  ( ) Too expensive                       |
-|  ( ) Missing features I need             |
-|  ( ) Found a better alternative          |
-|  ( ) Not using it enough                 |
-|  ( ) Technical issues / bugs             |
-|  ( ) Poor customer support               |
-|  ( ) Just trying it out                  |
-|  ( ) Other                               |
-+------------------------------------------+
-|  [Cancel]              [Continue]        |
-+------------------------------------------+
-
-+------------------------------------------+
-|  Help us improve                         |
-|  [Step 2 of 2]                           |
-+------------------------------------------+
-|  Additional feedback (optional):         |
-|  +------------------------------------+  |
-|  |                                    |  |
-|  +------------------------------------+  |
-|                                          |
-|  Would you consider returning if we      |
-|  addressed your concerns?                |
-|  ( ) Yes  ( ) Maybe  ( ) No              |
-+------------------------------------------+
-|  [Back]          [Cancel Subscription]   |
-+------------------------------------------+
+Unrealized P&L = Current Value - Cost Basis
+               = (Current Price x Quantity) - (Purchase Price x Quantity)
 ```
 
-### Admin Cancellation Dashboard
+### Realized P&L (from transactions)
 
-A new "Churn" tab in the admin dashboard showing:
+```text
+Realized P&L = Sale Proceeds - Cost of Sold Units
+             = (Sale Price x Quantity Sold) - (Purchase Price x Quantity Sold)
+```
 
-**Summary Cards:**
-- Total cancellations (all time)
-- Cancellations this month
-- Top cancellation reason
-- "Would return" rate
+### Total Portfolio P&L
 
-**Charts:**
-- Pie chart: Reason distribution
-- Bar chart: Cancellations by tier (Standard vs Pro)
-- Line chart: Cancellation trend over time
+```text
+Total Unrealized = Sum of all assets' unrealized P&L
+Total Realized = Sum of all realized P&L from transactions
+Total P&L = Unrealized + Realized
+```
 
-**Table:**
-- List of recent cancellations with reason, tier, date, and would-return flag
+## User Interface Components
+
+### 1. ProfitLossCard (Dashboard)
+
+A new stat card showing P&L summary:
+
+```text
++----------------------------------------+
+|  Profit & Loss                    [Pro]|
++----------------------------------------+
+|  Total P&L                             |
+|  +$12,450.32  (+8.2%)        [TrendUp] |
+|                                        |
+|  +------------------+  +-------------+ |
+|  | Unrealized       |  | Realized    | |
+|  | +$10,200.00      |  | +$2,250.32  | |
+|  +------------------+  +-------------+ |
+|                                        |
+|  [View Details]                        |
++----------------------------------------+
+```
+
+### 2. ProfitLossDetailDialog
+
+Detailed breakdown with:
+- P&L by asset category (pie chart)
+- P&L by individual asset (table)
+- Transaction history with realized gains
+- Time-based filtering (MTD, YTD, All Time)
+
+### 3. Updated Add/Edit Asset Dialogs
+
+Add optional fields for:
+- Purchase date
+- Purchase price per unit (auto-calculated if quantity provided)
+- OR Total cost basis
+
+### 4. SellAssetDialog (New)
+
+For recording partial/full asset sales:
+- Select quantity to sell
+- Enter sale price
+- Auto-calculate realized P&L
+- Option to fully close position
 
 ## Data Flow
 
 ```text
-User clicks "Cancel Subscription"
+User adds asset with cost basis
           |
           v
 +---------------------------+
-| CancellationQuestionnaire |
-| Dialog opens              |
+| Asset stored with:        |
+| - quantity                |
+| - cost_basis              |
+| - purchase_price_per_unit |
 +---------------------------+
           |
           v
-User selects reason + feedback
+Live price updates asset.value
           |
           v
 +---------------------------+
-| useCancellationFeedback   |
-| submitCancellation()      |
+| Unrealized P&L =          |
+| value - cost_basis        |
 +---------------------------+
-          |
-          +-- 1. Insert into subscription_cancellations table
-          |
-          +-- 2. Call cancelSubscription() from useSubscription
+
+User sells (partial) asset
           |
           v
 +---------------------------+
-| Subscription canceled     |
-| Toast confirmation        |
+| Transaction recorded with:|
+| - quantity_sold           |
+| - sale_price              |
+| - realized_pnl            |
 +---------------------------+
+          |
+          v
+Asset quantity/cost_basis reduced
+(or asset deleted if fully sold)
 ```
 
-## Admin Analytics Integration
+## Implementation Files
 
-The `useCancellationFeedback` hook will include analytics functions:
+### New Files
 
-```typescript
-interface CancellationAnalytics {
-  total: number;
-  thisMonth: number;
-  byReason: { reason: string; count: number }[];
-  byTier: { tier: string; count: number }[];
-  wouldReturnRate: number;
-  trends: { month: string; count: number }[];
-  recentCancellations: CancellationRecord[];
-}
-```
+| File | Purpose |
+|------|---------|
+| `src/components/ProfitLossCard.tsx` | Dashboard summary card |
+| `src/components/ProfitLossDetailDialog.tsx` | Detailed P&L breakdown |
+| `src/components/SellAssetDialog.tsx` | Record asset sales |
+| `src/components/ProfitLossTeaser.tsx` | Teaser for non-Pro users |
+| `src/hooks/useProfitLoss.ts` | P&L calculation and data fetching |
+| `src/hooks/useAssetTransactions.ts` | Transaction history management |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `src/lib/types.ts` | Add cost basis fields to Asset interface |
+| `src/components/AddAssetDialog.tsx` | Add cost basis input fields |
+| `src/components/EditAssetDialog.tsx` | Add cost basis editing |
+| `src/hooks/usePortfolioData.ts` | Include cost basis in CRUD operations |
+| `src/pages/Index.tsx` | Add ProfitLossCard to dashboard |
+| `src/components/ViewAllAssetsDialog.tsx` | Add P&L column and sell action |
+
+## Feature Gating
+
+This will be a **Pro feature** (consistent with Performance tracking and Portfolio History):
+- Free users see a teaser card with sample data
+- Pro users get full access to P&L tracking
+
+## Technical Considerations
+
+### Cost Basis Methods
+
+For simplicity, we'll use **Specific Identification** method:
+- Each asset purchase is tracked separately
+- When selling, user specifies which lot they're selling
+
+Future enhancement could add FIFO/LIFO options.
+
+### Backward Compatibility
+
+Existing assets without cost basis:
+- Show "Cost basis not set" indicator
+- Allow users to retroactively add purchase info
+- P&L calculations only apply to assets with cost basis
+
+### Currency Handling
+
+- Cost basis stored in original purchase currency
+- P&L calculated after converting both cost and value to display unit
+- Consistent with existing multi-currency system
 
 ## Implementation Steps
 
-1. **Database**: Create the `subscription_cancellations` table with RLS policies
-2. **Hook**: Create `useCancellationFeedback` for data management
-3. **Questionnaire**: Build the `CancellationQuestionnaireDialog` component
-4. **Integration**: Update `SubscriptionSection` to use the new dialog
-5. **Admin UI**: Create `CancellationFeedback` component with charts
-6. **Admin Tab**: Add "Churn" tab to the admin dashboard
-
-## Cancellation Reasons Reference
-
-| Reason | Analytics Value |
-|--------|-----------------|
-| Too expensive | `price` |
-| Missing features I need | `features` |
-| Found a better alternative | `competitor` |
-| Not using it enough | `usage` |
-| Technical issues / bugs | `technical` |
-| Poor customer support | `support` |
-| Just trying it out | `trial` |
-| Other | `other` |
+1. **Database**: Create migration for new columns and transactions table
+2. **Types**: Update Asset interface with cost basis fields
+3. **Hooks**: Create useProfitLoss and useAssetTransactions hooks
+4. **Dialogs**: Update AddAssetDialog and EditAssetDialog
+5. **SellDialog**: Create SellAssetDialog for recording sales
+6. **Cards**: Create ProfitLossCard and teaser
+7. **Details**: Create ProfitLossDetailDialog with charts
+8. **Integration**: Add to dashboard and ViewAllAssetsDialog
 
