@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Pencil } from 'lucide-react';
@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Expense, DisplayUnit, UNIT_SYMBOLS } from '@/lib/types';
+import { Expense, BANKING_CURRENCIES } from '@/lib/types';
 
 const expenseSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   amount: z.number().min(0.01, 'Amount must be positive'),
   category: z.string().min(1, 'Category is required'),
+  currency: z.string().min(1, 'Currency is required'),
 });
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -21,7 +22,6 @@ type ExpenseFormData = z.infer<typeof expenseSchema>;
 interface EditExpenseDialogProps {
   expense: Expense;
   onUpdate: (id: string, data: Partial<Omit<Expense, 'id'>>) => void;
-  displayUnit: DisplayUnit;
 }
 
 const expenseCategories = [
@@ -38,7 +38,7 @@ const expenseCategories = [
   'Other',
 ];
 
-export function EditExpenseDialog({ expense, onUpdate, displayUnit }: EditExpenseDialogProps) {
+export function EditExpenseDialog({ expense, onUpdate }: EditExpenseDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -46,8 +46,12 @@ export function EditExpenseDialog({ expense, onUpdate, displayUnit }: EditExpens
       name: expense.name,
       amount: expense.amount,
       category: expense.category,
+      currency: expense.currency || 'USD',
     },
   });
+
+  const selectedCurrency = useWatch({ control: form.control, name: 'currency' });
+  const currencySymbol = BANKING_CURRENCIES.find(c => c.value === selectedCurrency)?.symbol || '$';
 
   useEffect(() => {
     if (open) {
@@ -55,6 +59,7 @@ export function EditExpenseDialog({ expense, onUpdate, displayUnit }: EditExpens
         name: expense.name,
         amount: expense.amount,
         category: expense.category,
+        currency: expense.currency || 'USD',
       });
     }
   }, [open, expense, form]);
@@ -96,16 +101,41 @@ export function EditExpenseDialog({ expense, onUpdate, displayUnit }: EditExpens
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Amount ({UNIT_SYMBOLS[displayUnit]})</FormLabel>
+                  <FormLabel>Monthly Amount ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
                       step="0.01"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      value={field.value || ''}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       className="bg-secondary/50"
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      {BANKING_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          {currency.symbol} - {currency.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
