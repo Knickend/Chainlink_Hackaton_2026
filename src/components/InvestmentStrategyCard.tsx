@@ -1,20 +1,22 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Settings2, AlertTriangle, Plus, AlertCircle, Lightbulb, ChevronRight } from 'lucide-react';
+import { TrendingUp, Settings2, AlertTriangle, Plus, AlertCircle, Lightbulb, ChevronRight, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useInvestmentPreferences, InvestmentAllocation } from '@/hooks/useInvestmentPreferences';
 import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
 import { DebtOptimizationDialog } from './DebtOptimizationDialog';
-import { Debt } from '@/lib/types';
+import { Debt, Goal } from '@/lib/types';
 import { analyzeDebts, calculateDebtAwareAllocations, DebtAnalysis, DebtAwareAllocation } from '@/lib/debtAnalysis';
+import { calculateEmergencyFundProgress } from '@/lib/goalAnalysis';
 
 interface InvestmentStrategyCardProps {
   freeMonthlyIncome: number;
   formatValue: (value: number) => string;
   debts?: Debt[];
   monthlyPayments?: number;
+  goals?: Goal[];
   delay?: number;
 }
 
@@ -23,6 +25,7 @@ export function InvestmentStrategyCard({
   formatValue,
   debts = [],
   monthlyPayments = 0,
+  goals = [],
   delay = 0,
 }: InvestmentStrategyCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -31,12 +34,14 @@ export function InvestmentStrategyCard({
     preferences,
     loading,
     savePreferences,
-    calculateAllocations,
+    calculateGoalAwareAllocations,
     totalInvestable,
+    adjustedInvestable,
     hasPreferences,
-  } = useInvestmentPreferences(freeMonthlyIncome);
+    goalAnalysis,
+  } = useInvestmentPreferences(freeMonthlyIncome, goals);
 
-  const baseAllocations = calculateAllocations();
+  const baseAllocations = calculateGoalAwareAllocations();
   const debtAnalysis = analyzeDebts(debts, freeMonthlyIncome);
   
   // Calculate debt-aware allocations if there's priority debt
@@ -184,6 +189,9 @@ export function InvestmentStrategyCard({
           </h3>
           <p className="text-sm text-muted-foreground">
             Based on {formatValue(freeMonthlyIncome)}/mo free income
+            {goalAnalysis.totalMonthlyContributions > 0 && (
+              <span className="text-primary"> • {formatValue(goalAnalysis.totalMonthlyContributions)}/mo to goals</span>
+            )}
           </p>
         </div>
         <InvestmentPreferencesDialog
@@ -191,6 +199,8 @@ export function InvestmentStrategyCard({
           onOpenChange={setDialogOpen}
           currentPreferences={preferences}
           onSave={savePreferences}
+          goals={goals}
+          goalAnalysis={goalAnalysis}
           trigger={
             <Button variant="outline" size="sm" className="gap-2">
               <Settings2 className="w-4 h-4" />
@@ -233,10 +243,26 @@ export function InvestmentStrategyCard({
         <SmartTipsSection tips={debtAnalysis.tips} />
       )}
 
+      {/* Goal Contributions Warning */}
+      {goalAnalysis.exceedsFreeIncome && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 p-3 rounded-lg bg-warning/10 border border-warning/20"
+        >
+          <p className="text-sm text-warning flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Your goal contributions ({formatValue(goalAnalysis.totalMonthlyContributions)}/mo) exceed your free income
+          </p>
+        </motion.div>
+      )}
+
       <div className="mt-6 pt-4 border-t border-border">
         <div className="flex justify-between items-center">
-          <span className="text-sm text-muted-foreground">Total Investable</span>
-          <span className="font-semibold text-lg">{formatValue(totalInvestable)}/month</span>
+          <span className="text-sm text-muted-foreground">
+            {goalAnalysis.totalMonthlyContributions > 0 ? 'Investable After Goals' : 'Total Investable'}
+          </span>
+          <span className="font-semibold text-lg">{formatValue(adjustedInvestable)}/month</span>
         </div>
       </div>
     </motion.div>
@@ -355,6 +381,10 @@ function AllocationRow({
   index: number;
 }) {
   const isPriority = 'isPriority' in allocation && allocation.isPriority;
+  const linkedGoals = 'linkedGoals' in allocation ? allocation.linkedGoals : undefined;
+  const hasLinkedGoals = linkedGoals && linkedGoals.length > 0;
+  const isGoalSavings = allocation.category === 'Goal Savings';
+  const isEmergencyFund = allocation.category === 'Emergency Fund';
   
   return (
     <motion.div
@@ -364,11 +394,17 @@ function AllocationRow({
       className="space-y-2"
     >
       <div className="flex justify-between items-center text-sm">
-        <span className={`font-medium ${isPriority ? 'text-destructive' : ''}`}>
+        <span className={`font-medium ${isPriority ? 'text-destructive' : ''} ${isGoalSavings ? 'text-pink-500' : ''}`}>
           {allocation.category}
           {isPriority && (
             <Badge variant="destructive" className="ml-2 text-xs">
               Priority
+            </Badge>
+          )}
+          {isGoalSavings && (
+            <Badge variant="secondary" className="ml-2 text-xs bg-pink-500/10 text-pink-500">
+              <Target className="w-3 h-3 mr-1" />
+              {linkedGoals?.length || 0} goals
             </Badge>
           )}
         </span>
@@ -385,6 +421,27 @@ function AllocationRow({
           '--progress-color': allocation.color,
         }}
       />
+      {/* Linked Goals */}
+      {hasLinkedGoals && (
+        <div className="pl-4 space-y-1">
+          {linkedGoals.map((goal) => (
+            <div key={goal.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className={isGoalSavings ? 'text-pink-400' : 'text-blue-400'}>└──</span>
+              <span>{goal.name}</span>
+              {isEmergencyFund && (
+                <span className="text-primary">
+                  {Math.round(calculateEmergencyFundProgress(goal))}% funded
+                </span>
+              )}
+              {isGoalSavings && goal.monthly_contribution && (
+                <span className="text-pink-400">
+                  ({formatValue(goal.monthly_contribution)}/mo)
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }

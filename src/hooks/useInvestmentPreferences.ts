@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { Goal } from '@/lib/types';
+import { analyzeGoals, GoalAnalysis } from '@/lib/goalAnalysis';
 
 export interface InvestmentPreferences {
   id: string;
@@ -20,9 +22,18 @@ export interface InvestmentAllocation {
   percentage: number;
   amount: number;
   color: string;
+  linkedGoals?: Goal[];
 }
 
-export function useInvestmentPreferences(freeMonthlyIncome: number) {
+export interface GoalAwareOptions {
+  includeGoalsInStrategy: boolean;
+}
+
+export function useInvestmentPreferences(
+  freeMonthlyIncome: number,
+  goals: Goal[] = [],
+  options: GoalAwareOptions = { includeGoalsInStrategy: true }
+) {
   const { user } = useAuth();
   const [preferences, setPreferences] = useState<InvestmentPreferences | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +115,12 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
     }
   };
 
+  // Analyze goals for integration
+  const goalAnalysis = useMemo(
+    () => analyzeGoals(goals, freeMonthlyIncome),
+    [goals, freeMonthlyIncome]
+  );
+
   // Calculate allocation amounts based on free income
   const calculateAllocations = useCallback((): InvestmentAllocation[] => {
     if (!preferences || freeMonthlyIncome <= 0) return [];
@@ -157,22 +174,67 @@ export function useInvestmentPreferences(freeMonthlyIncome: number) {
         percentage: preferences.emergency_fund_target,
         amount: afterDebtAmount * (preferences.emergency_fund_target / 100),
         color: '#3b82f6',
+        linkedGoals: goalAnalysis.emergencyFundGoals,
       });
     }
 
     return allocations;
-  }, [preferences, freeMonthlyIncome]);
+  }, [preferences, freeMonthlyIncome, goalAnalysis.emergencyFundGoals]);
+
+  // Calculate goal-aware allocations (includes Goal Savings category)
+  const calculateGoalAwareAllocations = useCallback((): InvestmentAllocation[] => {
+    const baseAllocations = calculateAllocations();
+    
+    if (!options.includeGoalsInStrategy || goalAnalysis.savingsGoals.length === 0) {
+      return baseAllocations;
+    }
+
+    // Calculate goal savings as percentage of free income
+    const goalSavingsPercentage = Math.min(
+      (goalAnalysis.goalSavingsContributions / freeMonthlyIncome) * 100,
+      50 // Cap at 50% to avoid overwhelming the chart
+    );
+
+    if (goalSavingsPercentage <= 0) {
+      return baseAllocations;
+    }
+
+    // Add Goal Savings as first category (after debt if present)
+    const debtIndex = baseAllocations.findIndex(a => a.category === 'Debt Payoff');
+    const insertIndex = debtIndex >= 0 ? debtIndex + 1 : 0;
+
+    const goalSavingsAllocation: InvestmentAllocation = {
+      category: 'Goal Savings',
+      percentage: Math.round(goalSavingsPercentage),
+      amount: goalAnalysis.goalSavingsContributions,
+      color: '#ec4899', // pink
+      linkedGoals: goalAnalysis.savingsGoals,
+    };
+
+    const result = [...baseAllocations];
+    result.splice(insertIndex, 0, goalSavingsAllocation);
+
+    return result;
+  }, [calculateAllocations, options.includeGoalsInStrategy, goalAnalysis, freeMonthlyIncome]);
 
   const totalInvestable = freeMonthlyIncome > 0 && preferences
     ? freeMonthlyIncome * (1 - (preferences.emergency_fund_target + preferences.debt_allocation) / 100)
     : 0;
+
+  // Adjusted investable after goal contributions
+  const adjustedInvestable = options.includeGoalsInStrategy
+    ? Math.max(0, totalInvestable - goalAnalysis.goalSavingsContributions)
+    : totalInvestable;
 
   return {
     preferences,
     loading,
     savePreferences,
     calculateAllocations,
+    calculateGoalAwareAllocations,
     totalInvestable,
+    adjustedInvestable,
     hasPreferences: !!preferences,
+    goalAnalysis,
   };
 }

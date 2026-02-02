@@ -365,6 +365,7 @@ const IndexContent = () => {
                 formatValue={formatValue}
                 debts={demoDebts}
                 monthlyPayments={demoMonthlyPayments}
+                goals={demoGoals}
                 delay={0.3}
               />
             ) : (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings2 } from 'lucide-react';
+import { Settings2, Target } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { Goal } from '@/lib/types';
+import { GoalAnalysis } from '@/lib/goalAnalysis';
 
 interface InvestmentPreferencesDialogProps {
   open: boolean;
@@ -31,11 +33,14 @@ interface InvestmentPreferencesDialogProps {
     emergency_fund_target: number;
     debt_allocation: number;
   }) => Promise<boolean>;
+  goals?: Goal[];
+  goalAnalysis?: GoalAnalysis;
   trigger?: React.ReactNode;
 }
 
 const COLORS = [
   'hsl(0, 84%, 60%)',     // red for debt payoff
+  '#ec4899',              // pink for goal savings
   '#f59e0b',              // amber/gold for stocks
   '#8b5cf6',              // purple for crypto
   '#10b981',              // green for commodities
@@ -47,6 +52,8 @@ export function InvestmentPreferencesDialog({
   onOpenChange,
   currentPreferences,
   onSave,
+  goals = [],
+  goalAnalysis,
   trigger,
 }: InvestmentPreferencesDialogProps) {
   const [debtPayoff, setDebtPayoff] = useState(0);
@@ -110,8 +117,36 @@ export function InvestmentPreferencesDialog({
           </DialogTitle>
           <DialogDescription>
             Set your target allocation percentages. Total must equal 100%.
+            {goalAnalysis && goalAnalysis.totalMonthlyContributions > 0 && (
+              <span className="block mt-1 text-primary">
+                Goals require {goalAnalysis.totalMonthlyContributions.toFixed(0)}/mo — shown separately in your strategy.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Goals Summary Panel */}
+        {goalAnalysis && goalAnalysis.activeContributingGoals.length > 0 && (
+          <div className="p-3 rounded-lg bg-pink-500/10 border border-pink-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-pink-500" />
+              <span className="text-sm font-medium text-pink-500">Active Goal Contributions</span>
+            </div>
+            <div className="space-y-1">
+              {goalAnalysis.activeContributingGoals.slice(0, 4).map((goal) => (
+                <div key={goal.id} className="flex justify-between text-xs text-muted-foreground">
+                  <span>{goal.name}</span>
+                  <span className="text-pink-400">{goal.monthly_contribution}/mo</span>
+                </div>
+              ))}
+              {goalAnalysis.activeContributingGoals.length > 4 && (
+                <p className="text-xs text-muted-foreground">
+                  +{goalAnalysis.activeContributingGoals.length - 4} more goals
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
           {/* Sliders */}
