@@ -13,6 +13,8 @@ import { useDebts } from '@/hooks/useDebts';
 import { useGoals } from '@/hooks/useGoals';
 import { useToast } from '@/hooks/use-toast';
 
+import { Asset, Income, Expense, Debt, Goal } from '@/lib/types';
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -24,6 +26,36 @@ interface PendingAction {
   data: Record<string, any>;
 }
 
+// Props to receive shared state from parent
+interface FinancialAdvisorChatProps {
+  portfolioData?: {
+    assets: Asset[];
+    income: Income[];
+    expenses: Expense[];
+    addAsset: (data: any) => Promise<void>;
+    updateAsset: (id: string, data: any) => Promise<void>;
+    deleteAsset: (id: string) => Promise<void>;
+    addIncome: (data: any) => Promise<void>;
+    updateIncome: (id: string, data: any) => Promise<void>;
+    deleteIncome: (id: string) => Promise<void>;
+    addExpense: (data: any) => Promise<void>;
+    updateExpense: (id: string, data: any) => Promise<void>;
+    deleteExpense: (id: string) => Promise<void>;
+  };
+  debtsData?: {
+    debts: Debt[];
+    addDebt: (data: any) => Promise<void>;
+    updateDebt: (id: string, data: any) => Promise<void>;
+    deleteDebt: (id: string) => Promise<void>;
+  };
+  goalsData?: {
+    goals: Goal[];
+    addGoal: (data: any) => Promise<void>;
+    updateGoal: (id: string, data: any) => Promise<void>;
+    deleteGoal: (id: string) => Promise<void>;
+  };
+}
+
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/financial-advisor`;
 
 const SUGGESTED_QUESTIONS = [
@@ -33,7 +65,7 @@ const SUGGESTED_QUESTIONS = [
   "How do I diversify my portfolio?",
 ];
 
-export function FinancialAdvisorChat() {
+export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: FinancialAdvisorChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -73,35 +105,34 @@ export function FinancialAdvisorChat() {
     },
   });
 
-  // Portfolio hooks for voice actions
-  const {
-    assets,
-    income,
-    expenses,
-    addAsset,
-    updateAsset,
-    deleteAsset,
-    addIncome,
-    updateIncome,
-    deleteIncome,
-    addExpense,
-    updateExpense,
-    deleteExpense,
-  } = usePortfolio();
+  // Internal hooks (used as fallback when props not provided)
+  const internalPortfolio = usePortfolio();
+  const internalDebts = useDebts();
+  const internalGoals = useGoals();
 
-  const {
-    debts,
-    addDebt,
-    updateDebt,
-    deleteDebt,
-  } = useDebts();
+  // Use props if provided, otherwise fall back to internal hooks
+  const assets = portfolioData?.assets ?? internalPortfolio.assets;
+  const income = portfolioData?.income ?? internalPortfolio.income;
+  const expenses = portfolioData?.expenses ?? internalPortfolio.expenses;
+  const addAsset = portfolioData?.addAsset ?? internalPortfolio.addAsset;
+  const updateAsset = portfolioData?.updateAsset ?? internalPortfolio.updateAsset;
+  const deleteAsset = portfolioData?.deleteAsset ?? internalPortfolio.deleteAsset;
+  const addIncome = portfolioData?.addIncome ?? internalPortfolio.addIncome;
+  const updateIncome = portfolioData?.updateIncome ?? internalPortfolio.updateIncome;
+  const deleteIncome = portfolioData?.deleteIncome ?? internalPortfolio.deleteIncome;
+  const addExpense = portfolioData?.addExpense ?? internalPortfolio.addExpense;
+  const updateExpense = portfolioData?.updateExpense ?? internalPortfolio.updateExpense;
+  const deleteExpense = portfolioData?.deleteExpense ?? internalPortfolio.deleteExpense;
 
-  const {
-    goals,
-    addGoal,
-    updateGoal,
-    deleteGoal,
-  } = useGoals();
+  const debts = debtsData?.debts ?? internalDebts.debts;
+  const addDebt = debtsData?.addDebt ?? internalDebts.addDebt;
+  const updateDebt = debtsData?.updateDebt ?? internalDebts.updateDebt;
+  const deleteDebt = debtsData?.deleteDebt ?? internalDebts.deleteDebt;
+
+  const goals = goalsData?.goals ?? internalGoals.goals;
+  const addGoal = goalsData?.addGoal ?? internalGoals.addGoal;
+  const updateGoal = goalsData?.updateGoal ?? internalGoals.updateGoal;
+  const deleteGoal = goalsData?.deleteGoal ?? internalGoals.deleteGoal;
 
   // Voice actions hook
   const { executeAction, confirmDelete } = useVoiceActions({
