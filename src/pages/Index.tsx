@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
@@ -9,6 +9,7 @@ import { useLivePrices } from '@/hooks/useLivePrices';
 import { useDebts } from '@/hooks/useDebts';
 import { useGoals } from '@/hooks/useGoals';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { UnitSelector } from '@/components/UnitSelector';
 import { StatCard } from '@/components/StatCard';
 import { YieldBreakdownCard } from '@/components/YieldBreakdownCard';
@@ -78,6 +79,32 @@ const IndexContent = () => {
     canAddGoal,
     goalLimit,
   } = useGoals(effectiveSubscriptionTier);
+
+  // Portfolio history hook for snapshots and trends
+  const { 
+    snapshots, 
+    createSnapshot, 
+    isLoading: snapshotsLoading,
+    metricTrends 
+  } = usePortfolioHistory();
+  
+  // Auto-create snapshot for current month if missing (on login)
+  const hasTriedAutoSnapshot = useRef(false);
+  useEffect(() => {
+    if (isDemo || snapshotsLoading || hasTriedAutoSnapshot.current) return;
+    
+    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-02"
+    const hasCurrentMonth = snapshots.some(s => 
+      s.snapshot_month.startsWith(currentMonth)
+    );
+    
+    if (!hasCurrentMonth) {
+      hasTriedAutoSnapshot.current = true;
+      // Silently create snapshot in background
+      createSnapshot().catch(err => console.error('Auto-snapshot failed:', err));
+    }
+  }, [isDemo, snapshotsLoading, snapshots, createSnapshot]);
+
   // First call to usePortfolio with undefined prices to get assets for symbol extraction
   const portfolioInitial = usePortfolio(undefined, isDemo);
   
@@ -266,7 +293,7 @@ const IndexContent = () => {
               value={formatValue(adjustedNetWorth, false)}
               subtitle={totalDebt > 0 ? `Assets: ${formatValue(metrics.totalNetWorth, false)}` : undefined}
               icon={Wallet}
-              trend={{ value: 14.5, isPositive: true }}
+              trend={isDemo ? { value: 14.5, isPositive: true } : metricTrends?.netWorth || undefined}
               variant="primary"
               delay={0}
             />
@@ -276,6 +303,7 @@ const IndexContent = () => {
             value={formatValue(demoTotalDebt, false)}
             subtitle={demoMonthlyPayments > 0 ? `${formatValue(demoMonthlyPayments)}/mo` : undefined}
             icon={CreditCard}
+            trend={isDemo ? undefined : metricTrends?.totalDebt || undefined}
             variant="danger"
             delay={0.05}
           />
@@ -284,6 +312,7 @@ const IndexContent = () => {
             value={formatValue(metrics.totalIncome)}
             subtitle="From all sources"
             icon={TrendingUp}
+            trend={isDemo ? undefined : metricTrends?.totalIncome || undefined}
             variant="success"
             delay={0.1}
           />
@@ -292,7 +321,7 @@ const IndexContent = () => {
             value={formatValue(adjustedMonthlyNet)}
             subtitle="After all expenses"
             icon={PiggyBank}
-            trend={{ value: 8.2, isPositive: adjustedMonthlyNet >= 0 }}
+            trend={isDemo ? { value: 8.2, isPositive: adjustedMonthlyNet >= 0 } : metricTrends?.monthlyNet || undefined}
             delay={0.2}
           />
           <YieldBreakdownCard
