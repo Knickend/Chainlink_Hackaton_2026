@@ -1,223 +1,91 @@
 
-# Plan: Improve Asset Display & Add Real Estate Category
+# Plan: Fix Real Estate Currency Display Bug
 
-## Overview
+## The Problem
 
-This plan addresses two requests:
-1. **Enhance commodity and crypto asset cards** - Show price per unit + total value in user's currency
-2. **Add new "Real Estate, Equity & Miscellaneous" category** - Remove real estate from the banking category
+When entering a €450,000 real estate asset, the display shows €434,711.07 instead of €450,000.
 
----
+**Root Cause:** The real estate category uses `formatValue(asset.value)` which:
+1. Takes the stored USD value ($486,000)
+2. Converts it back to EUR using the current forex rate
+3. Results in €434,711 due to forex drift
 
-## Part 1: Enhanced Asset Row Display
+The banking category correctly avoids this by displaying the native amount stored in `quantity` with the currency symbol from `symbol`.
 
-### Current State
-The asset cards currently show only the native quantity (e.g., "1.6 kg" for gold, "71,781 POL" for crypto) without showing:
-- Current price per unit
-- Total value in the user's selected display currency
+## Data Flow Analysis
 
-### Proposed Changes
+| Step | Banking (Correct) | Real Estate (Bug) |
+|------|------------------|-------------------|
+| User enters | €450,000 | €450,000 |
+| Stored in `quantity` | 450000 | 450000 |
+| Stored in `symbol` | EUR | EUR |
+| Stored in `value` (USD) | ~$486,000 | ~$486,000 |
+| Display logic | `quantity` × `symbol` = €450,000 | `value` × EUR rate = €434,711 |
 
-**Visual Layout Change:**
-Each asset row will expand from a single-line display to a two-line layout:
+## Solution
 
-```text
-Current:
-┌──────────────────────────────────────────────────┐
-│ GOLD  Gold                         1.6 kg   ✏️ 🗑 │
-└──────────────────────────────────────────────────┘
-
-Proposed:
-┌──────────────────────────────────────────────────┐
-│ GOLD  Gold                                  ✏️ 🗑 │
-│       1.6 kg × €2,650/oz         €135,438.42    │
-└──────────────────────────────────────────────────┘
-```
-
-For crypto:
-```text
-┌──────────────────────────────────────────────────┐
-│ BTC  Bitcoin                                ✏️ 🗑 │
-│      2.7 BTC × €85,234        €230,132.58       │
-└──────────────────────────────────────────────────┘
-```
-
-### Technical Implementation
-
-**File: `src/components/AssetCategoryCard.tsx`**
-
-1. Add new props to receive `formatDisplayUnitValue` and `displayUnit`
-2. Create a helper function to get current price per unit from `livePrices`
-3. Update the asset row JSX to show:
-   - Row 1: Symbol badge + Name + Action buttons
-   - Row 2: Quantity × Price/unit = Total Value (in display currency)
-
-The card height will naturally increase to accommodate the extra row.
+Update the `formatNativeAssetValue()` function in `AssetCategoryCard.tsx` to handle real estate assets identically to banking assets - by using the native currency amount stored in `quantity` and `symbol`.
 
 ---
 
-## Part 2: New "Real Estate, Equity & Miscellaneous" Category
+## File to Modify
 
-### Current State
-- 4 categories: `banking`, `crypto`, `stocks`, `commodities`
-- Real estate is grouped under `banking` (labeled "Cash, Stablecoins & Real Estate")
-- Database constraint: `category IN ('banking', 'crypto', 'stocks', 'commodities', 'metals')`
+**`src/components/AssetCategoryCard.tsx`**
 
-### Proposed Changes
-
-Add a new category: `realestate` with UI label "Real Estate, Equity & Miscellaneous"
-
-**Banking card changes:**
-- Old label: "Cash, Stablecoins & Real Estate"
-- New label: "Cash & Stablecoins"
-
-### Technical Implementation
-
-**Database Migration:**
-Update the CHECK constraint to include `realestate`:
-```sql
-ALTER TABLE public.assets DROP CONSTRAINT IF EXISTS assets_category_check;
-ALTER TABLE public.assets ADD CONSTRAINT assets_category_check 
-  CHECK (category IN ('banking', 'crypto', 'stocks', 'commodities', 'metals', 'realestate'));
-```
-
-**TypeScript Changes:**
-
-1. **`src/lib/types.ts`:**
-   - Add `'realestate'` to `AssetCategory` type
-   
-2. **`src/components/AssetCategoryCard.tsx`:**
-   - Add new entry to `categoryConfig`:
-   ```typescript
-   realestate: { icon: Home, label: 'Real Estate, Equity & Misc.', color: 'text-purple-400' }
-   ```
-   - Update banking label to "Cash & Stablecoins"
-   - Add progress bar color for new category
-
-3. **`src/components/AddAssetDialog.tsx`:**
-   - Add new category option to dropdown
-   - No ticker search for real estate (manual entry like banking)
-
-4. **`src/hooks/usePortfolioHistory.ts`:**
-   - Add `realestate: number` to `AssetsBreakdown` interface
-
-5. **`src/components/SnapshotDetailView.tsx`:**
-   - Add real estate category to pie chart config
-
-6. **`supabase/functions/create-monthly-snapshot/index.ts`:**
-   - Add real estate to breakdown calculation
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/lib/types.ts` | Add `'realestate'` to AssetCategory type |
-| `src/components/AssetCategoryCard.tsx` | Add new category config, update banking label, enhance row layout for crypto/commodities |
-| `src/components/AddAssetDialog.tsx` | Add new category option |
-| `src/hooks/usePortfolioHistory.ts` | Add realestate to AssetsBreakdown |
-| `src/components/SnapshotDetailView.tsx` | Add realestate to pie chart |
-| `src/pages/Index.tsx` | Pass `formatDisplayUnitValue` and `displayUnit` to AssetCategoryCard |
-| `supabase/functions/create-monthly-snapshot/index.ts` | Include realestate in breakdown |
-| **Database Migration** | Add 'realestate' to category constraint |
-
----
-
-## Technical Details
-
-### Asset Row Enhancement (Part 1)
-
-**New props for AssetCategoryCard:**
+### Current Code (lines 143-171):
 ```typescript
-interface AssetCategoryCardProps {
-  // ... existing props
-  formatDisplayUnitValue?: (value: number, showDecimals?: boolean) => string;
-  displayUnit?: DisplayUnit;
-}
-```
-
-**Helper function for getting unit price:**
-```typescript
-function getUnitPrice(asset: Asset, livePrices?: LivePrices): number | null {
-  if (!asset.symbol || !livePrices) return null;
-  const sym = asset.symbol.toUpperCase();
+const formatNativeAssetValue = (): string => {
+  // Banking: show original currency amount
+  if (category === 'banking' && asset.symbol && asset.quantity) {
+    return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(...)}`;
+  }
   
-  // Check dedicated price fields
-  if (sym === 'BTC') return livePrices.btc;
-  if (sym === 'ETH') return livePrices.eth;
-  // ... other checks
-  
-  // Check stocks map
-  return livePrices.stocks?.[sym]?.price ?? null;
-}
+  // Real estate: show value  ← BUG HERE
+  if (category === 'realestate') {
+    return formatValue(asset.value);
+  }
+  // ...
+};
 ```
 
-**Updated row JSX structure:**
-```tsx
-<div className="flex flex-col py-2 px-3 rounded-lg bg-secondary/30">
-  {/* Row 1: Symbol, Name, Actions */}
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-mono">{asset.symbol}</span>
-      <span className="text-sm">{asset.name}</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <EditAssetDialog ... />
-      <DeleteConfirmDialog ... />
-    </div>
-  </div>
-  
-  {/* Row 2: Quantity × Price = Total (for crypto/commodities only) */}
-  {(category === 'crypto' || category === 'commodities') && (
-    <div className="flex items-center justify-between text-sm text-muted-foreground mt-1">
-      <span>{quantity} {symbol} × {unitPrice}</span>
-      <span className="font-mono font-medium text-foreground">
-        {formatDisplayUnitValue(assetValueInDisplayUnit)}
-      </span>
-    </div>
-  )}
-</div>
-```
-
-### Category Addition (Part 2)
-
-**TypeScript type update:**
+### Fixed Code:
 ```typescript
-export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'commodities' | 'realestate';
-```
-
-**Category config update:**
-```typescript
-const categoryConfig: Record<AssetCategory, { icon: LucideIcon; label: string; color: string }> = {
-  banking: { icon: Landmark, label: 'Cash & Stablecoins', color: 'text-blue-400' },
-  realestate: { icon: Home, label: 'Real Estate, Equity & Misc.', color: 'text-purple-400' },
-  crypto: { icon: Bitcoin, label: 'Cryptocurrency', color: 'text-bitcoin' },
-  stocks: { icon: TrendingUp, label: 'Stocks, Bonds & ETFs', color: 'text-success' },
-  commodities: { icon: Package, label: 'Commodities', color: 'text-gold' },
+const formatNativeAssetValue = (): string => {
+  // Banking and Real Estate: show original currency amount
+  if ((category === 'banking' || category === 'realestate') && asset.symbol && asset.quantity) {
+    return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    })}`;
+  }
+  
+  // Fallback for realestate without proper currency data
+  if (category === 'realestate') {
+    return formatValue(asset.value);
+  }
+  // ...
 };
 ```
 
 ---
 
-## User Experience
+## Additional UI Update
 
-### After Implementation:
+Also add the EUR currency badge for real estate assets (similar to banking):
 
-1. **Asset Cards** - Commodities and crypto will show richer information per asset:
-   - Quantity held
-   - Current price per unit  
-   - Total value in the user's selected currency (EUR/USD/etc.)
+```typescript
+// Check for both banking and realestate with forex currency
+const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
+  asset.symbol && BANKING_CURRENCIES.some(c => c.value === asset.symbol);
+```
 
-2. **New Category** - Users can classify:
-   - Real estate properties
-   - Private equity/business ownership
-   - Collectibles, art, or other miscellaneous assets
-   
-3. **Cleaner Banking** - The banking card focuses on liquid assets (cash, bank accounts, stablecoins)
+This ensures the display shows:
+```
+[EUR] House                €450,000.00
+```
 
 ---
 
 ## Summary
 
-This implementation enhances the asset display for market-priced assets and adds proper categorization for real estate and miscellaneous holdings. The changes maintain backward compatibility - existing banking assets remain in their category, users can optionally recategorize real estate items to the new category.
+This single-line fix aligns real estate display logic with banking, preventing forex drift by showing the native currency amount directly from the `quantity` field.
