@@ -194,17 +194,9 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     }, {} as Record<string, Asset[]>);
   }, [assets]);
 
-  const categoryTotals = useMemo(() => {
-    return Object.entries(assetsByCategory).map(([category, categoryAssets]) => ({
-      category,
-      total: categoryAssets.reduce((sum, asset) => sum + asset.value, 0),
-      count: categoryAssets.length,
-    }));
-  }, [assetsByCategory]);
-
-  const convertValue = (valueInUSD: number): number => {
+  const convertValue = useCallback((valueInUSD: number): number => {
     return valueInUSD * conversionRates[displayUnit];
-  };
+  }, [conversionRates, displayUnit]);
 
   // Convert a value from its stored currency to the current display unit
   // Uses live forex rates when available for consistent round-trip conversions
@@ -252,6 +244,38 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return convertCurrency(amount, fromCurrency, displayUnit);
   }, [displayUnit, conversionRates, livePrices]);
 
+  // Category totals calculated in display unit
+  // For banking assets: use native currency amounts to avoid round-trip conversion errors
+  // For other categories: convert USD values to display unit
+  const categoryTotals = useMemo(() => {
+    return Object.entries(assetsByCategory).map(([category, categoryAssets]) => {
+      let total: number;
+      
+      if (category === 'banking') {
+        // For banking, sum assets using their native currency amounts
+        // and convert to display unit properly
+        total = categoryAssets.reduce((sum, asset) => {
+          const assetCurrency = asset.symbol || 'USD';
+          const nativeAmount = asset.quantity ?? asset.value;
+          
+          // If asset currency matches display unit, use native amount directly
+          if (assetCurrency === displayUnit) {
+            return sum + nativeAmount;
+          }
+          
+          // Otherwise convert from native currency to display unit
+          return sum + convertFromCurrency(nativeAmount, assetCurrency);
+        }, 0);
+      } else {
+        // For non-banking, values are already in USD
+        // Convert to display unit
+        total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
+      }
+      
+      return { category, total, count: categoryAssets.length };
+    });
+  }, [assetsByCategory, displayUnit, convertFromCurrency, convertValue]);
+
   const formatValue = (valueInUSD: number, showDecimals = true): string => {
     const converted = convertValue(valueInUSD);
     const symbol = UNIT_SYMBOLS[displayUnit];
@@ -291,6 +315,25 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return `${symbol}${formatted}`;
   }, [convertFromCurrency, displayUnit]);
 
+  // Format a value that is already in display unit (no conversion needed)
+  const formatDisplayUnitValue = useCallback((value: number, showDecimals = true): string => {
+    const symbol = UNIT_SYMBOLS[displayUnit];
+    
+    if (displayUnit === 'GOLD') {
+      return `${value.toFixed(4)} ${symbol}`;
+    }
+    
+    if (displayUnit === 'BTC') {
+      return `${symbol}${value.toFixed(6)}`;
+    }
+    
+    const formatted = showDecimals 
+      ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    
+    return `${symbol}${formatted}`;
+  }, [displayUnit]);
+
   return {
     assets,
     income,
@@ -304,6 +347,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     convertFromCurrency,
     formatValue,
     formatCurrencyValue,
+    formatDisplayUnitValue,
     loading: isDemo ? false : loading,
     addAsset,
     updateAsset,
