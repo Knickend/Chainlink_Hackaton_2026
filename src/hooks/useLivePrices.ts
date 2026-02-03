@@ -81,6 +81,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
         setPrices((prev) => ({
           ...data.data,
           stocks: prev.stocks,
+          crypto: prev.crypto,
           forex: prev.forex,
           forexTimestamp: prev.forexTimestamp,
         }));
