@@ -10,6 +10,7 @@ interface AssetsBreakdown {
   crypto: number;
   stocks: number;
   commodities: number;
+  realestate: number;
 }
 
 // Static forex rates (fallback when live rates unavailable)
@@ -239,6 +240,7 @@ Deno.serve(async (req) => {
       crypto: 0,
       stocks: 0,
       commodities: 0,
+      realestate: 0,
     };
 
     for (const asset of (assets || [])) {

@@ -49,7 +49,8 @@ interface ViewAllAssetsDialogProps {
 }
 
 const categoryLabels: Record<AssetCategory, string> = {
-  banking: 'Cash, Stablecoins & Real Estate',
+  banking: 'Cash & Stablecoins',
+  realestate: 'Real Estate, Equity & Misc.',
   crypto: 'Cryptocurrency',
   stocks: 'Stocks, Bonds & ETFs',
   commodities: 'Commodities',

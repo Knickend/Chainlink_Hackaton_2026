@@ -15,7 +15,7 @@ import { TickerResult } from '@/hooks/useTickerSearch';
 
 const assetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
-  category: z.enum(['banking', 'crypto', 'stocks', 'commodities'] as const),
+  category: z.enum(['banking', 'crypto', 'stocks', 'commodities', 'realestate'] as const),
   value: z.number().min(0, 'Value must be positive'),
   quantity: z.number().optional(),
   symbol: z.string().max(10).optional(),
@@ -43,7 +43,8 @@ interface AddAssetDialogProps {
 }
 
 const categoryOptions: { value: AssetCategory; label: string }[] = [
-  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
+  { value: 'banking', label: 'Cash & Stablecoins' },
+  { value: 'realestate', label: 'Real Estate, Equity & Misc.' },
   { value: 'crypto', label: 'Cryptocurrency' },
   { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
   { value: 'commodities', label: 'Commodities' },
