@@ -1,130 +1,114 @@
 
-# Plan: Native Currency Display for Individual Items
+# Plan: Show Closed Positions with Realized P&L in "By Asset" Tab
 
-## Summary
+## Problem
 
-Update the application so individual financial items (assets, income, expenses, debts) always display in their **native/original currency**, while only **totals and aggregates** in overview cards, snapshots, and P&L convert to the user's selected display unit.
+When you sell an asset completely (like Apple shares), the realized loss/gain is correctly shown in the "By Category" tab but **not** in the "By Asset" tab. This happens because:
 
-This creates a clear separation:
-- **Individual items**: Show exactly what the user entered (e.g., €1,300 mortgage payment stays €1,300)
-- **Totals/Aggregates**: Convert everything to the selected display unit for portfolio-wide overview
+1. The "By Asset" tab only displays `assetsWithCostBasis` - assets that currently exist in your portfolio
+2. Once all shares are sold, the Apple asset is removed from your portfolio
+3. The transaction history (with the -$29,500 loss) still exists, but has no corresponding asset to attach to
 
----
+## Solution
 
-## Current State Analysis
+Create a new concept of **"Closed Positions"** - assets that were fully sold and no longer exist in the portfolio, but have realized P&L from their transactions.
 
-| Component | Individual Items | Totals | Needs Update |
-|-----------|-----------------|--------|--------------|
-| **IncomeExpenseCard** | Native currency (formatNativeValue) | Display unit | No |
-| **DebtOverviewCard** | Converts to display unit | Display unit | **Yes** |
-| **AssetCategoryCard** | Native for banking only | Display unit | **Yes** |
-| **ViewAllAssetsDialog** | Converts to display unit | Display unit | **Yes** |
-| **StatCards** | N/A | Display unit | No |
-| **ProfitLossCard** | Converts to display unit | Display unit | Partial |
-| **SnapshotDetailView** | N/A | Display unit | No |
+The "By Asset" tab will show:
+1. **Current positions** (existing assets with unrealized P&L)
+2. **Closed positions** (fully sold assets with realized P&L from transaction history)
 
----
+## Visual Example
 
-## Implementation Changes
-
-### Part 1: Fix DebtOverviewCard - Show Native Currency for Individual Debts
-
-**File: `src/components/DebtOverviewCard.tsx`**
-
-Currently, `formatDebtValue` converts individual debt amounts to the display unit. Change it to always show the native currency:
-
-```typescript
-// Replace formatDebtValue with formatNativeDebtValue
-const formatNativeDebtValue = (amount: number, debtCurrency: string): string => {
-  // Currency symbol mapping
-  const currencySymbols: Record<string, string> = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    CHF: 'CHF ',
-    JPY: '¥',
-    CAD: 'C$',
-    AUD: 'A$',
-    // ... other currencies
-  };
-  
-  const symbol = currencySymbols[debtCurrency] || '$';
-  return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+**After fix:**
 ```
-
-- Individual debt principal and monthly payment → Use `formatNativeDebtValue`
-- Total Debt, Monthly, Interest/mo stats → Keep using `formatValue` (display unit)
-
----
-
-### Part 2: Fix AssetCategoryCard - Show Native Currency for All Assets
-
-**File: `src/components/AssetCategoryCard.tsx`**
-
-Currently only banking assets show native currency. Extend to show native values for all asset types:
-
-```typescript
-// Helper to format asset value in native format
-const formatNativeAssetValue = (asset: Asset): string => {
-  // Banking: show original currency amount
-  if (asset.category === 'banking' && asset.symbol && asset.quantity) {
-    return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
-      minimumFractionDigits: 2, 
-      maximumFractionDigits: 2 
-    })}`;
-  }
-  
-  // Crypto/Stocks: show quantity + symbol
-  if ((asset.category === 'crypto' || asset.category === 'stocks') && asset.quantity && asset.symbol) {
-    return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
-  }
-  
-  // Commodities: show quantity + unit + symbol
-  if (asset.category === 'commodities' && asset.quantity) {
-    const unit = asset.unit || 'oz';
-    return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${unit} ${asset.symbol || ''}`;
-  }
-  
-  // Fallback to formatted value in display unit
-  return formatValue(asset.value);
-};
-```
-
-- Individual asset value → Use `formatNativeAssetValue`
-- Category total (in header) → Keep using `total` prop (already in display unit)
-
----
-
-### Part 3: Fix ViewAllAssetsDialog - Show Native Currency in Table
-
-**File: `src/components/ViewAllAssetsDialog.tsx`**
-
-Add a similar native formatting helper and use it in the Value column:
-
-```typescript
-// Add formatNativeAssetValue helper (same as above)
-// In the TableRow, replace:
-// {formatValue(asset.value)}
-// With:
-// {formatNativeAssetValue(asset)}
-```
-
-Also update the Total footer to clarify it's showing the converted total:
-```typescript
-Total ({displayUnit}): <span className="font-mono">{formatValue(...)}</span>
+By Asset Tab:
+├─ Bitcoin         +$289,734.09 (unrealized)
+├─ Silver          +$8,925.00 (unrealized)
+├─ Apple [Closed]  -$29,500.00 (realized)
+    └─ Transaction: SELL 100 AAPL @ $205.00
+       P&L: -$29,500.00
 ```
 
 ---
 
-### Part 4: Update ProfitLossDetailDialog - Show Native Values for Asset Details
+## Implementation Details
+
+### Step 1: Update useProfitLoss Hook
+
+Add logic to extract "closed positions" from transactions - assets that have sell transactions but don't exist in the current portfolio.
+
+**File: `src/hooks/useProfitLoss.ts`**
+
+```typescript
+// New interface for closed positions
+interface ClosedPosition {
+  id: string;
+  name: string;
+  symbol: string;
+  category: string;
+  realizedPnL: number;
+  realizedPnLPercent: number;
+  totalSold: number; // Total quantity sold
+  totalProceeds: number; // Total sale value
+}
+
+// Update ProfitLossData interface
+export interface ProfitLossData {
+  // ... existing fields ...
+  closedPositions: ClosedPosition[];
+}
+```
+
+Logic:
+1. Group all sell transactions by asset (using `asset_name` + `symbol` combination)
+2. Check if the asset still exists in current portfolio
+3. If not, create a "closed position" entry with aggregated realized P&L
+4. Calculate percentage based on original cost basis (if available from buy transactions)
+
+### Step 2: Update ProfitLossDetailDialog UI
+
+Modify the "By Asset" tab to display closed positions alongside current positions.
 
 **File: `src/components/ProfitLossDetailDialog.tsx`**
 
-When showing individual assets with their P&L, display the asset details (quantity, symbol) in native format while keeping P&L values in display unit:
+Add a new section after `assetsWithCostBasis`:
 
-- Asset name + quantity/symbol → Native format
-- Cost Basis, Current Value, P&L amounts → Display unit (these are already stored in USD)
+```tsx
+{/* Closed Positions Section */}
+{closedPositions.length > 0 && (
+  <div className="mt-4">
+    <p className="text-xs font-medium text-muted-foreground mb-2 px-3">
+      Closed Positions
+    </p>
+    {closedPositions.map(position => (
+      <Collapsible key={position.id}>
+        <CollapsibleTrigger>
+          <div className="flex items-center justify-between p-3 bg-secondary/20 rounded-lg">
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="font-medium flex items-center gap-2">
+                  {position.name}
+                  <Badge variant="secondary" className="text-[10px]">Closed</Badge>
+                </p>
+                <p className="text-xs text-muted-foreground">{position.symbol}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={position.realizedPnL >= 0 ? 'text-success' : 'text-destructive'}>
+                {position.realizedPnL >= 0 ? '+' : ''}{formatValue(position.realizedPnL)}
+              </p>
+              <p className="text-xs text-muted-foreground">Realized</p>
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          {/* Show transaction history for this closed position */}
+        </CollapsibleContent>
+      </Collapsible>
+    ))}
+  </div>
+)}
+```
 
 ---
 
@@ -132,54 +116,23 @@ When showing individual assets with their P&L, display the asset details (quanti
 
 | File | Changes |
 |------|---------|
-| `src/components/DebtOverviewCard.tsx` | Replace `formatDebtValue` with `formatNativeDebtValue` for individual debts; keep `formatValue` for stats row |
-| `src/components/AssetCategoryCard.tsx` | Add `formatNativeAssetValue` helper; use for individual assets; keep `total` prop for category total |
-| `src/components/ViewAllAssetsDialog.tsx` | Add native formatting; update Value column; clarify Total footer shows display unit |
-| `src/components/ProfitLossDetailDialog.tsx` | Show asset details in native format |
-
----
-
-## Visual Example
-
-**Before (with EUR display unit selected):**
-```
-Debts & Liabilities
-├─ Total Debt: €165,432      ← Converted (correct)
-├─ Monthly: €1,185.80        ← Converted (correct)
-│
-├─ Home Mortgage
-│   Principal: €144,300.12   ← Converted (wrong - was entered as €150,000)
-│   Payment: €1,249.80/mo    ← Converted (wrong - was entered as €1,300)
-```
-
-**After:**
-```
-Debts & Liabilities  
-├─ Total Debt: €165,432      ← Converted to display unit (correct)
-├─ Monthly: €1,185.80        ← Converted to display unit (correct)
-│
-├─ Home Mortgage
-│   Principal: €150,000.00   ← Native currency (correct)
-│   Payment: €1,300.00/mo    ← Native currency (correct)
-├─ Credit Card
-│   Principal: $5,000.00     ← Native currency (USD)
-│   Payment: $600.00/mo      ← Native currency (USD)
-```
+| `src/hooks/useProfitLoss.ts` | Add `ClosedPosition` interface; Add logic to extract closed positions from transactions; Include in return data |
+| `src/components/ProfitLossDetailDialog.tsx` | Add "Closed Positions" section to "By Asset" tab; Display with "Closed" badge; Show transaction history |
 
 ---
 
 ## Benefits
 
-1. **Data Integrity**: Users see exactly what they entered, avoiding confusion from rounding errors
-2. **Clarity**: Easy to distinguish between "my €150k mortgage" vs "portfolio-wide totals"
-3. **Consistency**: Matches the existing pattern used for income/expenses
-4. **User Trust**: No more "I entered €300 but it shows €298.08" confusion
+1. **Complete P&L visibility**: Users can see all realized gains/losses, not just from current holdings
+2. **Transaction history preserved**: Users can still view the buy/sell history for closed positions
+3. **Consistent with "By Category"**: The "By Asset" tab will now show the same total as "By Category"
+4. **Clear distinction**: "Closed" badge makes it obvious which positions are no longer held
 
 ---
 
-## Technical Notes
+## Edge Cases Handled
 
-1. **No Database Changes**: All changes are UI-only; data storage remains unchanged
-2. **Backward Compatible**: Existing data continues to work; native currency info is already stored
-3. **Performance**: No additional API calls needed; native currency info is already loaded
-4. **P&L Consideration**: Cost basis and P&L are stored in USD, so those values should continue converting to display unit (they represent historical USD values, not native currency)
+1. **Partial sales**: If only some shares were sold, the asset remains "open" with both unrealized and realized P&L
+2. **Multiple sell transactions**: All sells for the same closed asset are grouped together
+3. **Missing buy history**: If no buy transactions exist, we still show the realized P&L from sells
+4. **Re-opened positions**: If you sell all shares then buy again, it becomes a new open position (old sells remain as "closed position" history)
