@@ -130,16 +130,16 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
 
       if (data?.success && data?.data) {
         setPrices((prev) => {
-          const updatedStocks = { ...prev.stocks };
+          const updatedCrypto = { ...prev.crypto };
           for (const [symbol, priceData] of Object.entries(data.data)) {
             const pd = priceData as { price: number; change: number; changePercent: number };
-            updatedStocks[symbol.toUpperCase()] = {
+            updatedCrypto[symbol.toUpperCase()] = {
               price: pd.price,
               change: pd.change,
               changePercent: pd.changePercent,
             };
           }
-          return { ...prev, stocks: updatedStocks };
+          return { ...prev, crypto: updatedCrypto };
         });
         console.log('Additional crypto prices loaded:', Object.keys(data.data).join(', '));
       }

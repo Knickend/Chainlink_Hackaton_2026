@@ -533,6 +533,7 @@ const IndexContent = () => {
                     formatValue={formatValue}
                     formatDisplayUnitValue={formatDisplayUnitValue}
                     displayUnit={displayUnit}
+                    conversionRates={conversionRates}
                   onUpdateAsset={isDemo ? undefined : updateAsset}
                   onDeleteAsset={isDemo ? undefined : deleteAsset}
                   onBuyMore={isDemo ? undefined : async (assetId, data) => {
