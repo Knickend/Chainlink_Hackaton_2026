@@ -376,6 +376,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     setDisplayUnit,
     assetsByCategory,
     categoryTotals,
+    conversionRates,
     convertValue,
     convertFromCurrency,
     formatValue,

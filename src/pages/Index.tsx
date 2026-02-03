@@ -139,6 +139,7 @@ const IndexContent = () => {
     setDisplayUnit,
     assetsByCategory,
     categoryTotals,
+    conversionRates,
     formatValue,
     convertFromCurrency,
     formatCurrencyValue,
@@ -350,7 +351,7 @@ const IndexContent = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
           {/* Main charts - wrapped for tutorial spotlight */}
           <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
-            <NetWorthChart formatValue={formatValue} displayUnit={displayUnit} />
+            <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} />
             <AllocationChart data={categoryTotals} formatValue={formatValue} />
           </div>
           {/* Third column - Pro features, excluded from tutorial */}

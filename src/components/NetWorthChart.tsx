@@ -8,24 +8,29 @@ import { cn } from '@/lib/utils';
 
 interface NetWorthChartProps {
   formatValue: (value: number, showDecimals?: boolean) => string;
+  formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
   displayUnit: DisplayUnit;
+  conversionRates: Record<DisplayUnit, number>;
 }
 
-export function NetWorthChart({ formatValue, displayUnit }: NetWorthChartProps) {
+export function NetWorthChart({ formatValue, formatDisplayUnitValue, displayUnit, conversionRates }: NetWorthChartProps) {
   const { snapshots, isLoading, formatShortMonth } = usePortfolioHistory();
 
   // Transform snapshots (sorted newest first) to chart format (oldest first)
+  // Convert USD snapshot values to display unit using same rate as StatCard
   const chartData = useMemo(() => {
     if (snapshots.length === 0) return [];
+    
+    const rate = conversionRates[displayUnit];
     
     return snapshots
       .slice(0, 12) // Last 12 months max
       .reverse()    // Oldest first for chart
       .map(snapshot => ({
         month: formatShortMonth(snapshot.snapshot_month),
-        netWorth: snapshot.net_worth,
+        netWorth: snapshot.net_worth * rate, // Convert USD to display unit
       }));
-  }, [snapshots, formatShortMonth]);
+  }, [snapshots, formatShortMonth, conversionRates, displayUnit]);
 
   // Calculate percentage change between oldest and newest
   const periodChange = useMemo(() => {
@@ -136,7 +141,7 @@ export function NetWorthChart({ formatValue, displayUnit }: NetWorthChartProps) 
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
                 }}
                 labelStyle={{ color: 'hsl(40, 20%, 95%)' }}
-                formatter={(value: number) => [formatValue(value, false), 'Net Worth']}
+                formatter={(value: number) => [formatDisplayUnitValue(value, false), 'Net Worth']}
               />
               <Area
                 type="monotone"
