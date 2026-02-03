@@ -109,9 +109,9 @@ export function AssetCategoryCard({
 
       <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
         {assets.map((asset) => {
-          // For banking assets, show the original currency amount
-          const isBankingWithForex = category === 'banking' && asset.symbol && 
-            BANKING_CURRENCIES.some(c => c.value === asset.symbol);
+          // For banking and real estate assets, show the original currency amount
+          const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
+            asset.symbol && BANKING_CURRENCIES.some(c => c.value === asset.symbol);
           
           // Get unit price for crypto/commodities
           const unitPrice = showPriceDetails ? getUnitPrice(asset, category, livePrices) : null;
@@ -142,15 +142,15 @@ export function AssetCategoryCard({
           
           // Format asset value in native format for banking/realestate (original display)
           const formatNativeAssetValue = (): string => {
-            // Banking: show original currency amount
-            if (category === 'banking' && asset.symbol && asset.quantity) {
+            // Banking and Real Estate: show original currency amount to prevent forex drift
+            if ((category === 'banking' || category === 'realestate') && asset.symbol && asset.quantity) {
               return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
               })}`;
             }
             
-            // Real estate: show value
+            // Fallback for realestate without proper currency data
             if (category === 'realestate') {
               return formatValue(asset.value);
             }
@@ -229,10 +229,10 @@ export function AssetCategoryCard({
                 // Original single-line layout for banking/stocks/realestate
                 <>
                   <div className="flex items-center gap-2">
-                    {asset.symbol && !isBankingWithForex && (
+                    {asset.symbol && !hasForexCurrency && (
                       <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
                     )}
-                    {isBankingWithForex && (
+                    {hasForexCurrency && (
                       <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                         {asset.symbol}
                       </span>
