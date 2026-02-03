@@ -126,8 +126,8 @@ export function ProfitLossDetailDialog({
           </TabsList>
 
           <TabsContent value="by-asset" className="flex flex-col flex-1 min-h-0 mt-4 overflow-hidden">
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="space-y-2 pr-4">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+              <div className="space-y-2">
                 {assetsWithCostBasis.length > 0 ? (
                   assetsWithCostBasis.map(asset => {
                     const assetTransactions = getAssetTransactions(asset);
@@ -526,11 +526,11 @@ export function ProfitLossDetailDialog({
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
 
           <TabsContent value="by-category" className="flex flex-col flex-1 min-h-0 mt-4 overflow-hidden">
-            <ScrollArea className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
             {pieData.length > 0 ? (
               <div className="flex flex-col md:flex-row gap-4 pr-4">
                 <div className="w-full md:w-1/2 h-48">
@@ -586,7 +586,7 @@ export function ProfitLossDetailDialog({
                 No P&L data by category.
               </div>
             )}
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>
