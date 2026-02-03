@@ -14,6 +14,7 @@ interface AssetCategoryCardProps {
   formatValue: (value: number) => string;
   formatDisplayUnitValue?: (value: number, showDecimals?: boolean) => string;
   displayUnit?: DisplayUnit;
+  conversionRates?: Record<string, number>;
   onUpdateAsset?: (id: string, data: Partial<Omit<Asset, 'id'>>) => void;
   onDeleteAsset?: (id: string) => void;
   onBuyMore?: (assetId: string, data: BuyMoreData) => Promise<void>;
@@ -70,6 +71,7 @@ export function AssetCategoryCard({
   formatValue,
   formatDisplayUnitValue,
   displayUnit,
+  conversionRates,
   onUpdateAsset,
   onDeleteAsset,
   onBuyMore,
@@ -82,7 +84,7 @@ export function AssetCategoryCard({
   const Icon = config.icon;
 
   // Determine if we should show the two-line layout with price details
-  const showPriceDetails = (category === 'crypto' || category === 'commodities') && formatDisplayUnitValue;
+  const showPriceDetails = (category === 'crypto' || category === 'commodities' || category === 'stocks') && formatDisplayUnitValue;
 
   return (
     <motion.div
@@ -113,12 +115,15 @@ export function AssetCategoryCard({
           const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
             asset.symbol && BANKING_CURRENCIES.some(c => c.value === asset.symbol);
           
-          // Get unit price for crypto/commodities
+          // Get unit price for crypto/commodities/stocks
           const unitPrice = showPriceDetails ? getUnitPrice(asset, category, livePrices) : null;
           
           // Format the quantity display
           const formatQuantityDisplay = (): string | null => {
             if (category === 'crypto' && asset.quantity && asset.symbol) {
+              return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
+            }
+            if (category === 'stocks' && asset.quantity && asset.symbol) {
               return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
             }
             if (category === 'commodities' && asset.quantity) {
@@ -128,16 +133,20 @@ export function AssetCategoryCard({
             return null;
           };
           
-          // Format unit price display
+          // Format unit price display - convert USD to display unit
           const formatUnitPriceDisplay = (): string | null => {
             if (!unitPrice || !formatDisplayUnitValue) return null;
             
+            // Convert USD price to display unit
+            const conversionRate = conversionRates?.[displayUnit || 'USD'] || 1;
+            const convertedPrice = unitPrice * conversionRate;
+            
             if (category === 'commodities') {
               // Show price per oz for commodities
-              return `${formatDisplayUnitValue(unitPrice, true)}/oz`;
+              return `${formatDisplayUnitValue(convertedPrice, true)}/oz`;
             }
-            // For crypto, show the price
-            return formatDisplayUnitValue(unitPrice, true);
+            // For crypto/stocks, show the price
+            return formatDisplayUnitValue(convertedPrice, true);
           };
           
           // Format asset value in native format for banking/realestate (original display)
@@ -221,7 +230,8 @@ export function AssetCategoryCard({
                       {unitPriceDisplay}
                     </span>
                     <span className="font-mono font-medium text-foreground">
-                      {formatDisplayUnitValue(asset.value, true)}
+                      {/* Convert USD value to display unit */}
+                      {formatDisplayUnitValue(asset.value * (conversionRates?.[displayUnit || 'USD'] || 1), true)}
                     </span>
                   </div>
                 </>
