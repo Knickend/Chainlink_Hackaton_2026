@@ -71,7 +71,7 @@ export function ProfitLossDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-card border-primary/20 max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {totalPnL >= 0 ? (
               <TrendingUp className="w-5 h-5 text-success" />
@@ -125,8 +125,8 @@ export function ProfitLossDetailDialog({
             <TabsTrigger value="by-category">By Category</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="by-asset" className="flex-1 min-h-0 mt-4 overflow-hidden">
-            <ScrollArea className="h-full">
+          <TabsContent value="by-asset" className="flex flex-col flex-1 min-h-0 mt-4 overflow-hidden">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="space-y-2 pr-4">
                 {assetsWithCostBasis.length > 0 ? (
                   assetsWithCostBasis.map(asset => {
@@ -529,9 +529,10 @@ export function ProfitLossDetailDialog({
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="by-category" className="flex-1 min-h-0 mt-4">
+          <TabsContent value="by-category" className="flex flex-col flex-1 min-h-0 mt-4 overflow-hidden">
+            <ScrollArea className="flex-1 min-h-0">
             {pieData.length > 0 ? (
-              <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-col md:flex-row gap-4 pr-4">
                 <div className="w-full md:w-1/2 h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -585,6 +586,7 @@ export function ProfitLossDetailDialog({
                 No P&L data by category.
               </div>
             )}
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </DialogContent>
