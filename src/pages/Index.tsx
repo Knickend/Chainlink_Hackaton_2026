@@ -534,8 +534,8 @@ const IndexContent = () => {
                     formatDisplayUnitValue={formatDisplayUnitValue}
                     displayUnit={displayUnit}
                     conversionRates={conversionRates}
-                  onUpdateAsset={isDemo ? undefined : updateAsset}
-                  onDeleteAsset={isDemo ? undefined : deleteAsset}
+                    onUpdateAsset={isDemo ? undefined : updateAsset}
+                    onDeleteAsset={isDemo ? undefined : deleteAsset}
                   onBuyMore={isDemo ? undefined : async (assetId, data) => {
                     const asset = assets.find(a => a.id === assetId);
                     if (!asset) return;
