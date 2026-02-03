@@ -1,4 +1,4 @@
-export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'commodities';
+export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'commodities' | 'realestate';
 
 export type DisplayUnit = 'USD' | 'BTC' | 'GOLD' | 'EUR' | 'GBP';
 

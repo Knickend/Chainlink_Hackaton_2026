@@ -10,6 +10,7 @@ export interface AssetsBreakdown {
   crypto: number;
   stocks: number;
   commodities: number;
+  realestate: number;
 }
 
 export interface PortfolioSnapshot {
@@ -93,6 +94,7 @@ export function usePortfolioHistory() {
             crypto: 0,
             stocks: 0,
             commodities: 0,
+            realestate: 0,
           },
         };
       }) as PortfolioSnapshot[];

@@ -530,7 +530,9 @@ const IndexContent = () => {
                     assets={assetsByCategory[cat.category] || []}
                     total={formatDisplayUnitValue(cat.total)}
                     percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
-                  formatValue={formatValue}
+                    formatValue={formatValue}
+                    formatDisplayUnitValue={formatDisplayUnitValue}
+                    displayUnit={displayUnit}
                   onUpdateAsset={isDemo ? undefined : updateAsset}
                   onDeleteAsset={isDemo ? undefined : deleteAsset}
                   onBuyMore={isDemo ? undefined : async (assetId, data) => {

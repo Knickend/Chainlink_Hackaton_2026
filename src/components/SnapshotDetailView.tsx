@@ -1,4 +1,4 @@
-import { Eye, Wallet, TrendingUp, TrendingDown, Landmark, Bitcoin, BarChart3, Gem, Trash2 } from 'lucide-react';
+import { Eye, Wallet, TrendingUp, TrendingDown, Landmark, Bitcoin, BarChart3, Gem, Home, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,8 @@ interface SnapshotDetailViewProps {
 }
 
 const CATEGORY_CONFIG = [
-  { key: 'banking', label: 'Cash, Stablecoins & Real Estate', color: '#3b82f6', icon: Landmark },
+  { key: 'banking', label: 'Cash & Stablecoins', color: '#3b82f6', icon: Landmark },
+  { key: 'realestate', label: 'Real Estate, Equity & Misc.', color: '#a855f7', icon: Home },
   { key: 'crypto', label: 'Cryptocurrency', color: '#f59e0b', icon: Bitcoin },
   { key: 'stocks', label: 'Stocks, Bonds & ETFs', color: '#10b981', icon: BarChart3 },
   { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
