@@ -383,7 +383,8 @@ const IndexContent = () => {
         <div className="mb-8">
           {isPro ? (
             <ProfitLossCard 
-              pnlData={pnlData} 
+              pnlData={pnlData}
+              assets={assets}
               formatValue={formatValue} 
               delay={0.25}
               transactions={transactions}

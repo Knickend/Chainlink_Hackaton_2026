@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { ProBadge } from './ProBadge';
 import { ProfitLossData } from '@/hooks/useProfitLoss';
 import { ProfitLossDetailDialog } from './ProfitLossDetailDialog';
-import { AssetTransaction } from '@/lib/types';
+import { Asset, AssetTransaction } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 import { UpdateTransactionData } from '@/hooks/useAssetTransactions';
 
 interface ProfitLossCardProps {
   pnlData: ProfitLossData;
+  assets: Asset[];
   formatValue: (value: number, showSign?: boolean) => string;
   delay?: number;
   transactions?: AssetTransaction[];
@@ -20,7 +21,7 @@ interface ProfitLossCardProps {
   onDeleteTransaction?: (id: string) => Promise<void>;
 }
 
-export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions = [], onEditTransaction, onDeleteTransaction }: ProfitLossCardProps) {
+export function ProfitLossCard({ pnlData, assets, formatValue, delay = 0, transactions = [], onEditTransaction, onDeleteTransaction }: ProfitLossCardProps) {
   const [showDetails, setShowDetails] = useState(false);
   
   const { totalPnL, totalUnrealizedPnL, totalRealizedPnL, totalPnLPercent } = pnlData;
@@ -139,7 +140,7 @@ export function ProfitLossCard({ pnlData, formatValue, delay = 0, transactions =
       <ProfitLossDetailDialog
         open={showDetails}
         onOpenChange={setShowDetails}
-        pnlData={pnlData}
+        assets={assets}
         formatValue={formatValue}
         transactions={transactions}
         onEditTransaction={onEditTransaction}
