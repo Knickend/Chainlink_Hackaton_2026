@@ -196,7 +196,16 @@ Deno.serve(async (req) => {
     }
 
     // Calculate totals with proper currency conversion to USD
-    const totalAssets = (assets || []).reduce((sum, a) => sum + Number(a.value || 0), 0);
+    const totalAssets = (assets || []).reduce((sum, asset) => {
+      if (asset.category === 'banking') {
+        // For banking assets, use native currency amount (quantity) and convert to USD
+        const nativeAmount = Number(asset.quantity ?? asset.value ?? 0);
+        const currency = (asset.symbol || 'USD').trim().toUpperCase();
+        return sum + convertToUSD(nativeAmount, currency, forexRates, btcPrice);
+      }
+      // For non-banking assets, value is already in USD
+      return sum + Number(asset.value || 0);
+    }, 0);
     
     const totalDebt = (debts || []).reduce((sum, d) => {
       const currency = (d.currency || 'USD').trim().toUpperCase();
@@ -235,7 +244,14 @@ Deno.serve(async (req) => {
     for (const asset of (assets || [])) {
       const category = asset.category as keyof AssetsBreakdown;
       if (category in assetsBreakdown) {
-        assetsBreakdown[category] += Number(asset.value || 0);
+        if (category === 'banking') {
+          // Use native currency amount for banking assets
+          const nativeAmount = Number(asset.quantity ?? asset.value ?? 0);
+          const currency = (asset.symbol || 'USD').trim().toUpperCase();
+          assetsBreakdown[category] += convertToUSD(nativeAmount, currency, forexRates, btcPrice);
+        } else {
+          assetsBreakdown[category] += Number(asset.value || 0);
+        }
       }
     }
 
