@@ -1,104 +1,109 @@
 
-# Plan: Fix Asset Price Display Issues
+# Plan: Make Real Estate Edit Screen Match Other Categories
 
-## Problems Identified
+## Problem
 
-### Issue 1: Polygon (POL) Missing Price
-**Root Cause:** The `fetchAdditionalCryptoPrices` function in `useLivePrices.ts` stores additional crypto prices in the `stocks` map (line 136: `updatedStocks[symbol.toUpperCase()]`), but `getUnitPrice` in `AssetCategoryCard.tsx` looks in `livePrices.crypto?.[sym]` for crypto assets.
+When editing a real estate asset ("House"), the edit dialog only shows:
+- Asset Name
+- Category
 
-### Issue 2: Apple (AAPL) Missing Price
-**Root Cause:** The `showPriceDetails` flag only includes `crypto` and `commodities` categories (line 85), excluding `stocks` from the two-line price display layout.
+It's missing the Currency and Value fields that are essential for editing the asset. This is inconsistent with the Add Asset dialog and with the Banking category's edit screen.
 
-### Issue 3: Prices Show EUR Symbol but USD Values
-**Root Cause:** The code calls `formatDisplayUnitValue(unitPrice)` where `unitPrice` is the raw USD price from the API. The `formatDisplayUnitValue` function only formats (adds currency symbol) but doesn't convert USD to the display unit.
+## Root Cause
 
----
+In `EditAssetDialog.tsx`, the form fields for currency and value are only rendered when `selectedCategory === 'banking'` (line 1100). The `realestate` category has no specific rendering block, so it falls through without showing any additional fields.
+
+In contrast, `AddAssetDialog.tsx` correctly handles both categories together:
+```typescript
+{(selectedCategory === 'banking' || selectedCategory === 'realestate') && (
+  // Currency, Amount, Yield fields
+)}
+```
 
 ## Solution
 
-### File 1: `src/hooks/useLivePrices.ts`
+Update the `EditAssetDialog.tsx` to render the same form fields for `realestate` as for `banking`, matching the pattern used in `AddAssetDialog.tsx`.
 
-**Change:** Store additional crypto prices in the `crypto` map instead of `stocks` map.
+---
 
+## Changes Required
+
+### File: `src/components/EditAssetDialog.tsx`
+
+**Change 1**: Update the form default values to also handle realestate (line 167)
+
+Currently:
 ```typescript
-// Line 131-143: Change from stocks to crypto
-setPrices((prev) => {
-  const updatedCrypto = { ...prev.crypto };  // Changed from prev.stocks
-  for (const [symbol, priceData] of Object.entries(data.data)) {
-    const pd = priceData as { price: number; change: number; changePercent: number };
-    updatedCrypto[symbol.toUpperCase()] = {  // Changed from updatedStocks
-      price: pd.price,
-      change: pd.change,
-      changePercent: pd.changePercent,
-    };
-  }
-  return { ...prev, crypto: updatedCrypto };  // Changed from stocks
-});
+currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
 ```
 
-### File 2: `src/components/AssetCategoryCard.tsx`
-
-**Changes:**
-
-1. **Include stocks in the two-line layout** (line 85):
+Updated:
 ```typescript
-const showPriceDetails = (category === 'crypto' || category === 'commodities' || category === 'stocks') && formatDisplayUnitValue;
+currency: (asset.category === 'banking' || asset.category === 'realestate') 
+  ? (asset.symbol || 'USD') : undefined,
 ```
 
-2. **Update `formatQuantityDisplay` to handle stocks** (add case for stocks):
+**Change 2**: Update the dialog reset to also handle realestate (line 225)
+
+Currently:
 ```typescript
-if (category === 'stocks' && asset.quantity && asset.symbol) {
-  return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
-}
+currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
 ```
 
-3. **Convert USD prices to display unit** - Pass `conversionRates` prop and use it:
-   - Add new prop: `conversionRates?: Record<string, number>`
-   - Update `formatUnitPriceDisplay` to convert USD price to display unit:
+Updated:
 ```typescript
-const formatUnitPriceDisplay = (): string | null => {
-  if (!unitPrice || !formatDisplayUnitValue || !conversionRates || !displayUnit) return null;
-  
-  // Convert USD price to display unit
-  const convertedPrice = unitPrice * (conversionRates[displayUnit] || 1);
-  
-  if (category === 'commodities') {
-    return `${formatDisplayUnitValue(convertedPrice, true)}/oz`;
-  }
-  return formatDisplayUnitValue(convertedPrice, true);
-};
+currency: (asset.category === 'banking' || asset.category === 'realestate') 
+  ? (asset.symbol || 'USD') : undefined,
 ```
 
-4. **Convert total value to display unit** for the right side total:
+**Change 3**: Update the submit handler to also handle realestate (line 300)
+
+Currently:
 ```typescript
-// The asset.value is in USD, needs conversion to display unit
-const displayValue = asset.value * (conversionRates?.[displayUnit || 'USD'] || 1);
-<span className="font-mono font-medium text-foreground">
-  {formatDisplayUnitValue(displayValue, true)}
-</span>
+if (data.category === 'banking' && data.currency) {
 ```
 
-### File 3: `src/pages/Index.tsx`
-
-**Change:** Pass `conversionRates` to `AssetCategoryCard`:
+Updated:
 ```typescript
-<AssetCategoryCard
-  ...
-  conversionRates={conversionRates}  // Add this prop
-/>
+if ((data.category === 'banking' || data.category === 'realestate') && data.currency) {
+```
+
+**Change 4**: Update the form rendering condition (line 1100)
+
+Currently:
+```typescript
+{selectedCategory === 'banking' && (
+```
+
+Updated:
+```typescript
+{(selectedCategory === 'banking' || selectedCategory === 'realestate') && (
+```
+
+**Change 5**: Update the yield label to be category-specific (around line 1169)
+
+Currently:
+```typescript
+<FormLabel>Interest Rate (%)</FormLabel>
+```
+
+Updated:
+```typescript
+<FormLabel>
+  {selectedCategory === 'realestate' ? 'Expected Yield/Return (%)' : 'Interest Rate (%)'}
+</FormLabel>
 ```
 
 ---
 
-## Summary of Changes
+## Expected Result After Fix
 
-| File | Change |
-|------|--------|
-| `src/hooks/useLivePrices.ts` | Store additional crypto in `crypto` map, not `stocks` |
-| `src/components/AssetCategoryCard.tsx` | Include stocks in price display, add conversion for prices |
-| `src/pages/Index.tsx` | Pass `conversionRates` prop to asset cards |
+When editing the "House" real estate asset, the dialog will show:
+- Asset Name: "House"
+- Category: "Real Estate, Equity & Misc."
+- Currency: EUR (dropdown selector)
+- Amount: €450,000.00
+- Exchange Rate info (if non-USD)
+- Expected Yield/Return (%): optional field
 
-## Expected Results After Fix
-- Polygon will show: `71,781 POL × €X.XX = €7,985.06`
-- Apple will show: `100 AAPL × €XXX.XX = €22,836.31`  
-- All prices will be properly converted from USD to EUR
+This matches the experience when adding a new real estate asset and editing banking assets.
