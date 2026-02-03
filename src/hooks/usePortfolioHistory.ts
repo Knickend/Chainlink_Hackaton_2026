@@ -122,10 +122,33 @@ export function usePortfolioHistory() {
     },
   });
 
+  // Delete snapshot mutation
+  const deleteSnapshotMutation = useMutation({
+    mutationFn: async (snapshotId: string) => {
+      const { error } = await supabase
+        .from('portfolio_snapshots')
+        .delete()
+        .eq('id', snapshotId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio-snapshots'] });
+      toast.success('Snapshot deleted');
+    },
+    onError: () => {
+      toast.error('Failed to delete snapshot');
+    },
+  });
+
   // Create snapshot for current month
   const createSnapshot = useCallback(async () => {
     return createSnapshotMutation.mutateAsync(undefined);
   }, [createSnapshotMutation]);
+
+  // Delete a snapshot
+  const deleteSnapshot = useCallback(async (snapshotId: string) => {
+    return deleteSnapshotMutation.mutateAsync(snapshotId);
+  }, [deleteSnapshotMutation]);
 
   // Get comparison between two months
   const getComparison = useCallback((month1Id: string, month2Id: string): MonthComparison | null => {
@@ -221,6 +244,8 @@ export function usePortfolioHistory() {
     refetch,
     createSnapshot,
     isCreating: createSnapshotMutation.isPending,
+    deleteSnapshot,
+    isDeleting: deleteSnapshotMutation.isPending,
     selectedMonth,
     setSelectedMonth,
     comparisonMonth,

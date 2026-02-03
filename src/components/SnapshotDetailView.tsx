@@ -1,4 +1,4 @@
-import { Eye, Wallet, TrendingUp, TrendingDown, Landmark, Bitcoin, BarChart3, Gem } from 'lucide-react';
+import { Eye, Wallet, TrendingUp, TrendingDown, Landmark, Bitcoin, BarChart3, Gem, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,12 +9,16 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { PortfolioSnapshot } from '@/hooks/usePortfolioHistory';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { Button } from '@/components/ui/button';
 
 interface SnapshotDetailViewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   snapshot: PortfolioSnapshot | null;
   formatValue: (value: number, showDecimals?: boolean) => string;
+  onDelete?: (snapshotId: string) => void;
+  isDeleting?: boolean;
 }
 
 const CATEGORY_CONFIG = [
@@ -24,7 +28,7 @@ const CATEGORY_CONFIG = [
   { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
 ] as const;
 
-export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue }: SnapshotDetailViewProps) {
+export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue, onDelete, isDeleting }: SnapshotDetailViewProps) {
   if (!snapshot) return null;
 
   const totalAssets = snapshot.total_assets;
@@ -161,6 +165,30 @@ export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue }
           <p className="text-xs text-muted-foreground text-center">
             Snapshot taken on {format(parseISO(snapshot.created_at), 'MMMM d, yyyy \'at\' h:mm a')}
           </p>
+
+          {/* Delete Button */}
+          {onDelete && (
+            <div className="pt-4 border-t border-border">
+              <DeleteConfirmDialog
+                title="Delete this snapshot?"
+                description={`This will permanently remove the ${format(parseISO(snapshot.snapshot_month), 'MMMM yyyy')} snapshot. This action cannot be undone.`}
+                onConfirm={() => {
+                  onDelete(snapshot.id);
+                  onOpenChange(false);
+                }}
+                trigger={
+                  <Button 
+                    variant="outline" 
+                    className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {isDeleting ? 'Deleting...' : 'Delete Snapshot'}
+                  </Button>
+                }
+              />
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
