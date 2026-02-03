@@ -1,128 +1,117 @@
 
 
-# Plan: Fix Snapshot Creation for Banking Assets
+# Plan: Align Chart Display with StatCard Calculation
 
 ## The Problem
 
-The `create-monthly-snapshot` edge function uses `asset.value` for all assets (line 199), which is the stored USD equivalent. For banking assets, this value was calculated using static rates at save time, causing a mismatch when displayed with live forex rates.
+The Net Worth Trend chart shows €2,148,906 while the StatCard shows €2,141,500 — a €7,406 difference.
 
-The same issue exists in the `assets_breakdown` calculation (lines 235-240).
+### Root Cause Analysis
+
+| Component | Data Source | Calculation Method |
+|-----------|-------------|-------------------|
+| StatCard | Live assets | Smart logic: Uses EUR amounts directly for EUR assets |
+| Chart | Snapshot DB | Stored USD value (2,544,319) × live EUR rate (0.84459) = €2,148,906 |
+
+The snapshot stores net worth in USD. When the chart displays it, it converts USD→EUR using **today's forex rate**. But the StatCard uses native EUR amounts directly (€2,141,500).
+
+The ~0.3% difference comes from:
+1. The snapshot USD value was computed using a forex rate active at snapshot time
+2. Chart displays using today's forex rate (which changed)
 
 ---
 
-## Solution
+## Solution: Convert Snapshots Using Display Unit Logic
 
-Apply the same smart banking asset logic used in the frontend: use `quantity` (native currency amount) for banking assets and convert to USD using live forex rates at snapshot time.
+The chart should convert the stored USD snapshot value using the **same conversion rate** as the StatCard, not `formatValue`.
+
+Since the StatCard's `totalNetWorth` is already calculated in the display unit, and we know snapshots store USD, we need to either:
+1. Store snapshots in the display unit (complex, changes DB schema)
+2. **Apply a consistent conversion factor** between snapshot USD and live EUR that matches the StatCard's approach
+
+The cleanest fix: The chart should use `formatDisplayUnitValue` and pre-convert the USD snapshot value to display unit using the **same conversionRates** that the StatCard uses.
 
 ---
 
-## File to Modify
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/create-monthly-snapshot/index.ts` | Update `totalAssets` and `assets_breakdown` calculations to handle banking assets properly |
+| `src/components/NetWorthChart.tsx` | Use `conversionRates` prop to convert USD snapshots to display unit |
+| `src/pages/Index.tsx` | Pass `conversionRates` to NetWorthChart |
 
 ---
 
 ## Technical Implementation
 
-### 1. Fix totalAssets Calculation (line 199)
+### 1. NetWorthChart.tsx - Accept and use conversionRates
 
-**Current:**
+**Add prop:**
 ```typescript
-const totalAssets = (assets || []).reduce((sum, a) => sum + Number(a.value || 0), 0);
-```
-
-**Fixed:**
-```typescript
-const totalAssets = (assets || []).reduce((sum, asset) => {
-  if (asset.category === 'banking') {
-    // For banking assets, use native currency amount (quantity) and convert to USD
-    const nativeAmount = Number(asset.quantity ?? asset.value ?? 0);
-    const currency = (asset.symbol || 'USD').trim().toUpperCase();
-    return sum + convertToUSD(nativeAmount, currency, forexRates, btcPrice);
-  }
-  // For non-banking assets, value is already in USD
-  return sum + Number(asset.value || 0);
-}, 0);
-```
-
-### 2. Fix assets_breakdown Calculation (lines 227-240)
-
-**Current:**
-```typescript
-const assetsBreakdown: AssetsBreakdown = {
-  banking: 0,
-  crypto: 0,
-  stocks: 0,
-  commodities: 0,
-};
-
-for (const asset of (assets || [])) {
-  const category = asset.category as keyof AssetsBreakdown;
-  if (category in assetsBreakdown) {
-    assetsBreakdown[category] += Number(asset.value || 0);
-  }
+interface NetWorthChartProps {
+  formatValue: (value: number, showDecimals?: boolean) => string;
+  formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
+  displayUnit: DisplayUnit;
+  conversionRates: Record<DisplayUnit, number>;
 }
 ```
 
-**Fixed:**
+**Update chartData calculation:**
 ```typescript
-const assetsBreakdown: AssetsBreakdown = {
-  banking: 0,
-  crypto: 0,
-  stocks: 0,
-  commodities: 0,
-};
-
-for (const asset of (assets || [])) {
-  const category = asset.category as keyof AssetsBreakdown;
-  if (category in assetsBreakdown) {
-    if (category === 'banking') {
-      // Use native currency amount for banking assets
-      const nativeAmount = Number(asset.quantity ?? asset.value ?? 0);
-      const currency = (asset.symbol || 'USD').trim().toUpperCase();
-      assetsBreakdown[category] += convertToUSD(nativeAmount, currency, forexRates, btcPrice);
-    } else {
-      assetsBreakdown[category] += Number(asset.value || 0);
-    }
-  }
-}
+const chartData = useMemo(() => {
+  if (snapshots.length === 0) return [];
+  
+  const rate = conversionRates[displayUnit];
+  
+  return snapshots
+    .slice(0, 12)
+    .reverse()
+    .map(snapshot => ({
+      month: formatShortMonth(snapshot.snapshot_month),
+      // Convert USD snapshot to display unit using same rate as StatCard
+      netWorth: snapshot.net_worth * rate,
+    }));
+}, [snapshots, formatShortMonth, conversionRates, displayUnit]);
 ```
 
----
+**Update tooltip formatter:**
+```typescript
+formatter={(value: number) => [formatDisplayUnitValue(value, false), 'Net Worth']}
+```
 
-## How convertToUSD Works
+### 2. Index.tsx - Pass conversionRates to chart
 
-The function already exists (lines 56-76) and handles forex conversion:
-- Uses live rates from `price_cache` (loaded via `getLiveForexRates`)
-- Falls back to static `FOREX_RATES_TO_USD` if live rates unavailable
-- Handles BTC and SATS conversions
+```typescript
+<NetWorthChart 
+  formatValue={formatValue} 
+  formatDisplayUnitValue={formatDisplayUnitValue}
+  displayUnit={displayUnit}
+  conversionRates={conversionRates}
+/>
+```
 
-This means the fix reuses existing, tested conversion logic.
-
----
-
-## After This Fix
-
-| Action | Result |
-|--------|--------|
-| Create new snapshot | Uses correct banking asset amounts with live forex rates |
-| Existing snapshots | Remain unchanged (historical data) |
-| Chart displays | Will show correct values for new snapshots |
+Also need to export `conversionRates` from `usePortfolio`.
 
 ---
 
-## To See Immediate Results
+## Why This Works
 
-After deploying this fix:
-1. Delete your current month's snapshot (via the snapshot detail modal)
-2. Create a new snapshot
-3. The chart will now match the StatCard
+Both the StatCard and Chart will now use the **same** USD→DisplayUnit conversion rate from `conversionRates`. This ensures:
+- If live forex says 1 USD = 0.845 EUR, both use 0.845
+- No more mismatches between different conversion paths
+
+---
+
+## Alternative Consideration
+
+We could also store snapshots in the user's display unit at creation time. However:
+- This would require schema changes (add `display_unit` column)
+- Historical snapshots would become inconsistent
+- The current fix is simpler and achieves the same result
 
 ---
 
 ## Summary
 
-The edge function will now calculate banking asset totals the same way the frontend does—using native currency amounts and live forex rates, ensuring consistency between the live dashboard and historical snapshots.
+The chart will pre-convert snapshot USD values to the display unit using the same conversion rates as the StatCard, ensuring both show €2,141,500.
 
