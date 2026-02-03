@@ -89,7 +89,40 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const btcPrice = livePrices?.btc || 96000; // fallback to ~96k if not available
 
   const metrics: PortfolioMetrics = useMemo(() => {
-    const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
+    // Calculate total net worth with smart handling for banking assets
+    // Banking assets: use native currency amounts to avoid round-trip conversion errors
+    // Other assets: values are already in USD, convert to display unit
+    const totalNetWorth = assets.reduce((sum, asset) => {
+      if (asset.category === 'banking') {
+        const assetCurrency = asset.symbol || 'USD';
+        const nativeAmount = asset.quantity ?? asset.value;
+        
+        // If asset currency matches display unit, use native amount directly
+        if (assetCurrency === displayUnit) {
+          return sum + nativeAmount;
+        }
+        
+        // Otherwise convert from native currency to display unit
+        const liveFromRate = livePrices?.forex?.[assetCurrency];
+        let amountInUSD: number;
+        if (liveFromRate && liveFromRate > 0) {
+          amountInUSD = nativeAmount * (1 / liveFromRate);
+        } else {
+          amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
+        }
+        
+        // Convert USD to display unit
+        const liveToRate = livePrices?.forex?.[displayUnit];
+        if (liveToRate && liveToRate > 0) {
+          return sum + (amountInUSD * liveToRate);
+        }
+        
+        return sum + (amountInUSD * conversionRates[displayUnit]);
+      }
+      
+      // Non-banking assets: convert USD value to display unit
+      return sum + (asset.value * conversionRates[displayUnit]);
+    }, 0);
     
     // Helper function to convert income amount to USD with normalized currency handling
     // Uses live forex rates when available for consistency with display unit conversion
@@ -182,7 +215,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
       recurringExpenses,
       oneTimeExpenses,
     };
-  }, [assets, income, expenses, btcPrice, livePrices]);
+  }, [assets, income, expenses, btcPrice, livePrices, displayUnit, conversionRates]);
 
   const assetsByCategory = useMemo(() => {
     return assets.reduce((acc, asset) => {

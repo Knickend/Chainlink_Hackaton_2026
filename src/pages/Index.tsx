@@ -304,8 +304,8 @@ const IndexContent = () => {
           <div data-tutorial="net-worth-card">
             <StatCard
               title="Net Worth"
-              value={formatValue(adjustedNetWorth, false)}
-              subtitle={totalDebt > 0 ? `Assets: ${formatValue(metrics.totalNetWorth, false)}` : undefined}
+              value={formatDisplayUnitValue(adjustedNetWorth, false)}
+              subtitle={totalDebt > 0 ? `Assets: ${formatDisplayUnitValue(metrics.totalNetWorth, false)}` : undefined}
               icon={Wallet}
               trend={isDemo ? { value: 14.5, isPositive: true } : metricTrends?.netWorth || undefined}
               variant="primary"
