@@ -1,181 +1,162 @@
 
-# Plan: Rename Asset Category Display Labels
+# Plan: Connect Net Worth Chart to Real Portfolio Snapshots
 
 ## Overview
 
-Update the display labels for asset categories across the entire application while keeping the underlying database values (`banking`, `crypto`, `stocks`, `commodities`) unchanged.
+Replace the hardcoded mock data in the Net Worth Trend chart with real historical data from the `portfolio_snapshots` table, and calculate the actual percentage change dynamically.
 
-**New Category Names:**
-| Internal Key | Current Label | New Label |
-|--------------|---------------|-----------|
-| `banking` | Banking | Cash, Stablecoins & Real Estate |
-| `crypto` | Crypto / Cryptocurrency | Cryptocurrency |
-| `stocks` | Stocks / Stocks & ETFs | Stocks, Bonds & ETFs |
-| `commodities` | Commodities | Commodities |
+---
+
+## Current State
+
+| Element | Current Behavior |
+|---------|------------------|
+| Chart data | Uses `mockHistoricalData` with 6 static entries |
+| Percentage indicator | Hardcoded `↑ 14.5%` |
+| Time period label | Always shows "Last 6 months" |
+
+---
+
+## Proposed Changes
+
+### New Behavior
+
+| Element | New Behavior |
+|---------|--------------|
+| Chart data | Real snapshots from `portfolio_snapshots` table (up to 12 months) |
+| Percentage indicator | Calculated from oldest vs newest snapshot |
+| Time period label | Dynamic based on actual data range |
+| Empty state | Shows "No data yet" message when < 2 snapshots |
+| Direction indicator | Shows ↑ (green) for gains, ↓ (red) for losses |
+
+---
+
+## Technical Implementation
+
+### File: `src/components/NetWorthChart.tsx`
+
+**Changes:**
+1. Add `usePortfolioHistory` hook to fetch real snapshot data
+2. Transform snapshots into chart-compatible format
+3. Calculate actual % change between first and last snapshot
+4. Add empty/loading states
+5. Dynamic time period label
+
+**New Props:**
+```typescript
+interface NetWorthChartProps {
+  formatValue: (value: number, showDecimals?: boolean) => string;
+  displayUnit: DisplayUnit;
+  currentNetWorth?: number; // Optional: include current value as latest point
+}
+```
+
+**Data Transformation:**
+```typescript
+// Transform snapshots (sorted newest first) to chart format (oldest first)
+const chartData = useMemo(() => {
+  if (snapshots.length === 0) return [];
+  
+  return snapshots
+    .slice(0, 12) // Last 12 months max
+    .reverse()    // Oldest first for chart
+    .map(snapshot => ({
+      month: formatShortMonth(snapshot.snapshot_month),
+      netWorth: snapshot.net_worth,
+    }));
+}, [snapshots, formatShortMonth]);
+```
+
+**Percentage Calculation:**
+```typescript
+const periodChange = useMemo(() => {
+  if (chartData.length < 2) return null;
+  
+  const oldest = chartData[0].netWorth;
+  const newest = chartData[chartData.length - 1].netWorth;
+  const absolute = newest - oldest;
+  const percent = oldest !== 0 ? (absolute / oldest) * 100 : 0;
+  
+  return { absolute, percent, isPositive: percent >= 0 };
+}, [chartData]);
+```
+
+**Dynamic Time Period:**
+```typescript
+const timePeriodLabel = useMemo(() => {
+  if (chartData.length === 0) return 'No data';
+  if (chartData.length === 1) return 'Current month';
+  return `Last ${chartData.length} months`;
+}, [chartData.length]);
+```
+
+**Empty State UI:**
+```typescript
+{chartData.length < 2 ? (
+  <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground">
+    <TrendingUp className="w-12 h-12 mb-4 opacity-50" />
+    <p className="text-sm">Not enough data yet</p>
+    <p className="text-xs">Take portfolio snapshots to track trends</p>
+  </div>
+) : (
+  // Existing chart code
+)}
+```
 
 ---
 
 ## Files to Modify
 
-### UI Components (Core Dashboard)
-
 | File | Change |
 |------|--------|
-| `src/components/AssetCategoryCard.tsx` | Update `categoryConfig` labels at line 24-28 |
-| `src/components/AllocationChart.tsx` | Update `LABELS` object at line 16-21 |
-| `src/components/AddAssetDialog.tsx` | Update `categoryOptions` at line 45-50 |
-| `src/components/EditAssetDialog.tsx` | Update `categories` at line 87-92 |
-| `src/components/ViewAllAssetsDialog.tsx` | Update `categoryLabels` at line 51-56 |
-| `src/components/FundFlowSelector.tsx` | Update `categoryLabels` at line 77-82 |
-| `src/components/SnapshotDetailView.tsx` | Update `CATEGORY_CONFIG` at line 20-25 |
-
-### P&L and Yield Components
-
-| File | Change |
-|------|--------|
-| `src/components/ProfitLossDetailDialog.tsx` | No label changes needed (uses category keys for colors) |
-| `src/components/YieldBreakdownCard.tsx` | No changes (uses yield type labels: Staking, Interest, Dividend) |
-
-### Tutorial and Help
-
-| File | Change |
-|------|--------|
-| `src/components/Tutorial/tutorialSteps.ts` | Update content text at line 69 to reflect new category names |
-
-### Price and Status Indicators
-
-| File | Change |
-|------|--------|
-| `src/components/PriceIndicator.tsx` | Update tooltip text at line 84 |
-
-### Landing Page and Marketing
-
-| File | Change |
-|------|--------|
-| `index.html` | Update meta description at line 7 |
-| `src/components/landing/HeroSection.tsx` | Update marketing copy at line 38-39 |
-| `src/components/landing/FAQSection.tsx` | Update FAQ answers at lines 13 and 28 |
-
-### Edge Functions (AI Prompts)
-
-| File | Change |
-|------|--------|
-| `supabase/functions/financial-advisor/index.ts` | Update system prompt at line 67 |
-| `supabase/functions/sales-bot/index.ts` | Update sales prompt at line 60 |
+| `src/components/NetWorthChart.tsx` | Replace mock data with real snapshots, add dynamic calculations |
 
 ---
 
-## Detailed Changes
+## Visual Changes
 
-### 1. AssetCategoryCard.tsx (line 24-28)
-```typescript
-const categoryConfig: Record<AssetCategory, { icon: LucideIcon; label: string; color: string }> = {
-  banking: { icon: Landmark, label: 'Cash, Stablecoins & Real Estate', color: 'text-blue-400' },
-  crypto: { icon: Bitcoin, label: 'Cryptocurrency', color: 'text-bitcoin' },
-  stocks: { icon: TrendingUp, label: 'Stocks, Bonds & ETFs', color: 'text-success' },
-  commodities: { icon: Package, label: 'Commodities', color: 'text-gold' },
-};
+### Header Section (Before)
+```
+Net Worth Trend
+Last 6 months                    ↑ 14.5% vs 6mo ago
 ```
 
-### 2. AllocationChart.tsx (line 16-21)
-```typescript
-const LABELS = {
-  banking: 'Cash, Stablecoins & Real Estate',
-  crypto: 'Cryptocurrency',
-  stocks: 'Stocks, Bonds & ETFs',
-  commodities: 'Commodities',
-};
+### Header Section (After - with data)
+```
+Net Worth Trend
+Last 8 months                    ↑ 12.3% vs 8mo ago
 ```
 
-### 3. AddAssetDialog.tsx (line 45-50)
-```typescript
-const categoryOptions: { value: AssetCategory; label: string }[] = [
-  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
-  { value: 'crypto', label: 'Cryptocurrency' },
-  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
-  { value: 'commodities', label: 'Commodities' },
-];
+### Header Section (After - no data)
+```
+Net Worth Trend
+No data                          (no percentage shown)
 ```
 
-### 4. EditAssetDialog.tsx (line 87-92)
-```typescript
-const categories: { value: AssetCategory; label: string }[] = [
-  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
-  { value: 'crypto', label: 'Cryptocurrency' },
-  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
-  { value: 'commodities', label: 'Commodities' },
-];
-```
+---
 
-### 5. ViewAllAssetsDialog.tsx (line 51-56)
-```typescript
-const categoryLabels: Record<AssetCategory, string> = {
-  banking: 'Cash, Stablecoins & Real Estate',
-  crypto: 'Cryptocurrency',
-  stocks: 'Stocks, Bonds & ETFs',
-  commodities: 'Commodities',
-};
-```
+## Edge Cases
 
-### 6. FundFlowSelector.tsx (line 77-82)
-```typescript
-const categoryLabels: Record<string, string> = {
-  banking: 'Cash, Stablecoins & Real Estate',
-  crypto: 'Cryptocurrency',
-  stocks: 'Stocks, Bonds & ETFs',
-  commodities: 'Commodities',
-};
-```
-
-### 7. SnapshotDetailView.tsx (line 20-25)
-```typescript
-const CATEGORY_CONFIG = [
-  { key: 'banking', label: 'Cash, Stablecoins & Real Estate', color: '#3b82f6', icon: Landmark },
-  { key: 'crypto', label: 'Cryptocurrency', color: '#f59e0b', icon: Bitcoin },
-  { key: 'stocks', label: 'Stocks, Bonds & ETFs', color: '#10b981', icon: BarChart3 },
-  { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
-] as const;
-```
-
-### 8. Tutorial/tutorialSteps.ts (line 69)
-```typescript
-content: 'Add and track all types of assets - cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, and commodities. Each category shows its total value and percentage of your portfolio.',
-```
-
-### 9. PriceIndicator.tsx (line 84)
-```typescript
-Cryptocurrency/Commodities: {formatLastUpdated(lastUpdated)}
-```
-
-### 10. index.html (line 7)
-```html
-<meta name="description" content="Track all your assets - cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, and commodities. View your wealth in USD, Bitcoin, Gold, or any currency." />
-```
-
-### 11. HeroSection.tsx (line 38-39)
-```typescript
-Track assets, manage debt, and build wealth across cryptocurrency, stocks, bonds, ETFs, 
-commodities, and real estate — all in one beautiful dashboard.
-```
-
-### 12. FAQSection.tsx (line 13 and 28)
-Update FAQ answers to use new terminology.
-
-### 13. Edge Functions
-Update AI prompts in `financial-advisor/index.ts` and `sales-bot/index.ts` to use new category names.
+| Scenario | Behavior |
+|----------|----------|
+| 0 snapshots | Shows empty state with message to take snapshots |
+| 1 snapshot | Shows empty state (need 2+ for trend) |
+| 2+ snapshots | Shows chart with calculated % |
+| Negative growth | Shows ↓ in red with negative % |
+| 0 starting value | Shows 100% if grew from 0, 0% if still 0 |
 
 ---
 
 ## What Stays the Same
 
-- **Database values**: The underlying `category` column values (`banking`, `crypto`, `stocks`, `commodities`) remain unchanged
-- **TypeScript types**: `AssetCategory` type definition stays as is
-- **API contracts**: No changes to Supabase queries or data structures
-- **Colors and icons**: All visual styling remains the same
-- **Voice command parsing**: Internal category matching uses same keys
+- Chart styling (gradient, colors, animations)
+- Tooltip formatting
+- Y-axis display unit handling (USD, BTC, Gold)
+- Responsive behavior
+- Glass card styling
 
 ---
 
 ## Summary
 
-This is a display-only change affecting ~13 files. All changes are string replacements for labels shown to users. The underlying data model and business logic remain completely unchanged.
+This change connects the Net Worth Trend chart to real data from the `portfolio_snapshots` table, replacing the hardcoded mock values with actual historical tracking. Users will see their real portfolio growth over time, with accurate percentage calculations.
