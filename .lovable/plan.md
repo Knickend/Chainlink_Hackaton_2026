@@ -1,35 +1,62 @@
 
 
-# Plan: Align Chart Display with StatCard Calculation
+# Plan: Synchronize Net Worth Calculations
 
 ## The Problem
 
-The Net Worth Trend chart shows €2,148,906 while the StatCard shows €2,141,500 — a €7,406 difference.
+The Net Worth StatCard shows **€2,136,934** while the Chart shows **€2,148,906** — a **€11,972 difference** (0.56%).
 
-### Root Cause Analysis
+### Root Cause: Two Different Calculation Approaches
 
-| Component | Data Source | Calculation Method |
-|-----------|-------------|-------------------|
-| StatCard | Live assets | Smart logic: Uses EUR amounts directly for EUR assets |
-| Chart | Snapshot DB | Stored USD value (2,544,319) × live EUR rate (0.84459) = €2,148,906 |
+| Component | Calculation Method |
+|-----------|-------------------|
+| **StatCard** | Smart logic: EUR banking assets use native EUR amounts directly + USD assets converted to EUR |
+| **Chart** | Simple: Snapshot USD value (2,544,319) × live EUR rate (0.84459) |
 
-The snapshot stores net worth in USD. When the chart displays it, it converts USD→EUR using **today's forex rate**. But the StatCard uses native EUR amounts directly (€2,141,500).
+The discrepancy exists because:
 
-The ~0.3% difference comes from:
-1. The snapshot USD value was computed using a forex rate active at snapshot time
-2. Chart displays using today's forex rate (which changed)
+1. The **StatCard** bypasses USD for EUR banking assets (e.g., €475,000 house stays €475,000)
+2. The **snapshot** stores a USD total that was calculated by converting EUR→USD→stored
+3. The **chart** then converts that USD back to EUR, introducing forex drift
+
+**Example drift calculation:**
+- Your EUR banking total: **€1,191,904**
+- Stored in snapshot as USD: €1,191,904 × (1/0.84459) = **$1,411,308**
+- Chart converts back: $1,411,308 × 0.84459 = **€1,191,904** ✓
+
+Wait - this should work if rates are consistent. Let me check the actual snapshot breakdown...
+
+**Snapshot `assets_breakdown.banking`:** $1,437,022 USD
+**But actual EUR banking total:** €1,191,904 ≈ $1,411,308 USD at 0.84459 rate
+
+The snapshot has **$25,714 more** in banking than expected. This suggests the snapshot was created with a **different forex rate** than the current live rate.
 
 ---
 
-## Solution: Convert Snapshots Using Display Unit Logic
+## The Real Issue
 
-The chart should convert the stored USD snapshot value using the **same conversion rate** as the StatCard, not `formatValue`.
+The snapshot was created when EUR rate was different. When displayed with today's rate:
+- Snapshot banking: $1,437,022 × 0.84459 = **€1,213,646**
+- But your actual EUR assets: **€1,191,904**
+- Difference: ~€21,742
 
-Since the StatCard's `totalNetWorth` is already calculated in the display unit, and we know snapshots store USD, we need to either:
-1. Store snapshots in the display unit (complex, changes DB schema)
-2. **Apply a consistent conversion factor** between snapshot USD and live EUR that matches the StatCard's approach
+Plus the chart uses the snapshot's `net_worth` which was calculated with the old rate.
 
-The cleanest fix: The chart should use `formatDisplayUnitValue` and pre-convert the USD snapshot value to display unit using the **same conversionRates** that the StatCard uses.
+---
+
+## Solution: Match Chart to StatCard Logic
+
+Rather than trying to fix historical snapshots (impossible), we should make the chart use the **same live calculation** as the StatCard for the **current month only**.
+
+### Approach: Hybrid Chart Data
+
+For the **most recent snapshot** (current month):
+- Replace stored value with live `metrics.totalNetWorth` 
+- This ensures the latest data point matches the StatCard exactly
+
+For **historical snapshots**:
+- Keep using stored values (they represent that point in time)
+- Accept minor drift as historical accuracy
 
 ---
 
@@ -37,49 +64,53 @@ The cleanest fix: The chart should use `formatDisplayUnitValue` and pre-convert 
 
 | File | Change |
 |------|--------|
-| `src/components/NetWorthChart.tsx` | Use `conversionRates` prop to convert USD snapshots to display unit |
-| `src/pages/Index.tsx` | Pass `conversionRates` to NetWorthChart |
+| `src/components/NetWorthChart.tsx` | Accept `currentNetWorth` prop to override latest snapshot |
+| `src/pages/Index.tsx` | Pass `metrics.totalNetWorth` to chart |
 
 ---
 
 ## Technical Implementation
 
-### 1. NetWorthChart.tsx - Accept and use conversionRates
+### 1. NetWorthChart.tsx
 
-**Add prop:**
+Add new prop and use it for the latest data point:
+
 ```typescript
 interface NetWorthChartProps {
   formatValue: (value: number, showDecimals?: boolean) => string;
   formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
   displayUnit: DisplayUnit;
   conversionRates: Record<DisplayUnit, number>;
+  currentNetWorth?: number; // NEW: Live net worth in display unit
 }
-```
 
-**Update chartData calculation:**
-```typescript
+// In chartData memo:
 const chartData = useMemo(() => {
-  if (snapshots.length === 0) return [];
+  if (snapshots.length === 0 || !conversionRates) return [];
   
-  const rate = conversionRates[displayUnit];
+  const rate = conversionRates[displayUnit] ?? 1;
+  const currentMonth = new Date().toISOString().slice(0, 7); // "2026-02"
   
   return snapshots
     .slice(0, 12)
     .reverse()
-    .map(snapshot => ({
-      month: formatShortMonth(snapshot.snapshot_month),
-      // Convert USD snapshot to display unit using same rate as StatCard
-      netWorth: snapshot.net_worth * rate,
-    }));
-}, [snapshots, formatShortMonth, conversionRates, displayUnit]);
+    .map(snapshot => {
+      const isCurrentMonth = snapshot.snapshot_month.startsWith(currentMonth);
+      
+      return {
+        month: formatShortMonth(snapshot.snapshot_month),
+        // Use live value for current month, stored value for historical
+        netWorth: isCurrentMonth && currentNetWorth !== undefined
+          ? currentNetWorth
+          : snapshot.net_worth * rate,
+      };
+    });
+}, [snapshots, formatShortMonth, conversionRates, displayUnit, currentNetWorth]);
 ```
 
-**Update tooltip formatter:**
-```typescript
-formatter={(value: number) => [formatDisplayUnitValue(value, false), 'Net Worth']}
-```
+### 2. Index.tsx
 
-### 2. Index.tsx - Pass conversionRates to chart
+Pass the adjusted net worth (which accounts for debt):
 
 ```typescript
 <NetWorthChart 
@@ -87,31 +118,34 @@ formatter={(value: number) => [formatDisplayUnitValue(value, false), 'Net Worth'
   formatDisplayUnitValue={formatDisplayUnitValue}
   displayUnit={displayUnit}
   conversionRates={conversionRates}
+  currentNetWorth={adjustedNetWorth}
 />
 ```
-
-Also need to export `conversionRates` from `usePortfolio`.
 
 ---
 
 ## Why This Works
 
-Both the StatCard and Chart will now use the **same** USD→DisplayUnit conversion rate from `conversionRates`. This ensures:
-- If live forex says 1 USD = 0.845 EUR, both use 0.845
-- No more mismatches between different conversion paths
+| Month | Data Source | Result |
+|-------|-------------|--------|
+| Feb 2026 (current) | Live `adjustedNetWorth` | Matches StatCard exactly |
+| Jan 2026 (historical) | Snapshot USD × rate | Historical accuracy preserved |
+
+The chart's latest point will always match the StatCard because they use the same value.
 
 ---
 
-## Alternative Consideration
+## Alternative Considered
 
-We could also store snapshots in the user's display unit at creation time. However:
-- This would require schema changes (add `display_unit` column)
-- Historical snapshots would become inconsistent
-- The current fix is simpler and achieves the same result
+**Store snapshots in display unit**: Rejected because:
+- Requires schema changes
+- Would need to store user's display unit preference at snapshot time
+- Historical data would be inconsistent
+- Snapshots should capture USD as a stable reference
 
 ---
 
 ## Summary
 
-The chart will pre-convert snapshot USD values to the display unit using the same conversion rates as the StatCard, ensuring both show €2,141,500.
+The fix passes the live `adjustedNetWorth` to the chart, which uses it for the current month's data point instead of converting the stored USD snapshot. This guarantees the chart and StatCard show identical values for "today" while preserving historical data accuracy.
 
