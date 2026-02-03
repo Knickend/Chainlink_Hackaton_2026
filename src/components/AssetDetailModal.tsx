@@ -296,6 +296,27 @@ export function AssetDetailModal({
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(tx.transaction_date), 'MMM d, yyyy')}
                         </p>
+                        {/* Fund flow info */}
+                        {tx.fund_flow_mode === 'linked' && tx.source_asset_id && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            └─ Funded from linked asset
+                          </p>
+                        )}
+                        {tx.fund_flow_mode === 'manual' && tx.source_label && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            └─ Source: {tx.source_label}
+                          </p>
+                        )}
+                        {tx.fund_flow_mode === 'linked' && tx.destination_asset_id && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            └─ Proceeds to linked asset
+                          </p>
+                        )}
+                        {tx.fund_flow_mode === 'manual' && tx.destination_label && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            └─ Destination: {tx.destination_label}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

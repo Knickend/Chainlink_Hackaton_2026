@@ -10,10 +10,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Asset, AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol, COMMODITY_UNITS, CommodityUnit, convertToTroyOz } from '@/lib/types';
+import { Asset, AssetCategory, BANKING_CURRENCIES, BankingCurrency, FOREX_RATES_TO_USD, getCurrencySymbol, COMMODITY_UNITS, CommodityUnit, convertToTroyOz, FundFlowMode } from '@/lib/types';
 import { LivePrices } from '@/hooks/useLivePrices';
 import { TickerSearchInput } from './TickerSearchInput';
 import { TickerResult } from '@/hooks/useTickerSearch';
+import { FundFlowSelector } from './FundFlowSelector';
 
 const assetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -50,6 +51,12 @@ export interface BuyMoreData {
   quantity: number;
   price_per_unit: number;
   transaction_date?: string;
+  // Fund flow tracking
+  fund_flow_mode?: FundFlowMode;
+  source_asset_id?: string;
+  source_label?: string;
+  source_currency?: string;
+  source_amount?: number;
 }
 
 export interface SellData {
@@ -59,6 +66,12 @@ export interface SellData {
   realized_pnl?: number;
   transaction_date?: string;
   notes?: string;
+  // Fund flow tracking
+  fund_flow_mode?: FundFlowMode;
+  destination_asset_id?: string;
+  destination_label?: string;
+  destination_currency?: string;
+  destination_amount?: number;
 }
 
 interface EditAssetDialogProps {
@@ -68,6 +81,7 @@ interface EditAssetDialogProps {
   onSell?: (assetId: string, data: SellData) => Promise<void>;
   livePrices?: LivePrices;
   onCryptoPriceUpdate?: (symbol: string, price: number, change: number, changePercent: number) => void;
+  allAssets?: Asset[]; // For fund flow selector
 }
 
 const categories: { value: AssetCategory; label: string }[] = [
@@ -113,11 +127,25 @@ function getSymbolPrice(symbol: string | undefined, category: string | undefined
   }
 }
 
-export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices, onCryptoPriceUpdate }: EditAssetDialogProps) {
+export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices, onCryptoPriceUpdate, allAssets = [] }: EditAssetDialogProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'edit' | 'buy' | 'sell'>('edit');
   const [selectedTicker, setSelectedTicker] = useState<TickerResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Fund flow state for Buy
+  const [buyFundFlowMode, setBuyFundFlowMode] = useState<FundFlowMode>('none');
+  const [buySourceAssetId, setBuySourceAssetId] = useState<string | undefined>();
+  const [buySourceLabel, setBuySourceLabel] = useState('');
+  const [buySourceCurrency, setBuySourceCurrency] = useState('USD');
+  const [buySourceAmount, setBuySourceAmount] = useState<number | undefined>();
+  
+  // Fund flow state for Sell
+  const [sellFundFlowMode, setSellFundFlowMode] = useState<FundFlowMode>('none');
+  const [sellDestAssetId, setSellDestAssetId] = useState<string | undefined>();
+  const [sellDestLabel, setSellDestLabel] = useState('');
+  const [sellDestCurrency, setSellDestCurrency] = useState('USD');
+  const [sellDestAmount, setSellDestAmount] = useState<number | undefined>();
   
   // Only show buy/sell tabs for tradeable asset categories
   const isTradeableCategory = asset.category === 'crypto' || asset.category === 'stocks' || asset.category === 'commodities';
@@ -332,8 +360,19 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
         quantity: data.quantity,
         price_per_unit: data.price_per_unit,
         transaction_date: data.transaction_date,
+        // Fund flow data
+        fund_flow_mode: buyFundFlowMode,
+        source_asset_id: buyFundFlowMode === 'linked' ? buySourceAssetId : undefined,
+        source_label: buyFundFlowMode === 'manual' ? buySourceLabel : undefined,
+        source_currency: buyFundFlowMode !== 'none' ? buySourceCurrency : undefined,
+        source_amount: buyFundFlowMode !== 'none' ? buySourceAmount : undefined,
       });
       setOpen(false);
+      // Reset fund flow state
+      setBuyFundFlowMode('none');
+      setBuySourceAssetId(undefined);
+      setBuySourceLabel('');
+      setBuySourceAmount(undefined);
     } finally {
       setIsSubmitting(false);
     }
@@ -359,8 +398,19 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
         realized_pnl: realizedPnl,
         transaction_date: data.transaction_date,
         notes: data.notes,
+        // Fund flow data
+        fund_flow_mode: sellFundFlowMode,
+        destination_asset_id: sellFundFlowMode === 'linked' ? sellDestAssetId : undefined,
+        destination_label: sellFundFlowMode === 'manual' ? sellDestLabel : undefined,
+        destination_currency: sellFundFlowMode !== 'none' ? sellDestCurrency : undefined,
+        destination_amount: sellFundFlowMode !== 'none' ? sellDestAmount : undefined,
       });
       setOpen(false);
+      // Reset fund flow state
+      setSellFundFlowMode('none');
+      setSellDestAssetId(undefined);
+      setSellDestLabel('');
+      setSellDestAmount(undefined);
     } finally {
       setIsSubmitting(false);
     }
@@ -520,6 +570,26 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
                       )}
                     />
                     
+                    {/* Fund Flow Selector for Buy */}
+                    {allAssets.length > 0 && (
+                      <FundFlowSelector
+                        type="source"
+                        assets={allAssets}
+                        mode={buyFundFlowMode}
+                        onModeChange={setBuyFundFlowMode}
+                        selectedAssetId={buySourceAssetId}
+                        onAssetSelect={setBuySourceAssetId}
+                        label={buySourceLabel}
+                        onLabelChange={setBuySourceLabel}
+                        currency={buySourceCurrency}
+                        onCurrencyChange={setBuySourceCurrency}
+                        amount={buySourceAmount}
+                        onAmountChange={setBuySourceAmount}
+                        transactionAmount={buyPreview.additionalCost}
+                        excludeAssetId={asset.id}
+                      />
+                    )}
+                    
                     {/* Buy Preview */}
                     {buyQuantity && buyQuantity > 0 && (
                       <div className="space-y-2 p-3 rounded-lg border border-success/30 bg-success/5">
@@ -658,6 +728,26 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
                         </FormItem>
                       )}
                     />
+                    
+                    {/* Fund Flow Selector for Sell */}
+                    {allAssets.length > 0 && (
+                      <FundFlowSelector
+                        type="destination"
+                        assets={allAssets}
+                        mode={sellFundFlowMode}
+                        onModeChange={setSellFundFlowMode}
+                        selectedAssetId={sellDestAssetId}
+                        onAssetSelect={setSellDestAssetId}
+                        label={sellDestLabel}
+                        onLabelChange={setSellDestLabel}
+                        currency={sellDestCurrency}
+                        onCurrencyChange={setSellDestCurrency}
+                        amount={sellDestAmount}
+                        onAmountChange={setSellDestAmount}
+                        transactionAmount={sellPreview.saleProceeds}
+                        excludeAssetId={asset.id}
+                      />
+                    )}
                     
                     {/* Sell Preview */}
                     {sellQuantity && sellQuantity > 0 && (
