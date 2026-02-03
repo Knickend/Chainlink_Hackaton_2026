@@ -125,8 +125,8 @@ export function ProfitLossDetailDialog({
             <TabsTrigger value="by-category">By Category</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="by-asset" className="flex-1 min-h-0 mt-4">
-            <ScrollArea className="h-full max-h-[40vh]">
+          <TabsContent value="by-asset" className="flex-1 min-h-0 mt-4 overflow-hidden">
+            <ScrollArea className="h-full">
               <div className="space-y-2 pr-4">
                 {assetsWithCostBasis.length > 0 ? (
                   assetsWithCostBasis.map(asset => {
