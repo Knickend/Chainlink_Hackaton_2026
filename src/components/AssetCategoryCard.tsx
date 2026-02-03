@@ -68,8 +68,8 @@ export function AssetCategoryCard({
         </div>
       </div>
 
-      <div className="space-y-2">
-        {assets.slice(0, 3).map((asset) => {
+      <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+        {assets.map((asset) => {
           // For banking assets, show the original currency amount
           const isBankingWithForex = category === 'banking' && asset.symbol && 
             BANKING_CURRENCIES.some(c => c.value === asset.symbol);
@@ -143,11 +143,6 @@ export function AssetCategoryCard({
             </div>
           );
         })}
-        {assets.length > 3 && (
-          <p className="text-xs text-center text-muted-foreground pt-1">
-            +{assets.length - 3} more assets
-          </p>
-        )}
       </div>
 
       <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
