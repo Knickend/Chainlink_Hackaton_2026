@@ -1,148 +1,287 @@
 
-# Plan: Enhanced Profit & Loss Hub with Period Filtering and Asset Detail Modal
+# Plan: Source & Destination Fund Tracking with Dual Mode
 
 ## Overview
 
-This plan redesigns the Profit & Loss Details dialog into a comprehensive P&L hub with period-based filtering, improved layout matching the reference screenshots, and a dedicated Asset Detail modal with tabbed transaction history.
+This plan implements fund flow tracking for buy/sell transactions with **two modes** the user can choose between:
 
-## Current State
+1. **Linked Mode (Automated)**: Links transactions to existing portfolio assets, automatically updating balances when trades occur
+2. **Manual Mode**: Records source/destination as text labels for reference only, requiring manual reconciliation
 
-- Single dialog showing all-time P&L data
-- Simple collapsible asset rows with inline transaction lists
-- No period filtering
-- No separation between "Open" and "Closed" positions in period context
+Users can toggle between modes per transaction, defaulting to their preference.
 
-## Target State
+---
 
-1. **Period Selector** at the top (This Month, Last Month, YTD, 1Y, All, Custom date picker)
-2. **Dynamic P&L recalculation** based on selected period
-3. **Open Positions section** showing current holdings with unrealized + period-realized P&L
-4. **Closed This Period section** showing positions closed within the selected period
-5. **Asset Detail Modal** with Overview, Transactions (filterable), and Lots/Tax tabs
+## User Flow Example
+
+**Scenario: Buy 0.5 BTC with EUR from a crypto wallet**
+
+**Linked Mode:**
+```
+┌─────────────────────────────────────────────────────┐
+│ Source of Funds                                     │
+│ ○ Manual (text only)  ● Linked (auto-update)       │
+├─────────────────────────────────────────────────────┤
+│ [Select asset: Kraken EUR Balance (€50,000)    ▼]  │
+│                                                     │
+│ Amount to deduct: €44,444.44                        │
+│ Exchange rate: 1 EUR = 1.08 USD                     │
+│                                                     │
+│ Preview:                                            │
+│   +0.5 BTC to Bitcoin holding                       │
+│   −€44,444.44 from Kraken EUR Balance ← auto       │
+└─────────────────────────────────────────────────────┘
+```
+
+**Manual Mode:**
+```
+┌─────────────────────────────────────────────────────┐
+│ Source of Funds                                     │
+│ ● Manual (text only)  ○ Linked (auto-update)       │
+├─────────────────────────────────────────────────────┤
+│ Source Label: [Kraken EUR wallet           ]       │
+│ Source Amount: [€44,444.44                 ]       │
+│                                                     │
+│ Note: Balance updates not tracked automatically    │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Implementation
 
-### Phase 1: Period Selector Component
+### Phase 1: Database Schema Update
 
-**New File: `src/components/PnLPeriodSelector.tsx`**
+**Migration: Add fund flow columns to `asset_transactions`**
 
-A compact period selector with preset buttons and custom date range picker:
-- Presets: "This Month", "Last Month", "YTD", "1Y", "All"
-- Custom: Opens date range picker (reuse existing `DateRangePicker` pattern)
-- Returns `{ startDate: Date | null, endDate: Date | null, label: string }`
-
+```sql
+ALTER TABLE asset_transactions
+ADD COLUMN fund_flow_mode text DEFAULT 'none',
+ADD COLUMN source_asset_id uuid REFERENCES assets(id) ON DELETE SET NULL,
+ADD COLUMN source_label text,
+ADD COLUMN source_currency text,
+ADD COLUMN source_amount numeric,
+ADD COLUMN destination_asset_id uuid REFERENCES assets(id) ON DELETE SET NULL,
+ADD COLUMN destination_label text,
+ADD COLUMN destination_currency text,
+ADD COLUMN destination_amount numeric,
+ADD COLUMN exchange_rate numeric;
 ```
-[This Month] [Last Month] [YTD] [1Y] [All] [📅 Custom]
-```
 
-### Phase 2: Enhanced P&L Hook with Period Filtering
+| Column | Type | Description |
+|--------|------|-------------|
+| `fund_flow_mode` | text | 'none', 'linked', or 'manual' |
+| `source_asset_id` | uuid (nullable) | FK to assets table (linked mode) |
+| `source_label` | text (nullable) | Text label (manual mode) |
+| `source_currency` | text (nullable) | Currency of source funds |
+| `source_amount` | numeric (nullable) | Amount from source |
+| `destination_asset_id` | uuid (nullable) | FK to assets table (linked mode) |
+| `destination_label` | text (nullable) | Text label (manual mode) |
+| `destination_currency` | text (nullable) | Currency of destination |
+| `destination_amount` | numeric (nullable) | Amount to destination |
+| `exchange_rate` | numeric (nullable) | Exchange rate used |
 
-**Update: `src/hooks/useProfitLoss.ts`**
+### Phase 2: TypeScript Types Update
 
-Add new hook or extend existing:
-- Accept optional `periodStart` and `periodEnd` date parameters
-- **Unrealized**: Always based on current holdings (no date filter)
-- **Realized in Period**: Filter `asset_transactions` where `transaction_type === 'sell'` AND `transaction_date` falls within period
-- **Period Realized per Asset**: Group realized P&L by asset within period
-- **Closed This Period**: Assets that had their last sell transaction within the period AND no longer exist in current holdings
+**File: `src/lib/types.ts`**
 
-New interface additions:
+Add new fields to `AssetTransaction`:
 
 ```typescript
-interface PeriodPnLData extends ProfitLossData {
-  periodLabel: string;
-  periodRealizedPnL: number;  // Realized P&L only within period
-  openPositionsWithPeriodData: Array<{
-    ...asset,
-    unrealizedPnL: number,
-    periodRealizedPnL: number,  // Sales within period
-    periodTransactions: AssetTransaction[],
-  }>;
-  closedThisPeriod: ClosedPosition[];  // Positions closed within period
+export type FundFlowMode = 'none' | 'linked' | 'manual';
+
+export interface AssetTransaction {
+  // ... existing fields
+  fund_flow_mode?: FundFlowMode;
+  source_asset_id?: string;
+  source_label?: string;
+  source_currency?: string;
+  source_amount?: number;
+  destination_asset_id?: string;
+  destination_label?: string;
+  destination_currency?: string;
+  destination_amount?: number;
+  exchange_rate?: number;
 }
 ```
 
-### Phase 3: Redesigned P&L Details Dialog Layout
+**File: `src/hooks/useAssetTransactions.ts`**
 
-**Update: `src/components/ProfitLossDetailDialog.tsx`**
+Extend `CreateTransactionData`:
 
-New layout structure:
-
-```
-[Period Selector: This Month | Last Month | YTD | 1Y | All | 📅]
-
-[Summary Strip - 3 columns]
-┌─────────────────┬─────────────────┬─────────────────┐
-│ Total P&L       │ Unrealized      │ Realized        │
-│ +$XXX,XXX       │ +$XXX,XXX       │ +$XX,XXX        │
-│ +XX%            │ +XX%            │ (in period)     │
-└─────────────────┴─────────────────┴─────────────────┘
-
-[Tabs: By Asset | By Category]
-
-By Asset Tab:
-┌─────────────────────────────────────────────────────┐
-│ Open Positions (X)                          [Sort▼] │
-├─────────────────────────────────────────────────────┤
-│ BTC (2.5)                            $152,734       │
-│                          Unrealized: +$28,734 🟢    │
-│                   Realized in period: +$2,178 🟢    │
-│                                    [Tap for details]│
-├─────────────────────────────────────────────────────┤
-│ Silver (150)                          $8,925        │
-│                          Unrealized: +$1,234 🟢     │
-│                   Realized in period: $0            │
-└─────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────┐
-│ Closed This Period (X)                              │
-├─────────────────────────────────────────────────────┤
-│ TSLA (closed)                                       │
-│                   Realized: -$7,500 | -12% 🔴       │
-│                                    [Tap for details]│
-└─────────────────────────────────────────────────────┘
+```typescript
+export interface CreateTransactionData {
+  // ... existing fields
+  fund_flow_mode?: FundFlowMode;
+  source_asset_id?: string;
+  source_label?: string;
+  source_currency?: string;
+  source_amount?: number;
+  destination_asset_id?: string;
+  destination_label?: string;
+  destination_currency?: string;
+  destination_amount?: number;
+  exchange_rate?: number;
+}
 ```
 
-### Phase 4: Asset Detail Modal
+### Phase 3: New Component - Fund Flow Selector
 
-**New File: `src/components/AssetDetailModal.tsx`**
+**New File: `src/components/FundFlowSelector.tsx`**
 
-A dedicated modal for viewing full asset details, opened when tapping an asset row:
+A reusable component that handles both modes:
 
 ```
-[Asset: BTC | Close X]
-
-[Tabs: Overview | Transactions | Lots/Tax]
-
-Overview Tab:
 ┌─────────────────────────────────────────────────────┐
-│ Current Position                                    │
-│ Qty: 2.5 | Avg Cost: $48,200 | Value: $152k        │
+│ Source of Funds (optional)                          │
 │                                                     │
-│ Unrealized P&L                                      │
-│ +$28,734 (+23%) 🟢                                  │
-│                                                     │
-│ Period Realized (This Month)                        │
-│ +$2,178 🟢                                          │
-└─────────────────────────────────────────────────────┘
-
-Transactions Tab:
-┌─────────────────────────────────────────────────────┐
-│ [All] [Buys] [Sells] [This Month]      [Export CSV] │
+│ [Mode Toggle]                                       │
+│ ○ Manual  ● Linked                                 │
 ├─────────────────────────────────────────────────────┤
-│ 2026-02-03  SELL  0.5 @ $79k  →  P&L -$957 🔴      │
-│ 2026-02-02  SELL  1.0 @ $92k  →  P&L +$2,178 🟢    │
-│ 2026-01-15  BUY   4.0 @ $45k                        │
-│ ...                                                 │
+│ IF LINKED:                                          │
+│   [Asset Dropdown with balances]                    │
+│   Amount calculated automatically                   │
+│   Balance preview: "−48,000 USDC from Coinbase"    │
+├─────────────────────────────────────────────────────┤
+│ IF MANUAL:                                          │
+│   [Text input: Source Label]                        │
+│   [Number input: Amount]                            │
+│   [Currency selector]                               │
 └─────────────────────────────────────────────────────┘
+```
 
-Lots/Tax Tab (placeholder):
-┌─────────────────────────────────────────────────────┐
-│ FIFO Tax Lots                                       │
-│ (Coming soon - shows lot-level breakdown)           │
-└─────────────────────────────────────────────────────┘
+Props:
+```typescript
+interface FundFlowSelectorProps {
+  type: 'source' | 'destination';
+  assets: Asset[];  // Available portfolio assets for linking
+  mode: FundFlowMode;
+  onModeChange: (mode: FundFlowMode) => void;
+  // Linked mode
+  selectedAssetId?: string;
+  onAssetSelect: (assetId: string | undefined) => void;
+  // Manual mode
+  label?: string;
+  onLabelChange: (label: string) => void;
+  // Common
+  currency?: string;
+  onCurrencyChange: (currency: string) => void;
+  amount?: number;
+  onAmountChange: (amount: number) => void;
+  exchangeRate?: number;
+  transactionAmount: number;  // To auto-calculate amount
+  liveForexRates?: Record<string, number>;
+}
+```
+
+### Phase 4: Update Buy/Sell Dialogs
+
+**File: `src/components/EditAssetDialog.tsx`**
+
+Add FundFlowSelector to the "Buy More" tab:
+
+```
+[Current Holdings: 2.5 BTC | $125,000]
+
+[Quantity to Buy: 0.5 BTC]
+[Price per Unit: $96,000]
+[Transaction Date: 2026-02-03]
+
+── Source of Funds ──────────────────────────
+[FundFlowSelector component]
+
+[Preview]
+  +0.5 BTC to Bitcoin
+  −48,000 USDC from Coinbase Wallet (if linked)
+  
+[Buy]
+```
+
+Add to the "Sell" tab:
+
+```
+[Quantity to Sell: 1.0 BTC]
+[Sale Price: $98,000]
+[Transaction Date: 2026-02-03]
+
+── Destination for Proceeds ─────────────────
+[FundFlowSelector component]
+
+[Preview]
+  −1.0 BTC from Bitcoin
+  +$98,000 to Chase Checking (if linked)
+  Realized P&L: +$12,500
+
+[Sell]
+```
+
+**File: `src/components/SellAssetDialog.tsx`**
+
+Same destination selector pattern.
+
+**File: `src/components/AddAssetDialog.tsx`**
+
+Add optional source selector for initial purchases (tradeable assets only).
+
+### Phase 5: Auto-Update Logic for Linked Mode
+
+**File: `src/pages/Index.tsx`**
+
+Update the `onBuyMore` and `onSell` handlers:
+
+```typescript
+// In onBuyMore handler
+if (data.fund_flow_mode === 'linked' && data.source_asset_id) {
+  const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+  if (sourceAsset && sourceAsset.quantity) {
+    // Validate sufficient balance
+    if (sourceAsset.quantity < data.source_amount) {
+      toast({ variant: 'destructive', title: 'Insufficient balance' });
+      return;
+    }
+    
+    // Reduce source asset balance
+    const newSourceQty = sourceAsset.quantity - data.source_amount;
+    if (newSourceQty <= 0) {
+      await deleteAsset(data.source_asset_id);
+    } else {
+      await updateAsset(data.source_asset_id, {
+        quantity: newSourceQty,
+        value: /* recalculate based on category */,
+      });
+    }
+  }
+}
+
+// In onSell handler
+if (data.fund_flow_mode === 'linked' && data.destination_asset_id) {
+  const destAsset = assets.find(a => a.id === data.destination_asset_id);
+  if (destAsset) {
+    // Add proceeds to destination asset
+    const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
+    await updateAsset(data.destination_asset_id, {
+      quantity: newDestQty,
+      value: /* recalculate based on category */,
+    });
+  }
+}
+```
+
+### Phase 6: Transaction History Display
+
+**File: `src/components/AssetDetailModal.tsx`**
+
+Update transaction rows to show fund flow:
+
+```
+2026-02-03  BUY  0.5 BTC @ $96k
+            └─ Funded with 48,000 USDC from Coinbase (auto)
+
+2026-02-02  SELL 1.0 BTC @ $98k  →  P&L +$12,500
+            └─ Proceeds to Chase Checking (manual label)
+
+2026-01-15  BUY  4.0 BTC @ $45k
+            └─ External funds (no tracking)
 ```
 
 ---
@@ -151,103 +290,45 @@ Lots/Tax Tab (placeholder):
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/PnLPeriodSelector.tsx` | Create | Period selector with presets + custom date range |
-| `src/hooks/usePeriodPnL.ts` | Create | New hook for period-filtered P&L calculations |
-| `src/components/ProfitLossDetailDialog.tsx` | Modify | Add period selector, new layout, clickable asset rows |
-| `src/components/AssetDetailModal.tsx` | Create | Full asset detail modal with Overview/Transactions/Lots tabs |
+| Migration SQL | Create | Add fund flow columns to asset_transactions |
+| `src/lib/types.ts` | Modify | Add FundFlowMode type and extend AssetTransaction |
+| `src/components/FundFlowSelector.tsx` | Create | Reusable component for source/destination selection |
+| `src/hooks/useAssetTransactions.ts` | Modify | Extend CreateTransactionData interface |
+| `src/components/EditAssetDialog.tsx` | Modify | Add FundFlowSelector to Buy/Sell tabs |
+| `src/components/SellAssetDialog.tsx` | Modify | Add destination FundFlowSelector |
+| `src/components/AddAssetDialog.tsx` | Modify | Add optional source selector |
+| `src/pages/Index.tsx` | Modify | Add auto-update logic for linked mode |
+| `src/components/AssetDetailModal.tsx` | Modify | Show fund flow in transaction history |
 
 ---
 
-## Technical Details
+## Validation & Edge Cases
 
-### Period Calculation Logic
-
-```typescript
-type PeriodPreset = 'this-month' | 'last-month' | 'ytd' | '1y' | 'all' | 'custom';
-
-function getPeriodDates(preset: PeriodPreset): { start: Date | null; end: Date | null } {
-  const now = new Date();
-  switch (preset) {
-    case 'this-month':
-      return { start: startOfMonth(now), end: endOfMonth(now) };
-    case 'last-month':
-      const lastMonth = subMonths(now, 1);
-      return { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) };
-    case 'ytd':
-      return { start: startOfYear(now), end: now };
-    case '1y':
-      return { start: subYears(now, 1), end: now };
-    case 'all':
-      return { start: null, end: null }; // No filtering
-    case 'custom':
-      // Uses custom date range from state
-  }
-}
-```
-
-### Filtering Transactions by Period
-
-```typescript
-function filterTransactionsByPeriod(
-  transactions: AssetTransaction[],
-  startDate: Date | null,
-  endDate: Date | null
-): AssetTransaction[] {
-  if (!startDate && !endDate) return transactions;
-  
-  return transactions.filter(tx => {
-    const txDate = new Date(tx.transaction_date);
-    if (startDate && txDate < startDate) return false;
-    if (endDate && txDate > endDate) return false;
-    return true;
-  });
-}
-```
-
-### Asset Row Data Structure
-
-Each open position row shows:
-- Asset name + quantity
-- Current market value
-- Unrealized P&L (always current)
-- Realized in period (sum of sell P&L within period for this asset)
-- Green/red indicator based on total
-
-### CSV Export for Transactions Tab
-
-Simple function to generate CSV from filtered transactions:
-
-```typescript
-function exportTransactionsCSV(transactions: AssetTransaction[], assetName: string) {
-  const headers = ['Date', 'Type', 'Quantity', 'Price', 'Total', 'P&L', 'Notes'];
-  const rows = transactions.map(tx => [
-    tx.transaction_date,
-    tx.transaction_type,
-    tx.quantity,
-    tx.price_per_unit,
-    tx.total_value,
-    tx.realized_pnl ?? '',
-    tx.notes ?? '',
-  ]);
-  // Download as CSV
-}
-```
+1. **Insufficient Balance**: Block linked transactions if source asset has insufficient funds
+2. **Circular Reference**: Prevent selecting the same asset as both source and target
+3. **Deleted Assets**: `ON DELETE SET NULL` keeps transaction records but clears the link
+4. **Currency Mismatch**: Auto-calculate exchange rates when currencies differ
+5. **Optional Fields**: All fund flow fields are optional - transactions work without them
+6. **Banking Assets**: When destination is a bank account, increase the `quantity` field (original currency amount)
 
 ---
 
 ## UI/UX Considerations
 
-1. **Default to "This Month"** - Most relevant view for active traders
-2. **Sticky period selector** - Always visible at top of dialog
-3. **Clickable rows** - Entire row is clickable to open Asset Detail Modal
-4. **Sort options** - Sort by P&L amount, %, or market value
-5. **Empty states** - "No realized P&L this period" when no sales in selected range
-6. **Mobile responsive** - Stack layout on small screens
+1. **Default Mode**: "None" by default, user expands to add fund flow tracking
+2. **Mode Memory**: Remember last-used mode in localStorage for convenience
+3. **Collapsible Section**: Fund flow section starts collapsed, expands on click
+4. **Validation Hints**: Show "Insufficient balance" immediately when amount exceeds source
+5. **Preview**: Always show preview of what will happen before confirming
 
 ---
 
-## Dependencies
+## Summary of Modes
 
-- Uses existing `date-fns` for date calculations
-- Uses existing `Calendar` and `Popover` components for date range picker
-- No new external dependencies required
+| Aspect | Linked Mode | Manual Mode |
+|--------|-------------|-------------|
+| Balance Updates | Automatic | None (reference only) |
+| Asset Selection | Dropdown with live balances | Free text field |
+| Validation | Enforces sufficient balance | No validation |
+| Audit Trail | Full asset linkage | Text labels only |
+| Best For | Accurate portfolio tracking | Quick notes, external accounts |
