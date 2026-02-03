@@ -44,7 +44,7 @@ import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { AssetCategory, DebtType } from '@/lib/types';
+import { AssetCategory, DebtType, getForexRateToUSD } from '@/lib/types';
 import { SubscriptionTier } from '@/lib/subscription';
 import { useSubscription } from '@/hooks/useSubscription';
 import { TutorialProvider, TutorialOverlay, WelcomeModal, CompletionModal, useTutorialContext } from '@/components/Tutorial';
@@ -578,9 +578,18 @@ const IndexContent = () => {
                         if (newSourceQty <= 0) {
                           await deleteAsset(data.source_asset_id);
                         } else {
-                          await updateAsset(data.source_asset_id, {
-                            quantity: newSourceQty,
-                          });
+                          // For banking assets, also update value using forex rate
+                          const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
+                          
+                          if (sourceAsset.category === 'banking') {
+                            const forexRate = getForexRateToUSD(
+                              sourceAsset.symbol || 'USD',
+                              prices.forex
+                            );
+                            updateData.value = newSourceQty * forexRate;
+                          }
+                          
+                          await updateAsset(data.source_asset_id, updateData);
                         }
                       }
                     }
@@ -634,9 +643,19 @@ const IndexContent = () => {
                       const destAsset = assets.find(a => a.id === data.destination_asset_id);
                       if (destAsset) {
                         const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
-                        await updateAsset(data.destination_asset_id, {
-                          quantity: newDestQty,
-                        });
+                        
+                        // For banking assets, also update value using forex rate
+                        const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
+                        
+                        if (destAsset.category === 'banking') {
+                          const forexRate = getForexRateToUSD(
+                            destAsset.symbol || 'USD',
+                            prices.forex
+                          );
+                          updateData.value = newDestQty * forexRate;
+                        }
+                        
+                        await updateAsset(data.destination_asset_id, updateData);
                       }
                     }
                   }}
