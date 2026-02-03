@@ -359,7 +359,8 @@ const IndexContent = () => {
             <div data-tutorial="portfolio-history-card">
               <PortfolioHistoryCard 
                 currentNetWorth={adjustedNetWorth} 
-                formatValue={formatValue} 
+                formatValue={formatValue}
+                formatDisplayUnitValue={formatDisplayUnitValue}
                 delay={0.2}
               />
             </div>
