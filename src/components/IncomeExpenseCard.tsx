@@ -177,7 +177,7 @@ export function IncomeExpenseCard({
                   <Badge 
                     variant="outline" 
                     className={cn(
-                      "text-[10px] px-1.5 py-0 h-4",
+                      "text-[10px] px-1.5 py-0 h-4 whitespace-nowrap flex-shrink-0",
                       incomeItem.is_recurring 
                         ? "border-muted-foreground/30 text-muted-foreground" 
                         : "border-primary/50 text-primary"
@@ -194,7 +194,7 @@ export function IncomeExpenseCard({
                   <Badge 
                     variant="outline" 
                     className={cn(
-                      "text-[10px] px-1.5 py-0 h-4",
+                      "text-[10px] px-1.5 py-0 h-4 whitespace-nowrap flex-shrink-0",
                       expense.is_recurring 
                         ? "border-muted-foreground/30 text-muted-foreground" 
                         : "border-warning/50 text-warning"
