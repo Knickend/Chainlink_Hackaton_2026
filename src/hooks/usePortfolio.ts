@@ -93,8 +93,8 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     // Banking assets: use native currency amounts to avoid round-trip conversion errors
     // Other assets: values are already in USD, convert to display unit
     const totalNetWorth = assets.reduce((sum, asset) => {
-      if (asset.category === 'banking') {
-        const assetCurrency = asset.symbol || 'USD';
+      if (asset.category === 'banking' || asset.category === 'realestate') {
+        const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
         const nativeAmount = asset.quantity ?? asset.value;
         
         // If asset currency matches display unit, use native amount directly
@@ -284,11 +284,11 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     return Object.entries(assetsByCategory).map(([category, categoryAssets]) => {
       let total: number;
       
-      if (category === 'banking') {
-        // For banking, sum assets using their native currency amounts
+      if (category === 'banking' || category === 'realestate') {
+        // For banking and real estate, sum assets using their native currency amounts
         // and convert to display unit properly
         total = categoryAssets.reduce((sum, asset) => {
-          const assetCurrency = asset.symbol || 'USD';
+          const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
           const nativeAmount = asset.quantity ?? asset.value;
           
           // If asset currency matches display unit, use native amount directly

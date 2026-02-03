@@ -352,7 +352,7 @@ const IndexContent = () => {
           {/* Main charts - wrapped for tutorial spotlight */}
           <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
             <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} currentNetWorth={adjustedNetWorth} />
-            <AllocationChart data={categoryTotals} formatValue={formatValue} />
+            <AllocationChart data={categoryTotals} formatDisplayUnitValue={formatDisplayUnitValue} />
           </div>
           {/* Third column - Pro features, excluded from tutorial */}
           {isPro && !isDemo && (
