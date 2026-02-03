@@ -1,149 +1,109 @@
 
-# Plan: Fix Banking Asset Display to Use Native Currency
+# Plan: Fix Net Worth Card Currency Conversion
 
 ## The Problem
 
-You entered €100,000 in a EUR banking asset, and the display unit is EUR. The category total shows €91,215.72 instead of €100,000.
-
-**Current Flow:**
-1. Save: €100,000 × 1.08 (static rate) = 108,000 USD stored as `value`
-2. Display: 108,000 USD × 0.84459 (live rate) = €91,216 displayed
-
-**Expected Flow:**
-When display unit = asset currency, show the original amount directly (€100,000)
-
----
+The Net Worth card shows €91,216 instead of €100,000 for the same reason we fixed in category totals:
+- **Current**: `totalNetWorth` sums all `asset.value` (stored in USD: 108,000)
+- **Then**: `formatValue` converts 108,000 USD to EUR using live rate → €91,216
+- **Expected**: When display unit is EUR and asset is EUR, show €100,000 directly
 
 ## Solution
 
-Modify `categoryTotals` calculation in `usePortfolio.ts` to:
-1. For banking assets: sum amounts in their native currencies and convert to display unit
-2. Use `quantity` (native amount) instead of `value` (USD equivalent) for same-currency assets
+Apply the same smart calculation logic from `categoryTotals` to `totalNetWorth` in the metrics calculation, handling banking assets specially.
 
 ---
 
-## Files to Modify
+## File to Modify
 
 | File | Change |
 |------|--------|
-| `src/hooks/usePortfolio.ts` | Smart category total calculation for banking assets |
-| `src/pages/Index.tsx` | Pass raw category totals and format appropriately |
+| `src/hooks/usePortfolio.ts` | Update `totalNetWorth` calculation to handle banking assets like `categoryTotals` does |
 
 ---
 
 ## Technical Implementation
 
-### 1. usePortfolio.ts - New Category Total Calculation
+### usePortfolio.ts - Fix totalNetWorth Calculation
 
-**Current code (line 197-203):**
+**Current code (line 91-92):**
 ```typescript
-const categoryTotals = useMemo(() => {
-  return Object.entries(assetsByCategory).map(([category, categoryAssets]) => ({
-    category,
-    total: categoryAssets.reduce((sum, asset) => sum + asset.value, 0),  // Always USD
-    count: categoryAssets.length,
-  }));
-}, [assetsByCategory]);
+const metrics: PortfolioMetrics = useMemo(() => {
+  const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
 ```
 
-**Fixed approach:**
-
-For banking assets, we need a smarter calculation:
-- If asset currency = display unit → use `quantity` (native amount) directly
-- If asset currency ≠ display unit → convert `quantity` from asset currency to display unit
-
+**Fixed code:**
 ```typescript
-const categoryTotals = useMemo(() => {
-  return Object.entries(assetsByCategory).map(([category, categoryAssets]) => {
-    let total: number;
-    
-    if (category === 'banking') {
-      // For banking, sum assets using their native currency amounts
-      // and convert to display unit properly
-      total = categoryAssets.reduce((sum, asset) => {
-        const assetCurrency = asset.symbol || 'USD';
-        const nativeAmount = asset.quantity ?? asset.value;
-        
-        // If asset currency matches display unit, use native amount
-        if (assetCurrency === displayUnit) {
-          return sum + nativeAmount;
-        }
-        
-        // Otherwise convert from native currency to display unit
-        return sum + convertFromCurrency(nativeAmount, assetCurrency);
-      }, 0);
-    } else {
-      // For non-banking, values are already in USD
-      // Convert to display unit
-      total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
+const metrics: PortfolioMetrics = useMemo(() => {
+  // Calculate total net worth with smart handling for banking assets
+  // Banking assets: use native currency amounts to avoid round-trip conversion errors
+  // Other assets: values are already in USD
+  const totalNetWorth = assets.reduce((sum, asset) => {
+    if (asset.category === 'banking') {
+      const assetCurrency = asset.symbol || 'USD';
+      const nativeAmount = asset.quantity ?? asset.value;
+      
+      // If asset currency matches display unit, use native amount directly
+      if (assetCurrency === displayUnit) {
+        return sum + nativeAmount;
+      }
+      
+      // Otherwise convert from native currency to display unit
+      // First to USD, then to display unit (or use convertFromCurrency if available)
+      const liveFromRate = livePrices?.forex?.[assetCurrency];
+      let amountInUSD: number;
+      if (liveFromRate && liveFromRate > 0) {
+        amountInUSD = nativeAmount * (1 / liveFromRate);
+      } else {
+        amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
+      }
+      
+      // Convert USD to display unit
+      const liveToRate = livePrices?.forex?.[displayUnit];
+      if (liveToRate && liveToRate > 0) {
+        return sum + (amountInUSD * liveToRate);
+      }
+      
+      return sum + (amountInUSD * conversionRates[displayUnit]);
     }
     
-    return { category, total, count: categoryAssets.length };
-  });
-}, [assetsByCategory, displayUnit, convertFromCurrency, convertValue]);
+    // Non-banking assets: convert USD value to display unit
+    return sum + (asset.value * conversionRates[displayUnit]);
+  }, 0);
 ```
 
-### 2. Index.tsx - Update Category Card Usage
+**Important**: Since `metrics` is calculated in a `useMemo` that now depends on `displayUnit`, we need to add `displayUnit` to its dependencies.
 
-**Current (formats USD total):**
+---
+
+## Also Update Index.tsx
+
+Since `totalNetWorth` will now be in the display unit (not USD), we need to use `formatDisplayUnitValue` instead of `formatValue`:
+
+**Current:**
 ```typescript
-total={formatValue(cat.total)}
+value={formatValue(adjustedNetWorth, false)}
 ```
 
-**Fixed (total is already in display unit):**
+**Fixed:**
 ```typescript
-// categoryTotals now returns values in display unit
-total={formatDisplayUnitValue(cat.total)}
+value={formatDisplayUnitValue(adjustedNetWorth, false)}
 ```
 
-Add a simple formatter that doesn't convert (value is already in display unit):
-```typescript
-const formatDisplayUnitValue = (value: number): string => {
-  const symbol = UNIT_SYMBOLS[displayUnit];
-  
-  if (displayUnit === 'GOLD') {
-    return `${value.toFixed(4)} ${symbol}`;
-  }
-  
-  if (displayUnit === 'BTC') {
-    return `${symbol}${value.toFixed(6)}`;
-  }
-  
-  return `${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-```
+Same for the subtitle showing total assets.
 
 ---
 
 ## Expected Result
 
-| Asset | Before | After |
-|-------|--------|-------|
-| Rabobank €100,000 (display: EUR) | €91,215.72 | €100,000.00 |
-| Saving €10,000 (display: EUR) | €9,121.57 | €10,000.00 |
-| Real estate $150,000 (display: EUR) | $150,000 → €126,689 | $150,000 → ~€126,689 (correctly converted) |
-
----
-
-## Edge Cases Handled
-
-| Scenario | Behavior |
-|----------|----------|
-| EUR asset, EUR display | Shows native EUR amount (no conversion) |
-| EUR asset, USD display | Converts EUR → USD using live rates |
-| USD asset, EUR display | Converts USD → EUR using live rates |
-| Multiple currencies in category | Each converted properly, then summed |
-
----
-
-## Also Affected: Total Net Worth
-
-The same fix applies to `metrics.totalNetWorth`:
-- Banking assets should contribute their native amounts converted to display unit
-- This ensures the stat card also shows €110,000 instead of €100,337
+| Scenario | Before | After |
+|----------|--------|-------|
+| €100,000 EUR asset, display: EUR | €91,216 | €100,000 |
+| €100,000 EUR asset, display: USD | $108,000 | ~$118,398 (using live rate) |
+| Mixed EUR + USD assets, display: EUR | Incorrect totals | Correctly converted totals |
 
 ---
 
 ## Summary
 
-The fix ensures that when you enter €100,000 and display in EUR, you see €100,000. No unnecessary round-trip conversion through USD that causes rate mismatches.
+This extends the currency conversion fix from category totals to the main Net Worth calculation, ensuring banking assets display their native amounts when the display currency matches, and are properly converted when it doesn't.
