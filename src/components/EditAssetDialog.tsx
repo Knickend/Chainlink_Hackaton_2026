@@ -164,7 +164,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
       quantity: asset.quantity,
       symbol: asset.symbol,
       yield: asset.yield,
-      currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
+      currency: (asset.category === 'banking' || asset.category === 'realestate') ? (asset.symbol || 'USD') : undefined,
       unit: asset.unit || 'oz',
       purchase_price_per_unit: asset.purchase_price_per_unit,
       purchase_date: asset.purchase_date || '',
@@ -222,7 +222,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
         quantity: asset.quantity,
         symbol: asset.symbol,
         yield: asset.yield,
-        currency: asset.category === 'banking' ? (asset.symbol || 'USD') : undefined,
+        currency: (asset.category === 'banking' || asset.category === 'realestate') ? (asset.symbol || 'USD') : undefined,
         unit: asset.unit || 'oz',
         purchase_price_per_unit: asset.purchase_price_per_unit,
         purchase_date: asset.purchase_date || '',
@@ -297,7 +297,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
 
   const onSubmit = (data: AssetFormData) => {
     // For banking, handle forex conversion
-    if (data.category === 'banking' && data.currency) {
+    if ((data.category === 'banking' || data.category === 'realestate') && data.currency) {
       const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
       const usdValue = data.value * forexRate;
       onUpdate(asset.id, {
@@ -1097,7 +1097,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
           </>
         )}
 
-        {selectedCategory === 'banking' && (
+        {(selectedCategory === 'banking' || selectedCategory === 'realestate') && (
           <>
             <FormField
               control={form.control}
@@ -1166,7 +1166,7 @@ export function EditAssetDialog({ asset, onUpdate, onBuyMore, onSell, livePrices
               name="yield"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Interest Rate (%)</FormLabel>
+                  <FormLabel>{selectedCategory === 'realestate' ? 'Expected Yield/Return (%)' : 'Interest Rate (%)'}</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
