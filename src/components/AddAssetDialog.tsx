@@ -145,13 +145,13 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
       ? data.purchase_price_per_unit * data.quantity 
       : undefined;
 
-    // For banking, store the currency in symbol and original amount in quantity
-    if (data.category === 'banking' && data.currency) {
+    // For banking and realestate, store the currency in symbol and original amount in quantity
+    if ((data.category === 'banking' || data.category === 'realestate') && data.currency) {
       const forexRate = FOREX_RATES_TO_USD[data.currency as BankingCurrency] || 1;
       const usdValue = data.value * forexRate;
       
-      // Calculate cost basis from initial deposit if provided
-      const bankingCostBasis = data.purchase_price_per_unit 
+      // Calculate cost basis from initial deposit/purchase if provided
+      const costBasisValue = data.purchase_price_per_unit 
         ? data.purchase_price_per_unit * forexRate 
         : undefined;
 
@@ -163,7 +163,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         quantity: data.value,
         yield: data.yield,
         stakingRate: data.stakingRate,
-        cost_basis: bankingCostBasis,
+        cost_basis: costBasisValue,
         purchase_date: data.purchase_date || undefined,
         purchase_price_per_unit: data.purchase_price_per_unit,
       });
@@ -774,7 +774,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
               </>
             )}
 
-            {selectedCategory === 'banking' && (
+            {(selectedCategory === 'banking' || selectedCategory === 'realestate') && (
               <>
                 <FormField
                   control={form.control}
@@ -844,12 +844,12 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                   name="yield"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Interest Rate (%)</FormLabel>
+                      <FormLabel>{selectedCategory === 'realestate' ? 'Expected Yield/Return (%)' : 'Interest Rate (%)'}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           step="0.1"
-                          placeholder="4.5"
+                          placeholder={selectedCategory === 'realestate' ? '5.0' : '4.5'}
                           {...field}
                           value={field.value ?? ''}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
@@ -870,12 +870,14 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     name="purchase_price_per_unit"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm">Initial Deposit Amount</FormLabel>
+                        <FormLabel className="text-sm">
+                          {selectedCategory === 'realestate' ? 'Purchase/Investment Amount' : 'Initial Deposit Amount'}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
-                            placeholder="e.g., 10,000.00"
+                            placeholder={selectedCategory === 'realestate' ? 'e.g., 250,000.00' : 'e.g., 10,000.00'}
                             {...field}
                             value={field.value ?? ''}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
@@ -892,7 +894,9 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                     name="purchase_date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm">Account Opening Date</FormLabel>
+                        <FormLabel className="text-sm">
+                          {selectedCategory === 'realestate' ? 'Purchase Date' : 'Account Opening Date'}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="date"
