@@ -3,24 +3,26 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface AllocationChartProps {
   data: { category: string; total: number; count: number }[];
-  formatValue: (value: number) => string;
+  formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
 }
 
 const COLORS = {
   banking: '#3B82F6',
+  realestate: '#8B5CF6',
   crypto: '#F7931A',
   stocks: '#22C55E',
   commodities: '#EAB308',
 };
 
 const LABELS = {
-  banking: 'Cash, Stablecoins & Real Estate',
+  banking: 'Cash & Stablecoins',
+  realestate: 'Real Estate, Equity & Misc.',
   crypto: 'Cryptocurrency',
   stocks: 'Stocks, Bonds & ETFs',
   commodities: 'Commodities',
 };
 
-export function AllocationChart({ data, formatValue }: AllocationChartProps) {
+export function AllocationChart({ data, formatDisplayUnitValue }: AllocationChartProps) {
   const total = data.reduce((sum, item) => sum + item.total, 0);
 
   return (
@@ -62,7 +64,7 @@ export function AllocationChart({ data, formatValue }: AllocationChartProps) {
                   border: '1px solid hsl(220, 15%, 20%)',
                   borderRadius: '8px',
                 }}
-                formatter={(value: number) => [formatValue(value), '']}
+                formatter={(value: number) => [formatDisplayUnitValue(value), '']}
               />
             </PieChart>
           </ResponsiveContainer>
