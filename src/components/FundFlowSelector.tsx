@@ -75,9 +75,9 @@ export function FundFlowSelector({
   }, {} as Record<string, Asset[]>);
 
   const categoryLabels: Record<string, string> = {
-    banking: 'Banking',
+    banking: 'Cash, Stablecoins & Real Estate',
     crypto: 'Cryptocurrency',
-    stocks: 'Stocks & ETFs',
+    stocks: 'Stocks, Bonds & ETFs',
     commodities: 'Commodities',
   };
 

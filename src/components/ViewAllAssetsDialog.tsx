@@ -49,9 +49,9 @@ interface ViewAllAssetsDialogProps {
 }
 
 const categoryLabels: Record<AssetCategory, string> = {
-  banking: 'Banking',
-  crypto: 'Crypto',
-  stocks: 'Stocks',
+  banking: 'Cash, Stablecoins & Real Estate',
+  crypto: 'Cryptocurrency',
+  stocks: 'Stocks, Bonds & ETFs',
   commodities: 'Commodities',
 };
 
@@ -184,9 +184,9 @@ export function ViewAllAssetsDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="banking">Banking</SelectItem>
-              <SelectItem value="crypto">Crypto</SelectItem>
-              <SelectItem value="stocks">Stocks</SelectItem>
+              <SelectItem value="banking">Cash, Stablecoins & Real Estate</SelectItem>
+              <SelectItem value="crypto">Cryptocurrency</SelectItem>
+              <SelectItem value="stocks">Stocks, Bonds & ETFs</SelectItem>
               <SelectItem value="commodities">Commodities</SelectItem>
             </SelectContent>
           </Select>

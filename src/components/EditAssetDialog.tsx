@@ -85,9 +85,9 @@ interface EditAssetDialogProps {
 }
 
 const categories: { value: AssetCategory; label: string }[] = [
-  { value: 'banking', label: 'Banking' },
+  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
   { value: 'crypto', label: 'Cryptocurrency' },
-  { value: 'stocks', label: 'Stocks' },
+  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
   { value: 'commodities', label: 'Commodities' },
 ];
 

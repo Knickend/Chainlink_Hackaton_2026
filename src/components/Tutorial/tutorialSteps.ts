@@ -66,7 +66,7 @@ export const tutorialSteps: TutorialStep[] = [
     id: 'assets',
     target: 'assets-section',
     title: 'Manage Your Assets',
-    content: 'Add and track all types of assets - bank accounts, crypto, stocks, and commodities. Each category shows its total value and percentage of your portfolio.',
+    content: 'Add and track all types of assets - cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, and commodities. Each category shows its total value and percentage of your portfolio.',
     position: 'top',
   },
   {

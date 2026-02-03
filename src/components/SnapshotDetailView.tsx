@@ -18,9 +18,9 @@ interface SnapshotDetailViewProps {
 }
 
 const CATEGORY_CONFIG = [
-  { key: 'banking', label: 'Banking', color: '#3b82f6', icon: Landmark },
-  { key: 'crypto', label: 'Crypto', color: '#f59e0b', icon: Bitcoin },
-  { key: 'stocks', label: 'Stocks', color: '#10b981', icon: BarChart3 },
+  { key: 'banking', label: 'Cash, Stablecoins & Real Estate', color: '#3b82f6', icon: Landmark },
+  { key: 'crypto', label: 'Cryptocurrency', color: '#f59e0b', icon: Bitcoin },
+  { key: 'stocks', label: 'Stocks, Bonds & ETFs', color: '#10b981', icon: BarChart3 },
   { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
 ] as const;
 
