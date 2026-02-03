@@ -1,14 +1,24 @@
 
+# Plan: Fix Banking Asset Display to Use Native Currency
 
-# Plan: Add Delete Snapshot Functionality
+## The Problem
 
-## The Issue
+You entered €100,000 in a EUR banking asset, and the display unit is EUR. The category total shows €91,215.72 instead of €100,000.
 
-The Portfolio History card and Snapshot Detail View show old data from previously captured snapshots. These snapshots are stored in the `portfolio_snapshots` table and represent your portfolio state at past points in time. Currently, there's no way to delete unwanted snapshots.
+**Current Flow:**
+1. Save: €100,000 × 1.08 (static rate) = 108,000 USD stored as `value`
+2. Display: 108,000 USD × 0.84459 (live rate) = €91,216 displayed
+
+**Expected Flow:**
+When display unit = asset currency, show the original amount directly (€100,000)
+
+---
 
 ## Solution
 
-Add a delete button to the Snapshot Detail View modal, allowing you to remove any snapshot you no longer want.
+Modify `categoryTotals` calculation in `usePortfolio.ts` to:
+1. For banking assets: sum amounts in their native currencies and convert to display unit
+2. Use `quantity` (native amount) instead of `value` (USD equivalent) for same-currency assets
 
 ---
 
@@ -16,125 +26,124 @@ Add a delete button to the Snapshot Detail View modal, allowing you to remove an
 
 | File | Change |
 |------|--------|
-| `src/hooks/usePortfolioHistory.ts` | Add `deleteSnapshot` mutation function |
-| `src/components/SnapshotDetailView.tsx` | Add delete button with confirmation |
+| `src/hooks/usePortfolio.ts` | Smart category total calculation for banking assets |
+| `src/pages/Index.tsx` | Pass raw category totals and format appropriately |
 
 ---
 
 ## Technical Implementation
 
-### 1. usePortfolioHistory.ts - Add Delete Mutation
+### 1. usePortfolio.ts - New Category Total Calculation
+
+**Current code (line 197-203):**
+```typescript
+const categoryTotals = useMemo(() => {
+  return Object.entries(assetsByCategory).map(([category, categoryAssets]) => ({
+    category,
+    total: categoryAssets.reduce((sum, asset) => sum + asset.value, 0),  // Always USD
+    count: categoryAssets.length,
+  }));
+}, [assetsByCategory]);
+```
+
+**Fixed approach:**
+
+For banking assets, we need a smarter calculation:
+- If asset currency = display unit → use `quantity` (native amount) directly
+- If asset currency ≠ display unit → convert `quantity` from asset currency to display unit
 
 ```typescript
-// Add delete mutation alongside createSnapshot
-const { mutateAsync: deleteSnapshotMutation, isPending: isDeleting } = useMutation({
-  mutationFn: async (snapshotId: string) => {
-    const { error } = await supabase
-      .from('portfolio_snapshots')
-      .delete()
-      .eq('id', snapshotId);
-    if (error) throw error;
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['portfolio-snapshots'] });
-    toast.success('Snapshot deleted');
-  },
-  onError: () => {
-    toast.error('Failed to delete snapshot');
-  },
-});
+const categoryTotals = useMemo(() => {
+  return Object.entries(assetsByCategory).map(([category, categoryAssets]) => {
+    let total: number;
+    
+    if (category === 'banking') {
+      // For banking, sum assets using their native currency amounts
+      // and convert to display unit properly
+      total = categoryAssets.reduce((sum, asset) => {
+        const assetCurrency = asset.symbol || 'USD';
+        const nativeAmount = asset.quantity ?? asset.value;
+        
+        // If asset currency matches display unit, use native amount
+        if (assetCurrency === displayUnit) {
+          return sum + nativeAmount;
+        }
+        
+        // Otherwise convert from native currency to display unit
+        return sum + convertFromCurrency(nativeAmount, assetCurrency);
+      }, 0);
+    } else {
+      // For non-banking, values are already in USD
+      // Convert to display unit
+      total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
+    }
+    
+    return { category, total, count: categoryAssets.length };
+  });
+}, [assetsByCategory, displayUnit, convertFromCurrency, convertValue]);
 ```
 
-### 2. SnapshotDetailView.tsx - Add Delete Button
+### 2. Index.tsx - Update Category Card Usage
 
-Add a delete button with confirmation to the modal footer:
-
-```tsx
-<DeleteConfirmDialog
-  itemName={`${format(parseISO(snapshot.snapshot_month), 'MMMM yyyy')} snapshot`}
-  title="Delete this snapshot?"
-  description="This will permanently remove this historical record. This action cannot be undone."
-  onConfirm={() => {
-    onDelete(snapshot.id);
-    onOpenChange(false);
-  }}
-/>
-```
-
----
-
-## UI Changes
-
-### Snapshot Detail Modal (After)
-
-The modal will include a "Delete Snapshot" button in the footer, styled consistently with other delete actions in the app:
-
-```
-┌─────────────────────────────────────────────┐
-│ 👁 February 2026 Snapshot               ✕  │
-├─────────────────────────────────────────────┤
-│                                             │
-│  [Net Worth]        [Net Cash Flow]         │
-│   €31,535            +€208                  │
-│                                             │
-│  [Total Assets]     [Total Debt]            │
-│   €681,535           €650,000               │
-│                                             │
-│  ... allocation chart ...                   │
-│                                             │
-│  Snapshot taken on February 2, 2026         │
-│                                             │
-│        [🗑 Delete Snapshot]                 │  ← NEW
-└─────────────────────────────────────────────┘
-```
-
----
-
-## Component Props Updates
-
-### SnapshotDetailView Props
+**Current (formats USD total):**
 ```typescript
-interface SnapshotDetailViewProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  snapshot: PortfolioSnapshot | null;
-  formatValue: (value: number, showDecimals?: boolean) => string;
-  onDelete?: (snapshotId: string) => void;  // NEW
-  isDeleting?: boolean;                      // NEW
-}
+total={formatValue(cat.total)}
+```
+
+**Fixed (total is already in display unit):**
+```typescript
+// categoryTotals now returns values in display unit
+total={formatDisplayUnitValue(cat.total)}
+```
+
+Add a simple formatter that doesn't convert (value is already in display unit):
+```typescript
+const formatDisplayUnitValue = (value: number): string => {
+  const symbol = UNIT_SYMBOLS[displayUnit];
+  
+  if (displayUnit === 'GOLD') {
+    return `${value.toFixed(4)} ${symbol}`;
+  }
+  
+  if (displayUnit === 'BTC') {
+    return `${symbol}${value.toFixed(6)}`;
+  }
+  
+  return `${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 ```
 
 ---
 
-## User Flow
+## Expected Result
 
-1. Open Portfolio History card
-2. Select a snapshot from the timeline/dropdown
-3. Click "View Details"
-4. In the detail modal, click "Delete Snapshot"
-5. Confirm deletion in the dialog
-6. Snapshot is removed, modal closes
-7. Timeline updates to show remaining snapshots
+| Asset | Before | After |
+|-------|--------|-------|
+| Rabobank €100,000 (display: EUR) | €91,215.72 | €100,000.00 |
+| Saving €10,000 (display: EUR) | €9,121.57 | €10,000.00 |
+| Real estate $150,000 (display: EUR) | $150,000 → €126,689 | $150,000 → ~€126,689 (correctly converted) |
 
 ---
 
-## Edge Cases
+## Edge Cases Handled
 
 | Scenario | Behavior |
 |----------|----------|
-| Delete last remaining snapshot | Timeline shows empty state with "Create First Snapshot" |
-| Delete currently selected snapshot | Auto-select next most recent snapshot |
-| Delete while comparing months | Comparison dialog closes if either month is deleted |
+| EUR asset, EUR display | Shows native EUR amount (no conversion) |
+| EUR asset, USD display | Converts EUR → USD using live rates |
+| USD asset, EUR display | Converts USD → EUR using live rates |
+| Multiple currencies in category | Each converted properly, then summed |
 
 ---
 
-## Alternative: Take New Snapshot
+## Also Affected: Total Net Worth
 
-If you want to keep the historical data but just update the current month, you can click "Take Snapshot" - this will overwrite the February 2026 snapshot with your current (empty) portfolio state. The system uses `upsert` so it updates existing snapshots for the same month.
+The same fix applies to `metrics.totalNetWorth`:
+- Banking assets should contribute their native amounts converted to display unit
+- This ensures the stat card also shows €110,000 instead of €100,337
 
 ---
 
 ## Summary
 
-This adds a delete button to the Snapshot Detail modal, giving you control over your historical portfolio data. You'll be able to remove any snapshot you no longer want to keep.
-
+The fix ensures that when you enter €100,000 and display in EUR, you see €100,000. No unnecessary round-trip conversion through USD that causes rate mismatches.
