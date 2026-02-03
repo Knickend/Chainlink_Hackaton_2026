@@ -4,7 +4,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronDown, ArrowUpRight, ArrowDownRight, Pencil, Trash2 } from 'lucide-react';
 import { ProfitLossData, ClosedPosition } from '@/hooks/useProfitLoss';
 import { AssetTransaction } from '@/lib/types';
@@ -70,7 +69,7 @@ export function ProfitLossDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-primary/20 max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="glass-card border-primary/20 max-w-2xl h-[80vh] max-h-[80vh] min-h-0 overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {totalPnL >= 0 ? (
