@@ -10,6 +10,7 @@ import { GoalInput } from '@/hooks/useGoals';
 import { GoalRecommendation } from '@/lib/goalAnalysis';
 import { AddGoalDialog } from './AddGoalDialog';
 import { EditGoalDialog } from './EditGoalDialog';
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { ViewAllGoalsDialog } from './ViewAllGoalsDialog';
 import { GoalsTeaser } from './GoalsTeaser';
 import { format } from 'date-fns';
@@ -173,9 +174,19 @@ export function GoalsOverviewCard({
                         <Badge variant="outline" className={`text-[10px] ${statusStyle.className}`}>
                           {statusStyle.label}
                         </Badge>
-                        {!isDemo && onUpdateGoal && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <EditGoalDialog goal={goal} onUpdate={onUpdateGoal} />
+                        {!isDemo && (onUpdateGoal || onDeleteGoal) && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            {onUpdateGoal && (
+                              <EditGoalDialog goal={goal} onUpdate={onUpdateGoal} />
+                            )}
+                            {onDeleteGoal && (
+                              <DeleteConfirmDialog
+                                itemName={goal.name}
+                                title="Delete goal?"
+                                description={`Are you sure you want to delete "${goal.name}"? This action cannot be undone.`}
+                                onConfirm={() => onDeleteGoal(goal.id)}
+                              />
+                            )}
                           </div>
                         )}
                       </div>
