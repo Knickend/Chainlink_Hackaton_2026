@@ -11,26 +11,36 @@ interface NetWorthChartProps {
   formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
   displayUnit: DisplayUnit;
   conversionRates: Record<DisplayUnit, number>;
+  currentNetWorth?: number; // Live net worth in display unit, used for current month
 }
 
-export function NetWorthChart({ formatValue, formatDisplayUnitValue, displayUnit, conversionRates }: NetWorthChartProps) {
+export function NetWorthChart({ formatValue, formatDisplayUnitValue, displayUnit, conversionRates, currentNetWorth }: NetWorthChartProps) {
   const { snapshots, isLoading, formatShortMonth } = usePortfolioHistory();
 
   // Transform snapshots (sorted newest first) to chart format (oldest first)
-  // Convert USD snapshot values to display unit using same rate as StatCard
+  // For current month: use live currentNetWorth to match StatCard exactly
+  // For historical months: convert stored USD values to display unit
   const chartData = useMemo(() => {
     if (snapshots.length === 0 || !conversionRates) return [];
     
     const rate = conversionRates[displayUnit] ?? 1;
+    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-02"
     
     return snapshots
       .slice(0, 12) // Last 12 months max
       .reverse()    // Oldest first for chart
-      .map(snapshot => ({
-        month: formatShortMonth(snapshot.snapshot_month),
-        netWorth: snapshot.net_worth * rate, // Convert USD to display unit
-      }));
-  }, [snapshots, formatShortMonth, conversionRates, displayUnit]);
+      .map(snapshot => {
+        const isCurrentMonth = snapshot.snapshot_month.startsWith(currentMonth);
+        
+        return {
+          month: formatShortMonth(snapshot.snapshot_month),
+          // Use live value for current month to match StatCard, stored value for historical
+          netWorth: isCurrentMonth && currentNetWorth !== undefined
+            ? currentNetWorth
+            : snapshot.net_worth * rate,
+        };
+      });
+  }, [snapshots, formatShortMonth, conversionRates, displayUnit, currentNetWorth]);
 
   // Calculate percentage change between oldest and newest
   const periodChange = useMemo(() => {
