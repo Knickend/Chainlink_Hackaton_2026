@@ -1,107 +1,14 @@
 
-# Plan: Connect Net Worth Chart to Real Portfolio Snapshots
 
-## Overview
+# Plan: Add Delete Snapshot Functionality
 
-Replace the hardcoded mock data in the Net Worth Trend chart with real historical data from the `portfolio_snapshots` table, and calculate the actual percentage change dynamically.
+## The Issue
 
----
+The Portfolio History card and Snapshot Detail View show old data from previously captured snapshots. These snapshots are stored in the `portfolio_snapshots` table and represent your portfolio state at past points in time. Currently, there's no way to delete unwanted snapshots.
 
-## Current State
+## Solution
 
-| Element | Current Behavior |
-|---------|------------------|
-| Chart data | Uses `mockHistoricalData` with 6 static entries |
-| Percentage indicator | Hardcoded `↑ 14.5%` |
-| Time period label | Always shows "Last 6 months" |
-
----
-
-## Proposed Changes
-
-### New Behavior
-
-| Element | New Behavior |
-|---------|--------------|
-| Chart data | Real snapshots from `portfolio_snapshots` table (up to 12 months) |
-| Percentage indicator | Calculated from oldest vs newest snapshot |
-| Time period label | Dynamic based on actual data range |
-| Empty state | Shows "No data yet" message when < 2 snapshots |
-| Direction indicator | Shows ↑ (green) for gains, ↓ (red) for losses |
-
----
-
-## Technical Implementation
-
-### File: `src/components/NetWorthChart.tsx`
-
-**Changes:**
-1. Add `usePortfolioHistory` hook to fetch real snapshot data
-2. Transform snapshots into chart-compatible format
-3. Calculate actual % change between first and last snapshot
-4. Add empty/loading states
-5. Dynamic time period label
-
-**New Props:**
-```typescript
-interface NetWorthChartProps {
-  formatValue: (value: number, showDecimals?: boolean) => string;
-  displayUnit: DisplayUnit;
-  currentNetWorth?: number; // Optional: include current value as latest point
-}
-```
-
-**Data Transformation:**
-```typescript
-// Transform snapshots (sorted newest first) to chart format (oldest first)
-const chartData = useMemo(() => {
-  if (snapshots.length === 0) return [];
-  
-  return snapshots
-    .slice(0, 12) // Last 12 months max
-    .reverse()    // Oldest first for chart
-    .map(snapshot => ({
-      month: formatShortMonth(snapshot.snapshot_month),
-      netWorth: snapshot.net_worth,
-    }));
-}, [snapshots, formatShortMonth]);
-```
-
-**Percentage Calculation:**
-```typescript
-const periodChange = useMemo(() => {
-  if (chartData.length < 2) return null;
-  
-  const oldest = chartData[0].netWorth;
-  const newest = chartData[chartData.length - 1].netWorth;
-  const absolute = newest - oldest;
-  const percent = oldest !== 0 ? (absolute / oldest) * 100 : 0;
-  
-  return { absolute, percent, isPositive: percent >= 0 };
-}, [chartData]);
-```
-
-**Dynamic Time Period:**
-```typescript
-const timePeriodLabel = useMemo(() => {
-  if (chartData.length === 0) return 'No data';
-  if (chartData.length === 1) return 'Current month';
-  return `Last ${chartData.length} months`;
-}, [chartData.length]);
-```
-
-**Empty State UI:**
-```typescript
-{chartData.length < 2 ? (
-  <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground">
-    <TrendingUp className="w-12 h-12 mb-4 opacity-50" />
-    <p className="text-sm">Not enough data yet</p>
-    <p className="text-xs">Take portfolio snapshots to track trends</p>
-  </div>
-) : (
-  // Existing chart code
-)}
-```
+Add a delete button to the Snapshot Detail View modal, allowing you to remove any snapshot you no longer want.
 
 ---
 
@@ -109,29 +16,105 @@ const timePeriodLabel = useMemo(() => {
 
 | File | Change |
 |------|--------|
-| `src/components/NetWorthChart.tsx` | Replace mock data with real snapshots, add dynamic calculations |
+| `src/hooks/usePortfolioHistory.ts` | Add `deleteSnapshot` mutation function |
+| `src/components/SnapshotDetailView.tsx` | Add delete button with confirmation |
 
 ---
 
-## Visual Changes
+## Technical Implementation
 
-### Header Section (Before)
-```
-Net Worth Trend
-Last 6 months                    ↑ 14.5% vs 6mo ago
+### 1. usePortfolioHistory.ts - Add Delete Mutation
+
+```typescript
+// Add delete mutation alongside createSnapshot
+const { mutateAsync: deleteSnapshotMutation, isPending: isDeleting } = useMutation({
+  mutationFn: async (snapshotId: string) => {
+    const { error } = await supabase
+      .from('portfolio_snapshots')
+      .delete()
+      .eq('id', snapshotId);
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['portfolio-snapshots'] });
+    toast.success('Snapshot deleted');
+  },
+  onError: () => {
+    toast.error('Failed to delete snapshot');
+  },
+});
 ```
 
-### Header Section (After - with data)
-```
-Net Worth Trend
-Last 8 months                    ↑ 12.3% vs 8mo ago
+### 2. SnapshotDetailView.tsx - Add Delete Button
+
+Add a delete button with confirmation to the modal footer:
+
+```tsx
+<DeleteConfirmDialog
+  itemName={`${format(parseISO(snapshot.snapshot_month), 'MMMM yyyy')} snapshot`}
+  title="Delete this snapshot?"
+  description="This will permanently remove this historical record. This action cannot be undone."
+  onConfirm={() => {
+    onDelete(snapshot.id);
+    onOpenChange(false);
+  }}
+/>
 ```
 
-### Header Section (After - no data)
+---
+
+## UI Changes
+
+### Snapshot Detail Modal (After)
+
+The modal will include a "Delete Snapshot" button in the footer, styled consistently with other delete actions in the app:
+
 ```
-Net Worth Trend
-No data                          (no percentage shown)
+┌─────────────────────────────────────────────┐
+│ 👁 February 2026 Snapshot               ✕  │
+├─────────────────────────────────────────────┤
+│                                             │
+│  [Net Worth]        [Net Cash Flow]         │
+│   €31,535            +€208                  │
+│                                             │
+│  [Total Assets]     [Total Debt]            │
+│   €681,535           €650,000               │
+│                                             │
+│  ... allocation chart ...                   │
+│                                             │
+│  Snapshot taken on February 2, 2026         │
+│                                             │
+│        [🗑 Delete Snapshot]                 │  ← NEW
+└─────────────────────────────────────────────┘
 ```
+
+---
+
+## Component Props Updates
+
+### SnapshotDetailView Props
+```typescript
+interface SnapshotDetailViewProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  snapshot: PortfolioSnapshot | null;
+  formatValue: (value: number, showDecimals?: boolean) => string;
+  onDelete?: (snapshotId: string) => void;  // NEW
+  isDeleting?: boolean;                      // NEW
+}
+```
+
+---
+
+## User Flow
+
+1. Open Portfolio History card
+2. Select a snapshot from the timeline/dropdown
+3. Click "View Details"
+4. In the detail modal, click "Delete Snapshot"
+5. Confirm deletion in the dialog
+6. Snapshot is removed, modal closes
+7. Timeline updates to show remaining snapshots
 
 ---
 
@@ -139,24 +122,19 @@ No data                          (no percentage shown)
 
 | Scenario | Behavior |
 |----------|----------|
-| 0 snapshots | Shows empty state with message to take snapshots |
-| 1 snapshot | Shows empty state (need 2+ for trend) |
-| 2+ snapshots | Shows chart with calculated % |
-| Negative growth | Shows ↓ in red with negative % |
-| 0 starting value | Shows 100% if grew from 0, 0% if still 0 |
+| Delete last remaining snapshot | Timeline shows empty state with "Create First Snapshot" |
+| Delete currently selected snapshot | Auto-select next most recent snapshot |
+| Delete while comparing months | Comparison dialog closes if either month is deleted |
 
 ---
 
-## What Stays the Same
+## Alternative: Take New Snapshot
 
-- Chart styling (gradient, colors, animations)
-- Tooltip formatting
-- Y-axis display unit handling (USD, BTC, Gold)
-- Responsive behavior
-- Glass card styling
+If you want to keep the historical data but just update the current month, you can click "Take Snapshot" - this will overwrite the February 2026 snapshot with your current (empty) portfolio state. The system uses `upsert` so it updates existing snapshots for the same month.
 
 ---
 
 ## Summary
 
-This change connects the Net Worth Trend chart to real data from the `portfolio_snapshots` table, replacing the hardcoded mock values with actual historical tracking. Users will see their real portfolio growth over time, with accurate percentage calculations.
+This adds a delete button to the Snapshot Detail modal, giving you control over your historical portfolio data. You'll be able to remove any snapshot you no longer want to keep.
+
