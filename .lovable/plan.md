@@ -1,16 +1,16 @@
 
-# Plan: Fix Net Worth Card Currency Conversion
 
-## The Problem
+# Plan: Make Asset Category Card Scrollable
 
-The Net Worth card shows €91,216 instead of €100,000 for the same reason we fixed in category totals:
-- **Current**: `totalNetWorth` sums all `asset.value` (stored in USD: 108,000)
-- **Then**: `formatValue` converts 108,000 USD to EUR using live rate → €91,216
-- **Expected**: When display unit is EUR and asset is EUR, show €100,000 directly
+## The Request
+
+The "Cash, Stablecoins & Real Estate" card (and other category cards) currently shows only 3 assets with "+6 more assets" text. You want to scroll and see all 9 assets directly in the card.
+
+---
 
 ## Solution
 
-Apply the same smart calculation logic from `categoryTotals` to `totalNetWorth` in the metrics calculation, handling banking assets specially.
+Replace the "show 3 + more" pattern with a scrollable container that displays all assets.
 
 ---
 
@@ -18,92 +18,55 @@ Apply the same smart calculation logic from `categoryTotals` to `totalNetWorth` 
 
 | File | Change |
 |------|--------|
-| `src/hooks/usePortfolio.ts` | Update `totalNetWorth` calculation to handle banking assets like `categoryTotals` does |
+| `src/components/AssetCategoryCard.tsx` | Remove the `.slice(0, 3)` limit and add scrollable container with max height |
 
 ---
 
 ## Technical Implementation
 
-### usePortfolio.ts - Fix totalNetWorth Calculation
-
-**Current code (line 91-92):**
-```typescript
-const metrics: PortfolioMetrics = useMemo(() => {
-  const totalNetWorth = assets.reduce((sum, asset) => sum + asset.value, 0);
+### Current Code (lines 71-151):
+```tsx
+<div className="space-y-2">
+  {assets.slice(0, 3).map((asset) => {
+    // ... asset rendering
+  })}
+  {assets.length > 3 && (
+    <p className="text-xs text-center text-muted-foreground pt-1">
+      +{assets.length - 3} more assets
+    </p>
+  )}
+</div>
 ```
 
-**Fixed code:**
-```typescript
-const metrics: PortfolioMetrics = useMemo(() => {
-  // Calculate total net worth with smart handling for banking assets
-  // Banking assets: use native currency amounts to avoid round-trip conversion errors
-  // Other assets: values are already in USD
-  const totalNetWorth = assets.reduce((sum, asset) => {
-    if (asset.category === 'banking') {
-      const assetCurrency = asset.symbol || 'USD';
-      const nativeAmount = asset.quantity ?? asset.value;
-      
-      // If asset currency matches display unit, use native amount directly
-      if (assetCurrency === displayUnit) {
-        return sum + nativeAmount;
-      }
-      
-      // Otherwise convert from native currency to display unit
-      // First to USD, then to display unit (or use convertFromCurrency if available)
-      const liveFromRate = livePrices?.forex?.[assetCurrency];
-      let amountInUSD: number;
-      if (liveFromRate && liveFromRate > 0) {
-        amountInUSD = nativeAmount * (1 / liveFromRate);
-      } else {
-        amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
-      }
-      
-      // Convert USD to display unit
-      const liveToRate = livePrices?.forex?.[displayUnit];
-      if (liveToRate && liveToRate > 0) {
-        return sum + (amountInUSD * liveToRate);
-      }
-      
-      return sum + (amountInUSD * conversionRates[displayUnit]);
-    }
-    
-    // Non-banking assets: convert USD value to display unit
-    return sum + (asset.value * conversionRates[displayUnit]);
-  }, 0);
+### Updated Code:
+```tsx
+<div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+  {assets.map((asset) => {
+    // ... asset rendering (unchanged)
+  })}
+</div>
 ```
 
-**Important**: Since `metrics` is calculated in a `useMemo` that now depends on `displayUnit`, we need to add `displayUnit` to its dependencies.
+**Changes:**
+1. Remove `.slice(0, 3)` → show all assets
+2. Add `max-h-[240px]` → limit visible height (~5 assets)
+3. Add `overflow-y-auto` → enable vertical scrolling when needed
+4. Add `pr-1` → small padding for scrollbar spacing
+5. Remove the "+X more assets" text completely
 
 ---
 
-## Also Update Index.tsx
+## Visual Behavior
 
-Since `totalNetWorth` will now be in the display unit (not USD), we need to use `formatDisplayUnitValue` instead of `formatValue`:
-
-**Current:**
-```typescript
-value={formatValue(adjustedNetWorth, false)}
-```
-
-**Fixed:**
-```typescript
-value={formatDisplayUnitValue(adjustedNetWorth, false)}
-```
-
-Same for the subtitle showing total assets.
-
----
-
-## Expected Result
-
-| Scenario | Before | After |
-|----------|--------|-------|
-| €100,000 EUR asset, display: EUR | €91,216 | €100,000 |
-| €100,000 EUR asset, display: USD | $108,000 | ~$118,398 (using live rate) |
-| Mixed EUR + USD assets, display: EUR | Incorrect totals | Correctly converted totals |
+| Assets Count | Before | After |
+|--------------|--------|-------|
+| 1-3 assets | Shows all, no scroll | Shows all, no scroll |
+| 4-5 assets | Shows 3 + "+X more" | Shows all, scrollable |
+| 6+ assets | Shows 3 + "+X more" | Shows ~5, scroll for rest |
 
 ---
 
 ## Summary
 
-This extends the currency conversion fix from category totals to the main Net Worth calculation, ensuring banking assets display their native amounts when the display currency matches, and are properly converted when it doesn't.
+The category cards will now be scrollable, allowing you to view all assets without clicking through to a separate view. The scrolling only activates when there are more assets than can fit in the ~240px container height.
+
