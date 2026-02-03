@@ -1,50 +1,73 @@
 
-# Plan: Fix Scrollable Content in Profit & Loss Dialog
+## Goal
+Make the **Profit & Loss Details** dialog’s **“By Asset”** screen reliably scrollable so users can reach all assets (including closed positions) when the list is long.
 
-## Problem
+## What’s happening (root cause)
+Right now the “By Asset” tab uses a `ScrollArea`, but its height is still not being constrained in a way that forces overflow scrolling in all cases:
 
-The "By Asset" tab in the Profit & Loss Details dialog has a fixed height limit (`max-h-[40vh]`) that prevents users from seeing all assets when there are many items. The dialog itself allows up to 80% viewport height, but the ScrollArea inside only uses half of that.
+- `ScrollArea` is set to `h-full`, which only works if its parent has a definite height.
+- `TabsContent` currently has `flex-1 min-h-0 overflow-hidden`, but it is **not a flex container**, so the child `ScrollArea` can end up sizing to its content instead of filling the remaining height of the dialog.
+- Since the dialog itself has `overflow-hidden`, any extra content gets clipped instead of scrollable.
 
-## Solution
+This is why you can see a cut-off list but can’t scroll to the rest.
 
-Update the ScrollArea to properly expand and fill the available space within the dialog's flex container, allowing users to scroll through all their assets.
+## Fix approach (use the app’s “dialog-ux-standard” flex chain)
+We’ll apply the same proven pattern used in other dialogs (like Add/Edit Asset dialogs):
 
-## Implementation
+1. Dialog content is `flex flex-col` with `max-h-[80vh]` and `overflow-hidden`
+2. Header + summary are `flex-shrink-0`
+3. Tabs container is `flex-1 min-h-0 flex flex-col`
+4. Each tab panel (`TabsContent`) is `flex-1 min-h-0 overflow-hidden flex flex-col`
+5. Scroll container inside is `flex-1 min-h-0` (not `h-full`)
 
-**File: `src/components/ProfitLossDetailDialog.tsx`**
+This guarantees the scroll region gets a real, bounded height, so overflow produces scrolling.
 
-Change the ScrollArea from a fixed max-height to a flexible height that fills available space:
+## Planned code changes
 
-**Line 129 - Current:**
-```tsx
-<ScrollArea className="h-full max-h-[40vh]">
-```
+### 1) Make the “By Asset” tab panel a flex column and let ScrollArea flex
+**File:** `src/components/ProfitLossDetailDialog.tsx`
 
-**Line 129 - Updated:**
-```tsx
-<ScrollArea className="h-full">
-```
+- Update:
+  - `TabsContent value="by-asset"` to include `flex flex-col`
+  - `ScrollArea` to use `flex-1 min-h-0` instead of `h-full`
 
-Also update the TabsContent container to properly expand (line 128):
+Conceptually:
+- Before:
+  - `TabsContent`: `flex-1 min-h-0 ...`
+  - `ScrollArea`: `h-full`
+- After:
+  - `TabsContent`: `flex flex-col flex-1 min-h-0 ...`
+  - `ScrollArea`: `flex-1 min-h-0`
 
-**Current:**
-```tsx
-<TabsContent value="by-asset" className="flex-1 min-h-0 mt-4">
-```
+### 2) Make “By Category” scroll-safe as well (same height chain)
+Even if the immediate complaint is “By Asset”, “By Category” can also overflow (pie + many categories) and will be clipped by the dialog’s `overflow-hidden`.
 
-**Updated:**
-```tsx
-<TabsContent value="by-asset" className="flex-1 min-h-0 mt-4 overflow-hidden">
-```
+**File:** `src/components/ProfitLossDetailDialog.tsx`
 
-And similarly for the "By Category" tab - need to check if it has the same issue.
+- Update:
+  - `TabsContent value="by-category"` to: `flex flex-col flex-1 min-h-0 mt-4 overflow-hidden`
+  - Wrap its content in a `ScrollArea className="flex-1 min-h-0"` (or use a simple `div` with `overflow-y-auto flex-1 min-h-0` if we want to avoid Radix scrolling there)
 
-## Files to Modify
+### 3) Ensure header doesn’t collapse when content grows
+**File:** `src/components/ProfitLossDetailDialog.tsx`
 
-| File | Changes |
-|------|---------|
-| `src/components/ProfitLossDetailDialog.tsx` | Remove `max-h-[40vh]` constraint from ScrollArea; ensure TabsContent has `overflow-hidden` to properly contain the scroll area |
+- Add `flex-shrink-0` to `DialogHeader` (matches patterns used elsewhere), so the scroll area takes the hit, not the header.
 
-## Result
+## Verification / acceptance criteria
+1. Open Profit & Loss → View Details → By Asset.
+2. With many current + closed positions:
+   - You can scroll with mouse wheel / trackpad inside the list.
+   - You can reach the very last asset.
+   - The dialog size stays fixed (no content spilling outside the dialog).
+3. Mobile/touch:
+   - Swipe scroll works inside the list.
+4. Tab switch:
+   - Switching between By Asset and By Category still works and doesn’t “lock” scrolling.
 
-After this fix, the asset list will properly scroll within the full available dialog height (~80vh minus header and summary), allowing users to see all their assets including all closed positions.
+## Files involved
+- `src/components/ProfitLossDetailDialog.tsx` (main fix: flex chain + scroll containers)
+
+## Fallback option (if Radix ScrollArea still feels inconsistent)
+If we still see issues on certain browsers/devices, we can replace the `ScrollArea` for the asset list with a plain container:
+- `div className="flex-1 min-h-0 overflow-y-auto pr-4"`
+This is less fancy (no custom scrollbar styling) but extremely reliable.
