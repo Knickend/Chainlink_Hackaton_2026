@@ -1,91 +1,71 @@
 
-# Plan: Fix Real Estate Currency Display Bug
+## Goal
+Fix the **Real Estate, Equity & Misc.** category header total so it matches the user’s native input when appropriate (e.g., an asset entered as **€450,000** should show **€450,000** in the category total when the display unit is **EUR**), eliminating “forex drift” in the total.
 
-## The Problem
+## What’s happening (root cause)
+- The **row value** for the real estate asset is now displayed correctly using the native fields (`quantity` + `symbol`) in `AssetCategoryCard.tsx`.
+- But the **category header total** (top-right of the card) comes from `categoryTotals` in `src/hooks/usePortfolio.ts`.
+- In `usePortfolio.ts`, only `banking` is treated as a “native-currency category” (sum `quantity` in native currency and convert smartly).
+- `realestate` currently falls into the “non-banking” path, which sums `asset.value` (stored USD equivalent) and converts USD → display unit using the *current* conversion rate. That’s why the total drifts (e.g., €450,000 becomes ~€411,831 depending on rate changes).
 
-When entering a €450,000 real estate asset, the display shows €434,711.07 instead of €450,000.
+## Implementation approach
+Treat `realestate` exactly like `banking` in portfolio totals logic:
+- For totals/net worth calculations:
+  - Use `quantity` (native amount) + `symbol` (native currency) when available.
+  - If the asset’s native currency equals the selected display unit (EUR), use the native amount directly (no conversion).
+  - Otherwise convert one-way using the existing conversion helpers/rates (same behavior as banking).
 
-**Root Cause:** The real estate category uses `formatValue(asset.value)` which:
-1. Takes the stored USD value ($486,000)
-2. Converts it back to EUR using the current forex rate
-3. Results in €434,711 due to forex drift
+## Files to update
+### 1) `src/hooks/usePortfolio.ts` (main fix)
+Update BOTH places where banking gets special handling:
 
-The banking category correctly avoids this by displaying the native amount stored in `quantity` with the currency symbol from `symbol`.
+1. **Net worth computation (`metrics.totalNetWorth`)**
+   - Change condition from:
+     - `if (asset.category === 'banking')`
+   - To:
+     - `if (asset.category === 'banking' || asset.category === 'realestate')`
+   - Recommended robustness tweak:
+     - Normalize currency before comparisons/lookup:
+       - `const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();`
 
-## Data Flow Analysis
+2. **Category totals (`categoryTotals`)**
+   - Change condition from:
+     - `if (category === 'banking')`
+   - To:
+     - `if (category === 'banking' || category === 'realestate')`
+   - Keep the current logic that uses:
+     - `nativeAmount = asset.quantity ?? asset.value`
+     - Direct usage when `assetCurrency === displayUnit`
+     - Otherwise `convertFromCurrency(nativeAmount, assetCurrency)`
 
-| Step | Banking (Correct) | Real Estate (Bug) |
-|------|------------------|-------------------|
-| User enters | €450,000 | €450,000 |
-| Stored in `quantity` | 450000 | 450000 |
-| Stored in `symbol` | EUR | EUR |
-| Stored in `value` (USD) | ~$486,000 | ~$486,000 |
-| Display logic | `quantity` × `symbol` = €450,000 | `value` × EUR rate = €434,711 |
+Acceptance criteria after this change:
+- Real estate card total equals **€450,000** when:
+  - the asset is stored as `symbol="EUR"`, `quantity=450000`
+  - and the display unit is `EUR`.
 
-## Solution
+### 2) (Strongly recommended consistency fix) `src/components/AllocationChart.tsx`
+This isn’t the cause of the real estate card total, but it is currently inconsistent with the new category structure and can display incorrect tooltip values:
 
-Update the `formatNativeAssetValue()` function in `AssetCategoryCard.tsx` to handle real estate assets identically to banking assets - by using the native currency amount stored in `quantity` and `symbol`.
+- Add `realestate` to `COLORS` and `LABELS`.
+- Update banking label from “Cash, Stablecoins & Real Estate” → “Cash & Stablecoins”
+- Update tooltip formatting:
+  - `categoryTotals` values are already in **display unit**, but the chart tooltip uses `formatValue()` (which assumes USD and converts again).
+  - Change the chart prop to accept `formatDisplayUnitValue` (or a generic formatter) and use that in the tooltip.
 
----
+### 3) `src/pages/Index.tsx` (only if AllocationChart prop changes)
+- If we update `AllocationChart` to use `formatDisplayUnitValue`, update the call site to pass that function instead of `formatValue`.
 
-## File to Modify
+## QA / How to test end-to-end
+1. Set display unit to **EUR**.
+2. Add a **Real Estate** asset with **€450,000**.
+3. Verify:
+   - Row shows **€450,000.00**
+   - Card header total shows **€450,000.00** (no drift)
+4. Switch display unit to **USD**:
+   - Verify total changes appropriately using conversion (expected).
+5. Check Net Worth card and Allocation chart still render and totals/percentages look correct.
+6. Regression check:
+   - Banking category totals still behave the same as before (no drift when display currency matches).
 
-**`src/components/AssetCategoryCard.tsx`**
-
-### Current Code (lines 143-171):
-```typescript
-const formatNativeAssetValue = (): string => {
-  // Banking: show original currency amount
-  if (category === 'banking' && asset.symbol && asset.quantity) {
-    return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(...)}`;
-  }
-  
-  // Real estate: show value  ← BUG HERE
-  if (category === 'realestate') {
-    return formatValue(asset.value);
-  }
-  // ...
-};
-```
-
-### Fixed Code:
-```typescript
-const formatNativeAssetValue = (): string => {
-  // Banking and Real Estate: show original currency amount
-  if ((category === 'banking' || category === 'realestate') && asset.symbol && asset.quantity) {
-    return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
-      minimumFractionDigits: 2, 
-      maximumFractionDigits: 2 
-    })}`;
-  }
-  
-  // Fallback for realestate without proper currency data
-  if (category === 'realestate') {
-    return formatValue(asset.value);
-  }
-  // ...
-};
-```
-
----
-
-## Additional UI Update
-
-Also add the EUR currency badge for real estate assets (similar to banking):
-
-```typescript
-// Check for both banking and realestate with forex currency
-const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
-  asset.symbol && BANKING_CURRENCIES.some(c => c.value === asset.symbol);
-```
-
-This ensures the display shows:
-```
-[EUR] House                €450,000.00
-```
-
----
-
-## Summary
-
-This single-line fix aligns real estate display logic with banking, preventing forex drift by showing the native currency amount directly from the `quantity` field.
+## Notes / Edge cases handled
+- If a real estate asset is missing `quantity` or `symbol` (unexpected but possible for legacy data), we keep the existing fallback to use `asset.value` conversion so the UI doesn’t break.
