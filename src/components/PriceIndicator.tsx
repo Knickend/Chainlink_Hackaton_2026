@@ -81,7 +81,7 @@ export function PriceIndicator({ isLoading, lastUpdated, error, isCached, forexT
               </p>
               {lastUpdated && (
                 <p className="text-xs text-muted-foreground">
-                  Crypto/Commodities: {formatLastUpdated(lastUpdated)}
+                  Cryptocurrency/Commodities: {formatLastUpdated(lastUpdated)}
                 </p>
               )}
               {forexDate && (

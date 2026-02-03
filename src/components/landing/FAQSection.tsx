@@ -10,7 +10,7 @@ const faqs = [
   {
     question: 'What assets can I track with InControl?',
     answer:
-      'You can track a wide variety of assets including cryptocurrencies (Bitcoin, Ethereum, and 50+ others), stocks, ETFs, real estate properties, precious metals (gold, silver), commodities, bank accounts, and pension funds—all in one unified dashboard.',
+      'You can track a wide variety of assets including cash accounts, stablecoins, real estate properties, cryptocurrencies (Bitcoin, Ethereum, and 50+ others), stocks, bonds, ETFs, precious metals (gold, silver), and other commodities—all in one unified dashboard.',
   },
   {
     question: 'Is my financial data secure?',
@@ -25,7 +25,7 @@ const faqs = [
   {
     question: 'How do the live price updates work?',
     answer:
-      'We fetch real-time prices for 50+ cryptocurrencies, major stocks, ETFs, gold, silver, and other commodities. Prices are updated automatically so your portfolio value always reflects current market conditions.',
+      'We fetch real-time prices for 50+ cryptocurrencies, major stocks, bonds, ETFs, gold, silver, and other commodities. Prices are updated automatically so your portfolio value always reflects current market conditions.',
   },
   {
     question: 'Can I cancel my subscription anytime?',

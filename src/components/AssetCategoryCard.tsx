@@ -22,9 +22,9 @@ interface AssetCategoryCardProps {
 }
 
 const categoryConfig: Record<AssetCategory, { icon: LucideIcon; label: string; color: string }> = {
-  banking: { icon: Landmark, label: 'Banking', color: 'text-blue-400' },
-  crypto: { icon: Bitcoin, label: 'Crypto', color: 'text-bitcoin' },
-  stocks: { icon: TrendingUp, label: 'Stocks', color: 'text-success' },
+  banking: { icon: Landmark, label: 'Cash, Stablecoins & Real Estate', color: 'text-blue-400' },
+  crypto: { icon: Bitcoin, label: 'Cryptocurrency', color: 'text-bitcoin' },
+  stocks: { icon: TrendingUp, label: 'Stocks, Bonds & ETFs', color: 'text-success' },
   commodities: { icon: Package, label: 'Commodities', color: 'text-gold' },
 };
 

@@ -14,9 +14,9 @@ const COLORS = {
 };
 
 const LABELS = {
-  banking: 'Banking',
-  crypto: 'Crypto',
-  stocks: 'Stocks',
+  banking: 'Cash, Stablecoins & Real Estate',
+  crypto: 'Cryptocurrency',
+  stocks: 'Stocks, Bonds & ETFs',
   commodities: 'Commodities',
 };
 

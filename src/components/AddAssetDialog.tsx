@@ -43,9 +43,9 @@ interface AddAssetDialogProps {
 }
 
 const categoryOptions: { value: AssetCategory; label: string }[] = [
-  { value: 'banking', label: 'Banking' },
+  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
   { value: 'crypto', label: 'Cryptocurrency' },
-  { value: 'stocks', label: 'Stocks & ETFs' },
+  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
   { value: 'commodities', label: 'Commodities' },
 ];
 
