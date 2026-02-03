@@ -22,6 +22,8 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, delay = 0 }
     isLoading,
     createSnapshot,
     isCreating,
+    deleteSnapshot,
+    isDeleting,
     selectedMonth,
     setSelectedMonth,
     selectedSnapshot,
@@ -245,6 +247,8 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, delay = 0 }
         onOpenChange={setShowDetails}
         snapshot={selectedSnapshot}
         formatValue={formatValue}
+        onDelete={deleteSnapshot}
+        isDeleting={isDeleting}
       />
     </>
   );
