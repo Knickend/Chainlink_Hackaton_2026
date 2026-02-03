@@ -17,6 +17,8 @@ interface SnapshotDetailViewProps {
   onOpenChange: (open: boolean) => void;
   snapshot: PortfolioSnapshot | null;
   formatValue: (value: number, showDecimals?: boolean) => string;
+  formatDisplayUnitValue?: (value: number, showDecimals?: boolean) => string;
+  currentNetWorth?: number;
   onDelete?: (snapshotId: string) => void;
   isDeleting?: boolean;
 }
@@ -28,10 +30,15 @@ const CATEGORY_CONFIG = [
   { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
 ] as const;
 
-export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue, onDelete, isDeleting }: SnapshotDetailViewProps) {
+export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue, formatDisplayUnitValue, currentNetWorth, onDelete, isDeleting }: SnapshotDetailViewProps) {
   if (!snapshot) return null;
 
   const totalAssets = snapshot.total_assets;
+  
+  // Check if this snapshot is from the current month
+  const isCurrentMonth = snapshot.snapshot_month.startsWith(
+    new Date().toISOString().slice(0, 7)
+  );
   
   // Prepare pie chart data
   const pieData = CATEGORY_CONFIG
@@ -64,7 +71,11 @@ export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue, 
                 <Wallet className="w-4 h-4 text-primary" />
                 <span className="text-sm text-muted-foreground">Net Worth</span>
               </div>
-              <p className="text-2xl font-bold">{formatValue(snapshot.net_worth, false)}</p>
+              <p className="text-2xl font-bold">
+                {isCurrentMonth && currentNetWorth !== undefined && formatDisplayUnitValue
+                  ? formatDisplayUnitValue(currentNetWorth, false)
+                  : formatValue(snapshot.net_worth, false)}
+              </p>
             </div>
             <div className="p-4 rounded-lg bg-secondary/50">
               <div className="flex items-center gap-2 mb-2">

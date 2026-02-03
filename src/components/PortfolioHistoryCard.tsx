@@ -13,10 +13,17 @@ import { ProBadge } from './ProBadge';
 interface PortfolioHistoryCardProps {
   currentNetWorth: number;
   formatValue: (value: number, showDecimals?: boolean) => string;
+  formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
   delay?: number;
 }
 
-export function PortfolioHistoryCard({ currentNetWorth, formatValue, delay = 0 }: PortfolioHistoryCardProps) {
+// Helper to check if a snapshot is from the current month
+const isCurrentMonthSnapshot = (snapshotMonth: string) => {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  return snapshotMonth.startsWith(currentMonth);
+};
+
+export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDisplayUnitValue, delay = 0 }: PortfolioHistoryCardProps) {
   const {
     snapshots,
     isLoading,
@@ -178,7 +185,11 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, delay = 0 }
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-3 rounded-lg bg-secondary/50">
                         <p className="text-xs text-muted-foreground mb-1">Net Worth</p>
-                        <p className="text-xl font-bold">{formatValue(selectedSnapshot.net_worth, false)}</p>
+                        <p className="text-xl font-bold">
+                          {isCurrentMonthSnapshot(selectedSnapshot.snapshot_month)
+                            ? formatDisplayUnitValue(currentNetWorth, false)
+                            : formatValue(selectedSnapshot.net_worth, false)}
+                        </p>
                       </div>
                       {monthOverMonthChange && (
                         <div className="p-3 rounded-lg bg-secondary/50">
@@ -247,6 +258,8 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, delay = 0 }
         onOpenChange={setShowDetails}
         snapshot={selectedSnapshot}
         formatValue={formatValue}
+        formatDisplayUnitValue={formatDisplayUnitValue}
+        currentNetWorth={currentNetWorth}
         onDelete={deleteSnapshot}
         isDeleting={isDeleting}
       />
