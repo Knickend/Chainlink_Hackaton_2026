@@ -19,9 +19,9 @@ export function NetWorthChart({ formatValue, formatDisplayUnitValue, displayUnit
   // Transform snapshots (sorted newest first) to chart format (oldest first)
   // Convert USD snapshot values to display unit using same rate as StatCard
   const chartData = useMemo(() => {
-    if (snapshots.length === 0) return [];
+    if (snapshots.length === 0 || !conversionRates) return [];
     
-    const rate = conversionRates[displayUnit];
+    const rate = conversionRates[displayUnit] ?? 1;
     
     return snapshots
       .slice(0, 12) // Last 12 months max
