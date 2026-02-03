@@ -20,11 +20,21 @@ export type Database = {
           asset_name: string
           category: string
           created_at: string | null
+          destination_amount: number | null
+          destination_asset_id: string | null
+          destination_currency: string | null
+          destination_label: string | null
+          exchange_rate: number | null
+          fund_flow_mode: string | null
           id: string
           notes: string | null
           price_per_unit: number
           quantity: number
           realized_pnl: number | null
+          source_amount: number | null
+          source_asset_id: string | null
+          source_currency: string | null
+          source_label: string | null
           symbol: string
           total_value: number
           transaction_date: string
@@ -36,11 +46,21 @@ export type Database = {
           asset_name: string
           category: string
           created_at?: string | null
+          destination_amount?: number | null
+          destination_asset_id?: string | null
+          destination_currency?: string | null
+          destination_label?: string | null
+          exchange_rate?: number | null
+          fund_flow_mode?: string | null
           id?: string
           notes?: string | null
           price_per_unit: number
           quantity: number
           realized_pnl?: number | null
+          source_amount?: number | null
+          source_asset_id?: string | null
+          source_currency?: string | null
+          source_label?: string | null
           symbol: string
           total_value: number
           transaction_date?: string
@@ -52,11 +72,21 @@ export type Database = {
           asset_name?: string
           category?: string
           created_at?: string | null
+          destination_amount?: number | null
+          destination_asset_id?: string | null
+          destination_currency?: string | null
+          destination_label?: string | null
+          exchange_rate?: number | null
+          fund_flow_mode?: string | null
           id?: string
           notes?: string | null
           price_per_unit?: number
           quantity?: number
           realized_pnl?: number | null
+          source_amount?: number | null
+          source_asset_id?: string | null
+          source_currency?: string | null
+          source_label?: string | null
           symbol?: string
           total_value?: number
           transaction_date?: string
@@ -67,6 +97,20 @@ export type Database = {
           {
             foreignKeyName: "asset_transactions_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_transactions_destination_asset_id_fkey"
+            columns: ["destination_asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_transactions_source_asset_id_fkey"
+            columns: ["source_asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]

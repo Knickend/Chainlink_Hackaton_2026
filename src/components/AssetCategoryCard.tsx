@@ -17,6 +17,7 @@ interface AssetCategoryCardProps {
   onBuyMore?: (assetId: string, data: BuyMoreData) => Promise<void>;
   onSell?: (assetId: string, data: SellData) => Promise<void>;
   livePrices?: LivePrices;
+  allAssets?: Asset[]; // For fund flow selector
   delay?: number;
 }
 
@@ -38,6 +39,7 @@ export function AssetCategoryCard({
   onBuyMore,
   onSell,
   livePrices,
+  allAssets,
   delay = 0,
 }: AssetCategoryCardProps) {
   const config = categoryConfig[category];
@@ -126,7 +128,8 @@ export function AssetCategoryCard({
                     onUpdate={onUpdateAsset} 
                     onBuyMore={onBuyMore}
                     onSell={onSell}
-                    livePrices={livePrices} 
+                    livePrices={livePrices}
+                    allAssets={allAssets}
                   />
                 )}
                 {onDeleteAsset && (

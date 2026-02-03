@@ -531,6 +531,16 @@ const IndexContent = () => {
                     const asset = assets.find(a => a.id === assetId);
                     if (!asset) return;
                     
+                    // Validate source balance if linked mode
+                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                      if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
+                        // Insufficient balance - this should have been caught in UI
+                        console.error('Insufficient source balance');
+                        return;
+                      }
+                    }
+                    
                     // Record buy transaction
                     await addTransaction({
                       asset_id: assetId,
@@ -542,6 +552,12 @@ const IndexContent = () => {
                       price_per_unit: data.price_per_unit,
                       total_value: data.quantity * data.price_per_unit,
                       transaction_date: data.transaction_date,
+                      // Fund flow fields
+                      fund_flow_mode: data.fund_flow_mode,
+                      source_asset_id: data.source_asset_id,
+                      source_label: data.source_label,
+                      source_currency: data.source_currency,
+                      source_amount: data.source_amount,
                     });
                     
                     // Update asset with new quantity and cost basis
@@ -553,6 +569,21 @@ const IndexContent = () => {
                       cost_basis: newCostBasis,
                       purchase_price_per_unit: newCostBasis / newQuantity,
                     });
+                    
+                    // Auto-update source asset if linked mode
+                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                      if (sourceAsset) {
+                        const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
+                        if (newSourceQty <= 0) {
+                          await deleteAsset(data.source_asset_id);
+                        } else {
+                          await updateAsset(data.source_asset_id, {
+                            quantity: newSourceQty,
+                          });
+                        }
+                      }
+                    }
                   }}
                   onSell={isDemo ? undefined : async (assetId, data) => {
                     const asset = assets.find(a => a.id === assetId);
@@ -571,6 +602,12 @@ const IndexContent = () => {
                       realized_pnl: data.realized_pnl,
                       transaction_date: data.transaction_date,
                       notes: data.notes,
+                      // Fund flow fields
+                      fund_flow_mode: data.fund_flow_mode,
+                      destination_asset_id: data.destination_asset_id,
+                      destination_label: data.destination_label,
+                      destination_currency: data.destination_currency,
+                      destination_amount: data.destination_amount,
                     });
                     
                     // Update or delete the asset
@@ -591,8 +628,20 @@ const IndexContent = () => {
                         cost_basis: newCostBasis,
                       });
                     }
+                    
+                    // Auto-update destination asset if linked mode
+                    if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
+                      const destAsset = assets.find(a => a.id === data.destination_asset_id);
+                      if (destAsset) {
+                        const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
+                        await updateAsset(data.destination_asset_id, {
+                          quantity: newDestQty,
+                        });
+                      }
+                    }
                   }}
                   livePrices={prices}
+                  allAssets={assets}
                   delay={index * 0.1}
                 />
               ))}

@@ -94,6 +94,9 @@ export interface Asset {
 // Asset transaction types for P&L tracking
 export type TransactionType = 'buy' | 'sell';
 
+// Fund flow mode for source/destination tracking
+export type FundFlowMode = 'none' | 'linked' | 'manual';
+
 export interface AssetTransaction {
   id: string;
   user_id: string;
@@ -109,6 +112,17 @@ export interface AssetTransaction {
   transaction_date: string;
   notes?: string;
   created_at: string;
+  // Fund flow tracking fields
+  fund_flow_mode?: FundFlowMode;
+  source_asset_id?: string;
+  source_label?: string;
+  source_currency?: string;
+  source_amount?: number;
+  destination_asset_id?: string;
+  destination_label?: string;
+  destination_currency?: string;
+  destination_amount?: number;
+  exchange_rate?: number;
 }
 
 // Helper to convert commodity quantity to troy ounces (for price calculation)

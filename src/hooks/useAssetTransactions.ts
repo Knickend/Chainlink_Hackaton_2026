@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { AssetTransaction, TransactionType } from '@/lib/types';
+import { AssetTransaction, TransactionType, FundFlowMode } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 export interface CreateTransactionData {
@@ -16,6 +16,17 @@ export interface CreateTransactionData {
   realized_pnl?: number;
   transaction_date?: string;
   notes?: string;
+  // Fund flow tracking fields
+  fund_flow_mode?: FundFlowMode;
+  source_asset_id?: string;
+  source_label?: string;
+  source_currency?: string;
+  source_amount?: number;
+  destination_asset_id?: string;
+  destination_label?: string;
+  destination_currency?: string;
+  destination_amount?: number;
+  exchange_rate?: number;
 }
 
 export interface UpdateTransactionData {
@@ -64,6 +75,17 @@ export function useAssetTransactions() {
         transaction_date: t.transaction_date,
         notes: t.notes || undefined,
         created_at: t.created_at,
+        // Fund flow fields
+        fund_flow_mode: (t as any).fund_flow_mode as FundFlowMode || 'none',
+        source_asset_id: (t as any).source_asset_id || undefined,
+        source_label: (t as any).source_label || undefined,
+        source_currency: (t as any).source_currency || undefined,
+        source_amount: (t as any).source_amount ? Number((t as any).source_amount) : undefined,
+        destination_asset_id: (t as any).destination_asset_id || undefined,
+        destination_label: (t as any).destination_label || undefined,
+        destination_currency: (t as any).destination_currency || undefined,
+        destination_amount: (t as any).destination_amount ? Number((t as any).destination_amount) : undefined,
+        exchange_rate: (t as any).exchange_rate ? Number((t as any).exchange_rate) : undefined,
       })));
     } catch (error: any) {
       toast({
@@ -99,6 +121,17 @@ export function useAssetTransactions() {
           realized_pnl: data.realized_pnl || null,
           transaction_date: data.transaction_date || new Date().toISOString().split('T')[0],
           notes: data.notes || null,
+          // Fund flow fields
+          fund_flow_mode: data.fund_flow_mode || 'none',
+          source_asset_id: data.source_asset_id || null,
+          source_label: data.source_label || null,
+          source_currency: data.source_currency || null,
+          source_amount: data.source_amount || null,
+          destination_asset_id: data.destination_asset_id || null,
+          destination_label: data.destination_label || null,
+          destination_currency: data.destination_currency || null,
+          destination_amount: data.destination_amount || null,
+          exchange_rate: data.exchange_rate || null,
         } as any)
         .select()
         .single();
@@ -120,6 +153,17 @@ export function useAssetTransactions() {
         transaction_date: newTransaction.transaction_date,
         notes: newTransaction.notes || undefined,
         created_at: newTransaction.created_at,
+        // Fund flow fields
+        fund_flow_mode: (newTransaction as any).fund_flow_mode as FundFlowMode || 'none',
+        source_asset_id: (newTransaction as any).source_asset_id || undefined,
+        source_label: (newTransaction as any).source_label || undefined,
+        source_currency: (newTransaction as any).source_currency || undefined,
+        source_amount: (newTransaction as any).source_amount ? Number((newTransaction as any).source_amount) : undefined,
+        destination_asset_id: (newTransaction as any).destination_asset_id || undefined,
+        destination_label: (newTransaction as any).destination_label || undefined,
+        destination_currency: (newTransaction as any).destination_currency || undefined,
+        destination_amount: (newTransaction as any).destination_amount ? Number((newTransaction as any).destination_amount) : undefined,
+        exchange_rate: (newTransaction as any).exchange_rate ? Number((newTransaction as any).exchange_rate) : undefined,
       };
 
       setTransactions(prev => [transaction, ...prev]);
