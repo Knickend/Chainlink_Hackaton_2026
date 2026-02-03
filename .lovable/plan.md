@@ -1,128 +1,181 @@
 
-# Plan: Fix Banking Asset Value Not Updating on Fund Flow Deduction
+# Plan: Rename Asset Category Display Labels
 
-## Problem
+## Overview
 
-When using the "Linked" fund flow mode to buy an asset with funds from a banking source (e.g., buying crypto with USD from a bank account), the source asset's quantity is correctly deducted, but the category total (shown as "$10,000.00" in the Banking card) does not reflect the new balance.
+Update the display labels for asset categories across the entire application while keeping the underlying database values (`banking`, `crypto`, `stocks`, `commodities`) unchanged.
 
-**What you see:**
-- Individual asset shows: $9,220.00 (correct)
-- Category total shows: $10,000.00 (incorrect - should also be $9,220.00)
-
-## Root Cause
-
-The fund flow logic in `Index.tsx` only updates the `quantity` field when deducting from a source asset:
-
-```typescript
-await updateAsset(data.source_asset_id, {
-  quantity: newSourceQty,  // Only quantity is updated
-});
-```
-
-However, **banking assets** do not auto-calculate their `value` from `quantity` like crypto/stocks/commodities do. The `usePortfolio` hook skips the value recalculation for banking assets, so they continue using the stale `value` stored in the database.
-
-**How other asset types work:**
-- Crypto, Stocks, Commodities: `value = quantity × livePrice` (auto-calculated)
-- Banking: `value` must be explicitly updated alongside `quantity`
-
-## Solution
-
-Update the fund flow logic to also recalculate and update the `value` field for banking source/destination assets using the appropriate forex conversion rate.
-
----
-
-## Technical Implementation
-
-### File: `src/pages/Index.tsx`
-
-**Change 1: Update Buy More handler (lines 574-586)**
-
-When deducting from a banking source asset, also update the `value` field:
-
-```typescript
-// Auto-update source asset if linked mode
-if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
-  const sourceAsset = assets.find(a => a.id === data.source_asset_id);
-  if (sourceAsset) {
-    const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
-    if (newSourceQty <= 0) {
-      await deleteAsset(data.source_asset_id);
-    } else {
-      // For banking assets, also update value using forex rate
-      const updateData: Partial<Asset> = { quantity: newSourceQty };
-      
-      if (sourceAsset.category === 'banking') {
-        const forexRate = getForexRateToUSD(
-          sourceAsset.symbol || 'USD',
-          prices.forex
-        );
-        updateData.value = newSourceQty * forexRate;
-      }
-      
-      await updateAsset(data.source_asset_id, updateData);
-    }
-  }
-}
-```
-
-**Change 2: Update Sell handler (lines 632-641)**
-
-When adding proceeds to a banking destination asset, also update the `value` field:
-
-```typescript
-// Auto-update destination asset if linked mode
-if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
-  const destAsset = assets.find(a => a.id === data.destination_asset_id);
-  if (destAsset) {
-    const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
-    
-    // For banking assets, also update value using forex rate
-    const updateData: Partial<Asset> = { quantity: newDestQty };
-    
-    if (destAsset.category === 'banking') {
-      const forexRate = getForexRateToUSD(
-        destAsset.symbol || 'USD',
-        prices.forex
-      );
-      updateData.value = newDestQty * forexRate;
-    }
-    
-    await updateAsset(data.destination_asset_id, updateData);
-  }
-}
-```
-
-**Change 3: Add import for `getForexRateToUSD`**
-
-At the top of the file, add the import:
-
-```typescript
-import { AssetCategory, DebtType, getForexRateToUSD } from '@/lib/types';
-```
+**New Category Names:**
+| Internal Key | Current Label | New Label |
+|--------------|---------------|-----------|
+| `banking` | Banking | Cash, Stablecoins & Real Estate |
+| `crypto` | Crypto / Cryptocurrency | Cryptocurrency |
+| `stocks` | Stocks / Stocks & ETFs | Stocks, Bonds & ETFs |
+| `commodities` | Commodities | Commodities |
 
 ---
 
 ## Files to Modify
 
+### UI Components (Core Dashboard)
+
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Update fund flow logic in `onBuyMore` and `onSell` handlers to also set `value` for banking assets |
+| `src/components/AssetCategoryCard.tsx` | Update `categoryConfig` labels at line 24-28 |
+| `src/components/AllocationChart.tsx` | Update `LABELS` object at line 16-21 |
+| `src/components/AddAssetDialog.tsx` | Update `categoryOptions` at line 45-50 |
+| `src/components/EditAssetDialog.tsx` | Update `categories` at line 87-92 |
+| `src/components/ViewAllAssetsDialog.tsx` | Update `categoryLabels` at line 51-56 |
+| `src/components/FundFlowSelector.tsx` | Update `categoryLabels` at line 77-82 |
+| `src/components/SnapshotDetailView.tsx` | Update `CATEGORY_CONFIG` at line 20-25 |
+
+### P&L and Yield Components
+
+| File | Change |
+|------|--------|
+| `src/components/ProfitLossDetailDialog.tsx` | No label changes needed (uses category keys for colors) |
+| `src/components/YieldBreakdownCard.tsx` | No changes (uses yield type labels: Staking, Interest, Dividend) |
+
+### Tutorial and Help
+
+| File | Change |
+|------|--------|
+| `src/components/Tutorial/tutorialSteps.ts` | Update content text at line 69 to reflect new category names |
+
+### Price and Status Indicators
+
+| File | Change |
+|------|--------|
+| `src/components/PriceIndicator.tsx` | Update tooltip text at line 84 |
+
+### Landing Page and Marketing
+
+| File | Change |
+|------|--------|
+| `index.html` | Update meta description at line 7 |
+| `src/components/landing/HeroSection.tsx` | Update marketing copy at line 38-39 |
+| `src/components/landing/FAQSection.tsx` | Update FAQ answers at lines 13 and 28 |
+
+### Edge Functions (AI Prompts)
+
+| File | Change |
+|------|--------|
+| `supabase/functions/financial-advisor/index.ts` | Update system prompt at line 67 |
+| `supabase/functions/sales-bot/index.ts` | Update sales prompt at line 60 |
 
 ---
 
-## Why This Works
+## Detailed Changes
 
-1. **Immediate UI Update**: When `updateAsset` is called with both `quantity` and `value`, the local state updates immediately with both fields
-2. **Database Consistency**: The database stores the correct `value`, so page refreshes also show the correct total
-3. **Forex Accuracy**: Uses live forex rates (with fallback to static) to ensure accurate USD conversion for non-USD banking assets
+### 1. AssetCategoryCard.tsx (line 24-28)
+```typescript
+const categoryConfig: Record<AssetCategory, { icon: LucideIcon; label: string; color: string }> = {
+  banking: { icon: Landmark, label: 'Cash, Stablecoins & Real Estate', color: 'text-blue-400' },
+  crypto: { icon: Bitcoin, label: 'Cryptocurrency', color: 'text-bitcoin' },
+  stocks: { icon: TrendingUp, label: 'Stocks, Bonds & ETFs', color: 'text-success' },
+  commodities: { icon: Package, label: 'Commodities', color: 'text-gold' },
+};
+```
+
+### 2. AllocationChart.tsx (line 16-21)
+```typescript
+const LABELS = {
+  banking: 'Cash, Stablecoins & Real Estate',
+  crypto: 'Cryptocurrency',
+  stocks: 'Stocks, Bonds & ETFs',
+  commodities: 'Commodities',
+};
+```
+
+### 3. AddAssetDialog.tsx (line 45-50)
+```typescript
+const categoryOptions: { value: AssetCategory; label: string }[] = [
+  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
+  { value: 'crypto', label: 'Cryptocurrency' },
+  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
+  { value: 'commodities', label: 'Commodities' },
+];
+```
+
+### 4. EditAssetDialog.tsx (line 87-92)
+```typescript
+const categories: { value: AssetCategory; label: string }[] = [
+  { value: 'banking', label: 'Cash, Stablecoins & Real Estate' },
+  { value: 'crypto', label: 'Cryptocurrency' },
+  { value: 'stocks', label: 'Stocks, Bonds & ETFs' },
+  { value: 'commodities', label: 'Commodities' },
+];
+```
+
+### 5. ViewAllAssetsDialog.tsx (line 51-56)
+```typescript
+const categoryLabels: Record<AssetCategory, string> = {
+  banking: 'Cash, Stablecoins & Real Estate',
+  crypto: 'Cryptocurrency',
+  stocks: 'Stocks, Bonds & ETFs',
+  commodities: 'Commodities',
+};
+```
+
+### 6. FundFlowSelector.tsx (line 77-82)
+```typescript
+const categoryLabels: Record<string, string> = {
+  banking: 'Cash, Stablecoins & Real Estate',
+  crypto: 'Cryptocurrency',
+  stocks: 'Stocks, Bonds & ETFs',
+  commodities: 'Commodities',
+};
+```
+
+### 7. SnapshotDetailView.tsx (line 20-25)
+```typescript
+const CATEGORY_CONFIG = [
+  { key: 'banking', label: 'Cash, Stablecoins & Real Estate', color: '#3b82f6', icon: Landmark },
+  { key: 'crypto', label: 'Cryptocurrency', color: '#f59e0b', icon: Bitcoin },
+  { key: 'stocks', label: 'Stocks, Bonds & ETFs', color: '#10b981', icon: BarChart3 },
+  { key: 'commodities', label: 'Commodities', color: '#8b5cf6', icon: Gem },
+] as const;
+```
+
+### 8. Tutorial/tutorialSteps.ts (line 69)
+```typescript
+content: 'Add and track all types of assets - cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, and commodities. Each category shows its total value and percentage of your portfolio.',
+```
+
+### 9. PriceIndicator.tsx (line 84)
+```typescript
+Cryptocurrency/Commodities: {formatLastUpdated(lastUpdated)}
+```
+
+### 10. index.html (line 7)
+```html
+<meta name="description" content="Track all your assets - cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, and commodities. View your wealth in USD, Bitcoin, Gold, or any currency." />
+```
+
+### 11. HeroSection.tsx (line 38-39)
+```typescript
+Track assets, manage debt, and build wealth across cryptocurrency, stocks, bonds, ETFs, 
+commodities, and real estate — all in one beautiful dashboard.
+```
+
+### 12. FAQSection.tsx (line 13 and 28)
+Update FAQ answers to use new terminology.
+
+### 13. Edge Functions
+Update AI prompts in `financial-advisor/index.ts` and `sales-bot/index.ts` to use new category names.
 
 ---
 
-## Edge Cases Handled
+## What Stays the Same
 
-| Scenario | Behavior |
-|----------|----------|
-| USD banking asset | Forex rate = 1, so value = quantity |
-| EUR/GBP banking asset | Uses live forex rate to calculate USD value |
-| Non-banking source/destination | No change - these auto-calculate value from live prices |
-| Balance goes to zero | Asset is deleted (existing behavior preserved) |
+- **Database values**: The underlying `category` column values (`banking`, `crypto`, `stocks`, `commodities`) remain unchanged
+- **TypeScript types**: `AssetCategory` type definition stays as is
+- **API contracts**: No changes to Supabase queries or data structures
+- **Colors and icons**: All visual styling remains the same
+- **Voice command parsing**: Internal category matching uses same keys
+
+---
+
+## Summary
+
+This is a display-only change affecting ~13 files. All changes are string replacements for labels shown to users. The underlying data model and business logic remain completely unchanged.
