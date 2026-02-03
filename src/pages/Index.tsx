@@ -142,6 +142,7 @@ const IndexContent = () => {
     formatValue,
     convertFromCurrency,
     formatCurrencyValue,
+    formatDisplayUnitValue,
     loading: dataLoading,
     addAsset,
     updateAsset,
@@ -517,13 +518,16 @@ const IndexContent = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {categoryTotals.map((cat, index) => (
-                <AssetCategoryCard
-                  key={cat.category}
-                  category={cat.category as AssetCategory}
-                  assets={assetsByCategory[cat.category] || []}
-                  total={formatValue(cat.total)}
-                  percentage={(cat.total / metrics.totalNetWorth) * 100}
+              {(() => {
+                // Calculate total in display unit for percentage calculation
+                const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
+                return categoryTotals.map((cat, index) => (
+                  <AssetCategoryCard
+                    key={cat.category}
+                    category={cat.category as AssetCategory}
+                    assets={assetsByCategory[cat.category] || []}
+                    total={formatDisplayUnitValue(cat.total)}
+                    percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
                   formatValue={formatValue}
                   onUpdateAsset={isDemo ? undefined : updateAsset}
                   onDeleteAsset={isDemo ? undefined : deleteAsset}
@@ -663,7 +667,8 @@ const IndexContent = () => {
                   allAssets={assets}
                   delay={index * 0.1}
                 />
-              ))}
+                ));
+              })()}
             </div>
           )}
         </div>
