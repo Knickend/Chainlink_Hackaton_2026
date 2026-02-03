@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronDown, ArrowUpRight, ArrowDownRight, Pencil, Trash2 } from 'lucide-react';
-import { ProfitLossData } from '@/hooks/useProfitLoss';
+import { ProfitLossData, ClosedPosition } from '@/hooks/useProfitLoss';
 import { AssetTransaction } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -41,7 +41,7 @@ export function ProfitLossDetailDialog({
   onEditTransaction,
   onDeleteTransaction,
 }: ProfitLossDetailDialogProps) {
-  const { assetsWithCostBasis, assetsWithoutCostBasis, pnlByCategory, totalPnL, totalPnLPercent } = pnlData;
+  const { assetsWithCostBasis, assetsWithoutCostBasis, pnlByCategory, totalPnL, totalPnLPercent, closedPositions } = pnlData;
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<AssetTransaction | null>(null);
   const [editingAssetAvgCost, setEditingAssetAvgCost] = useState<number | undefined>(undefined);
@@ -313,9 +313,189 @@ export function ProfitLossDetailDialog({
                       </Collapsible>
                     );
                   })
-                ) : (
+                ) : closedPositions.length === 0 ? (
                   <div className="text-center py-6 text-muted-foreground">
                     No assets with cost basis data.
+                  </div>
+                ) : null}
+
+                {/* Closed Positions Section */}
+                {closedPositions.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-muted-foreground mb-2 px-3">
+                      Closed Positions
+                    </p>
+                    <div className="space-y-2">
+                      {closedPositions.map(position => {
+                        const isExpanded = expandedAssetId === position.id;
+                        
+                        return (
+                          <Collapsible
+                            key={position.id}
+                            open={isExpanded}
+                            onOpenChange={() => setExpandedAssetId(isExpanded ? null : position.id)}
+                          >
+                            <CollapsibleTrigger className="w-full">
+                              <div className={cn(
+                                "flex items-center justify-between p-3 bg-secondary/20 rounded-lg transition-colors",
+                                "hover:bg-secondary/30 cursor-pointer"
+                              )}>
+                                <div className="flex items-center gap-3">
+                                  <ChevronDown className={cn(
+                                    "w-4 h-4 text-muted-foreground transition-transform",
+                                    isExpanded && "rotate-180"
+                                  )} />
+                                  <div className="text-left">
+                                    <p className="font-medium flex items-center gap-2">
+                                      {position.name}
+                                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                        Closed
+                                      </Badge>
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {position.symbol} • {position.category}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className={cn(
+                                    'font-semibold',
+                                    position.realizedPnL >= 0 ? 'text-success' : 'text-destructive'
+                                  )}>
+                                    {position.realizedPnL >= 0 ? '+' : ''}{formatValue(position.realizedPnL)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">Realized</p>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+
+                            <CollapsibleContent>
+                              <div className="mt-2 ml-7 space-y-3 pb-2">
+                                {/* Transaction History */}
+                                <div className="space-y-2">
+                                  <p className="text-xs font-medium text-muted-foreground">Transaction History</p>
+                                  {position.transactions.map(tx => (
+                                    <div 
+                                      key={tx.id}
+                                      className="group flex items-center justify-between p-2 bg-background/50 rounded border border-border/50"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {tx.transaction_type === 'buy' ? (
+                                          <div className="p-1 rounded bg-success/10">
+                                            <ArrowUpRight className="w-3 h-3 text-success" />
+                                          </div>
+                                        ) : (
+                                          <div className="p-1 rounded bg-destructive/10">
+                                            <ArrowDownRight className="w-3 h-3 text-destructive" />
+                                          </div>
+                                        )}
+                                        <Badge 
+                                          variant={tx.transaction_type === 'buy' ? 'default' : 'destructive'}
+                                          className="text-[10px] px-1.5 py-0"
+                                        >
+                                          {tx.transaction_type.toUpperCase()}
+                                        </Badge>
+                                        <span className="text-sm">
+                                          {tx.quantity} {tx.symbol}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-right">
+                                          <p className="text-sm">
+                                            @{formatValue(tx.price_per_unit)}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {format(new Date(tx.transaction_date), 'MMM d, yyyy')}
+                                          </p>
+                                          {tx.transaction_type === 'sell' && tx.realized_pnl !== undefined && (
+                                            <p className={cn(
+                                              'text-xs font-medium',
+                                              tx.realized_pnl >= 0 ? 'text-success' : 'text-destructive'
+                                            )}>
+                                              P&L: {tx.realized_pnl >= 0 ? '+' : ''}{formatValue(tx.realized_pnl)}
+                                            </p>
+                                          )}
+                                        </div>
+                                        {/* Edit/Delete buttons */}
+                                        {(onEditTransaction || onDeleteTransaction) && (
+                                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {onEditTransaction && (
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingTransaction(tx);
+                                                  // For closed positions, use stored cost basis
+                                                  const avgCost = position.totalCostBasis > 0 && position.totalSold > 0
+                                                    ? position.totalCostBasis / position.totalSold
+                                                    : undefined;
+                                                  setEditingAssetAvgCost(avgCost);
+                                                }}
+                                              >
+                                                <Pencil className="w-3 h-3" />
+                                              </Button>
+                                            )}
+                                            {onDeleteTransaction && (
+                                              <DeleteConfirmDialog
+                                                title="Delete transaction?"
+                                                description={`Are you sure you want to delete this ${tx.transaction_type} transaction for ${tx.quantity} ${tx.symbol}? This action cannot be undone.`}
+                                                onConfirm={() => onDeleteTransaction(tx.id)}
+                                                trigger={
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </Button>
+                                                }
+                                              />
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Position Summary */}
+                                <div className="p-3 bg-secondary/30 rounded-lg space-y-1">
+                                  <p className="text-xs font-medium text-muted-foreground">Position Summary</p>
+                                  <div className="grid grid-cols-2 gap-2 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">Total Sold:</span>
+                                      <span className="ml-2 font-medium">{position.totalSold} {position.symbol}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Total Proceeds:</span>
+                                      <span className="ml-2 font-medium">{formatValue(position.totalProceeds)}</span>
+                                    </div>
+                                    {position.totalCostBasis > 0 && (
+                                      <div>
+                                        <span className="text-muted-foreground">Cost Basis:</span>
+                                        <span className="ml-2 font-medium">{formatValue(position.totalCostBasis)}</span>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <span className="text-muted-foreground">Realized P&L:</span>
+                                      <span className={cn(
+                                        "ml-2 font-medium",
+                                        position.realizedPnL >= 0 ? 'text-success' : 'text-destructive'
+                                      )}>
+                                        {position.realizedPnL >= 0 ? '+' : ''}{formatValue(position.realizedPnL)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

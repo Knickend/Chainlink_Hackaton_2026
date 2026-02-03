@@ -1,6 +1,20 @@
 import { useMemo } from 'react';
 import { Asset, AssetTransaction } from '@/lib/types';
 
+// Interface for closed positions (fully sold assets)
+export interface ClosedPosition {
+  id: string;
+  name: string;
+  symbol: string;
+  category: string;
+  realizedPnL: number;
+  realizedPnLPercent: number;
+  totalSold: number;
+  totalProceeds: number;
+  totalCostBasis: number;
+  transactions: AssetTransaction[];
+}
+
 export interface ProfitLossData {
   // Per-asset P&L
   unrealizedPnL: number;
@@ -15,6 +29,8 @@ export interface ProfitLossData {
   // Assets with cost basis
   assetsWithCostBasis: Array<Asset & { unrealizedPnL: number; unrealizedPnLPercent: number }>;
   assetsWithoutCostBasis: Asset[];
+  // Closed positions (fully sold assets)
+  closedPositions: ClosedPosition[];
 }
 
 // Calculate unrealized P&L for a single asset
@@ -36,6 +52,76 @@ export function calculateTotalRealizedPnL(transactions: AssetTransaction[]): num
   return transactions
     .filter(t => t.transaction_type === 'sell' && typeof t.realized_pnl === 'number')
     .reduce((sum, t) => sum + (t.realized_pnl || 0), 0);
+}
+
+// Extract closed positions from transactions (assets that were fully sold)
+function extractClosedPositions(
+  transactions: AssetTransaction[],
+  currentAssets: Asset[]
+): ClosedPosition[] {
+  // Create a set of current asset identifiers (symbol + name combinations)
+  const currentAssetKeys = new Set(
+    currentAssets.map(a => `${a.symbol || ''}::${a.name}`)
+  );
+  
+  // Group transactions by asset (symbol + name)
+  const transactionsByAsset = new Map<string, AssetTransaction[]>();
+  
+  transactions.forEach(tx => {
+    const key = `${tx.symbol}::${tx.asset_name}`;
+    if (!transactionsByAsset.has(key)) {
+      transactionsByAsset.set(key, []);
+    }
+    transactionsByAsset.get(key)!.push(tx);
+  });
+  
+  const closedPositions: ClosedPosition[] = [];
+  
+  transactionsByAsset.forEach((txs, key) => {
+    // Skip if asset still exists in portfolio
+    if (currentAssetKeys.has(key)) {
+      return;
+    }
+    
+    // Check if there are any sell transactions with realized P&L
+    const sellTxs = txs.filter(t => t.transaction_type === 'sell');
+    const buyTxs = txs.filter(t => t.transaction_type === 'buy');
+    
+    if (sellTxs.length === 0) {
+      return; // No sells, not a closed position
+    }
+    
+    // Calculate totals
+    const totalRealizedPnL = sellTxs.reduce((sum, t) => sum + (t.realized_pnl || 0), 0);
+    const totalSold = sellTxs.reduce((sum, t) => sum + t.quantity, 0);
+    const totalProceeds = sellTxs.reduce((sum, t) => sum + t.total_value, 0);
+    const totalCostBasis = buyTxs.reduce((sum, t) => sum + t.total_value, 0);
+    
+    // Calculate percentage (based on cost basis if available)
+    const percentBasis = totalCostBasis > 0 ? totalCostBasis : totalProceeds - totalRealizedPnL;
+    const realizedPnLPercent = percentBasis > 0 ? (totalRealizedPnL / percentBasis) * 100 : 0;
+    
+    // Use first transaction for metadata
+    const firstTx = txs[0];
+    
+    closedPositions.push({
+      id: `closed-${key}`,
+      name: firstTx.asset_name,
+      symbol: firstTx.symbol,
+      category: firstTx.category,
+      realizedPnL: totalRealizedPnL,
+      realizedPnLPercent,
+      totalSold,
+      totalProceeds,
+      totalCostBasis,
+      transactions: txs.sort((a, b) => 
+        new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
+      ),
+    });
+  });
+  
+  // Sort by realized P&L (descending by absolute value)
+  return closedPositions.sort((a, b) => Math.abs(b.realizedPnL) - Math.abs(a.realizedPnL));
 }
 
 export function useProfitLoss(
@@ -93,6 +179,9 @@ export function useProfitLoss(
         pnlByCategory[category].unrealized + pnlByCategory[category].realized;
     });
     
+    // Extract closed positions
+    const closedPositions = extractClosedPositions(transactions, assets);
+    
     const totalPnL = totalUnrealizedPnL + totalRealizedPnL;
     const totalPnLPercent = totalCostBasis > 0 ? (totalPnL / totalCostBasis) * 100 : 0;
     
@@ -109,6 +198,7 @@ export function useProfitLoss(
       pnlByCategory,
       assetsWithCostBasis,
       assetsWithoutCostBasis,
+      closedPositions,
     };
   }, [assets, transactions]);
 }
