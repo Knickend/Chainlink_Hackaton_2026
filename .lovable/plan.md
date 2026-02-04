@@ -1,82 +1,134 @@
 
-## Add Colombian Peso (COP) Support
+## Fix Colombian Peso (COP) Currency Conversion Bug for Stocks
 
-This plan adds the Colombian Peso to all currency selectors and exchange rate systems throughout the application.
+### Problem Analysis
 
----
+The issue is that Colombian stocks (CELSIA, MSA, PEI) have their values stored in **Colombian Pesos (COP)** but the system treats all stock values as **USD**. This causes massive inflation:
 
-## Changes Overview
+- **CELSIA**: Stored as 30,690,000 (COP) but interpreted as $30,690,000 USD
+- When converted to EUR, this becomes €26,006,399 instead of the actual ~€6,500
 
-Adding COP requires updates in **5 files** across 3 layers: types, frontend, and backend edge functions.
-
----
-
-## 1. Frontend Type Definitions
-
-**File:** `src/lib/types.ts`
-
-| Line | Change |
-|------|--------|
-| 5 | Add `'COP'` to `BankingCurrency` type union |
-| 35-36 | Add COP entry to `BANKING_CURRENCIES` array |
-| 60 | Add COP fallback rate to `FOREX_RATES_TO_USD` |
-
-**Currency Details:**
-- Code: `COP`
-- Label: `Colombian Peso`
-- Symbol: `$` (shared with USD/MXN)
-- Fallback rate: `~0.00024` (1 COP = ~$0.00024 USD, based on ~4,200 COP/USD)
+**Root cause**: The `stocks` category doesn't support currencies - it assumes all values are in USD. Unlike banking/real estate assets which store the currency in the `symbol` field, stock assets use `symbol` for the ticker symbol (e.g., "CELSIA").
 
 ---
 
-## 2. Backend Edge Function - Forex Fetcher
+## Solution Overview
 
-**File:** `supabase/functions/fetch-forex-rates/index.ts`
-
-| Line | Change |
-|------|--------|
-| 15-17 | Add `'COP'` to `SUPPORTED_CURRENCIES` array |
-
-This enables the Frankfurter API call to fetch live COP rates, which are then cached in `price_cache` and displayed in the Exchange Rates dialog.
+Add a dedicated `currency` column to the assets table and update the application to:
+1. Store the native currency for stocks that don't have USD pricing
+2. Convert non-USD stock values to the user's display unit correctly
+3. Allow users to select a currency when adding stocks manually
 
 ---
 
-## 3. Backend Edge Functions - Snapshot Fallbacks
+## Phase 1: Database Migration
 
-**File:** `supabase/functions/create-monthly-snapshot/index.ts`
+Add a `currency` column to the `assets` table:
 
-| Line | Change |
-|------|--------|
-| 37-38 | Add `COP: 0.00024` to `FOREX_RATES_TO_USD` fallback map |
+```sql
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USD';
 
-**File:** `supabase/functions/create-bulk-snapshots/index.ts`
+-- Update existing Colombian stocks to COP (based on their symbols)
+UPDATE public.assets 
+SET currency = 'COP' 
+WHERE category = 'stocks' 
+  AND symbol IN ('CELSIA', 'PEI', 'MSA', 'MNSAF')
+  AND currency IS NULL;
 
-| Line | Change |
-|------|--------|
-| 42-43 | Add `COP: 0.00024` to `FOREX_RATES_TO_USD` fallback map |
-
-These fallback rates ensure historical snapshots calculate correctly even if live rates are unavailable.
+-- Ensure all other stocks default to USD
+UPDATE public.assets 
+SET currency = 'USD' 
+WHERE category = 'stocks' AND currency IS NULL;
+```
 
 ---
 
-## Automatic UI Updates
+## Phase 2: Type Updates
 
-Once COP is added to `BANKING_CURRENCIES`, it will automatically appear in these selectors:
-- Add/Edit Asset dialogs (banking/real estate)
-- Add Income dialog
-- Add Expense dialog
-- Add Debt dialog
-- Add Goal dialog
-- Fund Flow selector (buy/sell transactions)
-- Exchange Rates dialog (forex tab)
+**File: `src/lib/types.ts`**
+- Update `Asset` interface to include optional `currency` field
+
+---
+
+## Phase 3: Portfolio Calculation Fixes
+
+**File: `src/hooks/usePortfolio.ts`**
+
+Update the asset value calculation to:
+1. Check if a stock has a `currency` field other than USD
+2. If so, convert the stored value from native currency to display unit
+3. For stocks with live USD prices, continue using quantity × price
+
+Logic:
+```typescript
+// For stocks without live prices but with a currency
+if (asset.category === 'stocks' && !price && asset.currency && asset.currency !== 'USD') {
+  // Use the stored value as native currency amount
+  const currencyToUsdRate = getForexRateToUSD(asset.currency, liveForexRates);
+  const valueInUSD = asset.value * currencyToUsdRate;
+  return { ...asset, value: valueInUSD };
+}
+```
+
+---
+
+## Phase 4: UI Updates
+
+**File: `src/components/AddAssetDialog.tsx`**
+
+For stocks without a selected ticker (manual entry):
+1. Show currency selector dropdown
+2. Store selected currency in the new `currency` field
+3. Convert value to USD before saving (for consistency)
+
+**File: `src/components/AssetCategoryCard.tsx`**
+
+For stocks with non-USD currencies:
+- Display the native currency symbol and amount
+- Show converted value in display unit
+
+---
+
+## Phase 5: Display Fixes
+
+**File: `src/hooks/usePortfolio.ts`**
+
+Update `categoryTotals` calculation:
+- For stocks, check the `currency` field
+- Convert values using the appropriate forex rate
 
 ---
 
 ## Files to Modify
 
-| File | Purpose |
+| File | Changes |
 |------|---------|
-| `src/lib/types.ts` | Add COP to type, currency list, and fallback rates |
-| `supabase/functions/fetch-forex-rates/index.ts` | Fetch live COP rates from API |
-| `supabase/functions/create-monthly-snapshot/index.ts` | Fallback rate for monthly snapshots |
-| `supabase/functions/create-bulk-snapshots/index.ts` | Fallback rate for bulk snapshots |
+| Database migration | Add `currency` column to assets table |
+| `src/lib/types.ts` | Add `currency` field to Asset interface |
+| `src/hooks/usePortfolioData.ts` | Map `currency` field from database |
+| `src/hooks/usePortfolio.ts` | Fix value calculations for non-USD stocks |
+| `src/components/AddAssetDialog.tsx` | Add currency selector for manual stock entry |
+| `src/components/EditAssetDialog.tsx` | Support editing currency for stocks |
+| `src/components/AssetCategoryCard.tsx` | Display native currency for non-USD stocks |
+
+---
+
+## Expected Result
+
+After this fix:
+- **CELSIA**: 6,200 shares × COP 4,950 = COP 30,690,000 → ~€6,500 EUR
+- Colombian stocks will show their correct values in any display unit
+- New stocks can be added with any supported currency
+- Existing Colombian stocks will be auto-migrated to use COP
+
+---
+
+## Alternative Quick Fix
+
+If a full currency implementation is too complex, a simpler approach:
+
+1. **Reclassify Colombian stocks as "Real Estate, Equity & Misc."**
+   - This category already supports currencies
+   - User would need to re-add these assets with COP selected
+
+However, the proper solution (adding currency support to stocks) is recommended for long-term maintainability.
