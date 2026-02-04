@@ -42,6 +42,12 @@ export function Footer() {
             >
               Contact
             </a>
+            <Link
+              to="/api-docs"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              API Docs
+            </Link>
           </div>
 
           {/* Copyright */}

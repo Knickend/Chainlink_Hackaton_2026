@@ -52,6 +52,12 @@ const Landing = () => {
             >
               FAQ
             </a>
+            <a
+              href="/api-docs"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
+            >
+              API
+            </a>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
