@@ -1,88 +1,82 @@
 
+## Add Colombian Peso (COP) Support
 
-## Goal
-Display the interest rate (yield percentage) next to the asset name in the "Cash & Stablecoins" category card for banking assets.
-
-## Current State
-- The Asset type has a `yield` property storing the annual interest rate percentage
-- Database confirms yield data exists: OpenBank (3%), DHB bank (1.6%), Bunq (2%), etc.
-- The banking category uses a single-line layout that currently shows only: `[EUR] Asset Name ... €Amount`
-- The yield is not displayed anywhere in this row
-
-## Proposed Design
-Add the interest rate after the asset name when available:
-
-**Before:** `EUR  OpenBank                           €150,368.00`
-
-**After:** `EUR  OpenBank  3% APY                    €150,368.00`
-
-The interest rate will be displayed in a subtle style (muted color, smaller text) to avoid visual clutter while still being informative.
+This plan adds the Colombian Peso to all currency selectors and exchange rate systems throughout the application.
 
 ---
 
-## Changes Required
+## Changes Overview
 
-### File: `src/components/AssetCategoryCard.tsx`
-
-**Location:** Lines 240-251 (single-line layout for banking/realestate)
-
-**Current code:**
-```typescript
-<div className="flex items-center gap-2">
-  {asset.symbol && !hasForexCurrency && (
-    <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
-  )}
-  {hasForexCurrency && (
-    <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-      {asset.symbol}
-    </span>
-  )}
-  <span className="text-sm">{asset.name}</span>
-</div>
-```
-
-**Updated code:**
-```typescript
-<div className="flex items-center gap-2">
-  {asset.symbol && !hasForexCurrency && (
-    <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
-  )}
-  {hasForexCurrency && (
-    <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-      {asset.symbol}
-    </span>
-  )}
-  <span className="text-sm">{asset.name}</span>
-  {/* Show interest rate for banking assets */}
-  {category === 'banking' && asset.yield != null && asset.yield > 0 && (
-    <span className="text-xs text-success/80">{asset.yield}%</span>
-  )}
-</div>
-```
+Adding COP requires updates in **5 files** across 3 layers: types, frontend, and backend edge functions.
 
 ---
 
-## Technical Details
+## 1. Frontend Type Definitions
 
-- **Condition:** `category === 'banking' && asset.yield != null && asset.yield > 0`
-  - Only shows for banking category
-  - Handles null/undefined yields (some accounts like "Rabobank betaalrekening" have no yield)
-  - Skips 0% yields to reduce visual noise
-  
-- **Styling:** `text-xs text-success/80`
-  - Small text to match other metadata
-  - Green color (success) at 80% opacity - indicates positive yield without being too prominent
+**File:** `src/lib/types.ts`
+
+| Line | Change |
+|------|--------|
+| 5 | Add `'COP'` to `BankingCurrency` type union |
+| 35-36 | Add COP entry to `BANKING_CURRENCIES` array |
+| 60 | Add COP fallback rate to `FOREX_RATES_TO_USD` |
+
+**Currency Details:**
+- Code: `COP`
+- Label: `Colombian Peso`
+- Symbol: `$` (shared with USD/MXN)
+- Fallback rate: `~0.00024` (1 COP = ~$0.00024 USD, based on ~4,200 COP/USD)
 
 ---
 
-## Expected Result
+## 2. Backend Edge Function - Forex Fetcher
 
-After this change, the "Cash & Stablecoins" card will display:
+**File:** `supabase/functions/fetch-forex-rates/index.ts`
 
-| EUR | OpenBank | 3% | €150,368.00 |
-| EUR | DHB bank | 1.6% | €125,136.00 |
-| EUR | Bunq | 2% | €100,000.00 |
-| EUR | Rabobank betaalrekening | | €X (no yield shown - it's null) |
+| Line | Change |
+|------|--------|
+| 15-17 | Add `'COP'` to `SUPPORTED_CURRENCIES` array |
 
-This gives you at-a-glance visibility of which accounts are earning interest and at what rate.
+This enables the Frankfurter API call to fetch live COP rates, which are then cached in `price_cache` and displayed in the Exchange Rates dialog.
 
+---
+
+## 3. Backend Edge Functions - Snapshot Fallbacks
+
+**File:** `supabase/functions/create-monthly-snapshot/index.ts`
+
+| Line | Change |
+|------|--------|
+| 37-38 | Add `COP: 0.00024` to `FOREX_RATES_TO_USD` fallback map |
+
+**File:** `supabase/functions/create-bulk-snapshots/index.ts`
+
+| Line | Change |
+|------|--------|
+| 42-43 | Add `COP: 0.00024` to `FOREX_RATES_TO_USD` fallback map |
+
+These fallback rates ensure historical snapshots calculate correctly even if live rates are unavailable.
+
+---
+
+## Automatic UI Updates
+
+Once COP is added to `BANKING_CURRENCIES`, it will automatically appear in these selectors:
+- Add/Edit Asset dialogs (banking/real estate)
+- Add Income dialog
+- Add Expense dialog
+- Add Debt dialog
+- Add Goal dialog
+- Fund Flow selector (buy/sell transactions)
+- Exchange Rates dialog (forex tab)
+
+---
+
+## Files to Modify
+
+| File | Purpose |
+|------|---------|
+| `src/lib/types.ts` | Add COP to type, currency list, and fallback rates |
+| `supabase/functions/fetch-forex-rates/index.ts` | Fetch live COP rates from API |
+| `supabase/functions/create-monthly-snapshot/index.ts` | Fallback rate for monthly snapshots |
+| `supabase/functions/create-bulk-snapshots/index.ts` | Fallback rate for bulk snapshots |
