@@ -160,8 +160,10 @@ export function AssetCategoryCard({
           // Format asset value in native format for banking/realestate (original display)
           const formatNativeAssetValue = (): string => {
             // Banking and Real Estate: show original currency amount to prevent forex drift
+            // Use "COP" prefix instead of "$" for Colombian Peso to avoid confusion with USD
             if ((category === 'banking' || category === 'realestate') && asset.symbol && asset.quantity) {
-              return `${getCurrencySymbol(asset.symbol)}${asset.quantity.toLocaleString(undefined, { 
+              const currencySymbol = asset.symbol === 'COP' ? 'COP ' : getCurrencySymbol(asset.symbol);
+              return `${currencySymbol}${asset.quantity.toLocaleString(undefined, { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
               })}`;
