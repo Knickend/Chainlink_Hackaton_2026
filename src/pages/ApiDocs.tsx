@@ -16,7 +16,10 @@ const endpoints = [
     price: "$0.01",
     priceUnits: "10000",
     description: "Aggregated market insights and portfolio trends",
+    methods: ["GET", "POST", "PUT"],
     returns: ["Market data for top assets", "Category distribution", "Platform-wide insights"],
+    queryParams: ["?limit=20", "?includeCategories=true"],
+    bodyParams: { limit: 20, includeCategories: true },
   },
   {
     name: "Yield Analysis",
@@ -24,7 +27,10 @@ const endpoints = [
     price: "$0.02",
     priceUnits: "20000",
     description: "Yield optimization strategies and staking insights",
+    methods: ["GET", "POST", "PUT"],
     returns: ["Yield by asset category", "Optimization strategies", "Market context"],
+    queryParams: ["?category=crypto", "?minYield=3"],
+    bodyParams: { category: "crypto", minYield: 3, limit: 100 },
   },
   {
     name: "Debt Strategy",
@@ -32,7 +38,10 @@ const endpoints = [
     price: "$0.02",
     priceUnits: "20000",
     description: "Debt payoff recommendations and optimization",
+    methods: ["GET", "POST", "PUT"],
     returns: ["Debt analysis by type", "Payoff strategies (avalanche, snowball)", "Consolidation opportunities"],
+    queryParams: ["?debtType=credit_card", "?minInterestRate=15"],
+    bodyParams: { debtType: "credit_card", minInterestRate: 15 },
   },
   {
     name: "Price Feed",
@@ -40,8 +49,10 @@ const endpoints = [
     price: "$0.005",
     priceUnits: "5000",
     description: "Live crypto, forex, and commodity prices",
+    methods: ["GET", "POST", "PUT"],
     returns: ["Real-time prices", "24h changes", "Filter by type or symbols"],
-    params: ["?type=crypto", "?symbols=BTC,ETH,GOLD"],
+    queryParams: ["?type=crypto", "?symbols=BTC,ETH,GOLD"],
+    bodyParams: { type: "crypto", symbols: ["BTC", "ETH"], limit: 50 },
   },
 ];
 
@@ -138,7 +149,7 @@ export default function ApiDocs() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Designed for autonomous AI agents. Standard HTTP with x402 payment headers.
+                GET, POST, or PUT with query params or JSON body. Standard HTTP + x402 headers.
               </p>
             </CardContent>
           </Card>
@@ -184,12 +195,36 @@ export default function ApiDocs() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2 bg-muted p-2 rounded text-sm font-mono">
-                    <Badge variant="secondary" className="text-xs">GET</Badge>
-                    <span className="text-xs break-all">{SUPABASE_URL}/functions/v1{endpoint.path}</span>
+                    <div className="flex gap-1">
+                      {endpoint.methods.map((method) => (
+                        <Badge 
+                          key={method} 
+                          variant="secondary" 
+                          className={`text-xs ${
+                            method === "GET" 
+                              ? "bg-green-500/10 text-green-600" 
+                              : method === "POST" 
+                              ? "bg-blue-500/10 text-blue-600"
+                              : "bg-orange-500/10 text-orange-600"
+                          }`}
+                        >
+                          {method}
+                        </Badge>
+                      ))}
+                    </div>
+                    <span className="text-xs break-all flex-1">{SUPABASE_URL}/functions/v1{endpoint.path}</span>
                   </div>
-                  {endpoint.params && (
+                  {endpoint.queryParams && (
                     <div className="text-xs text-muted-foreground">
-                      <span className="font-medium">Query params:</span> {endpoint.params.join(", ")}
+                      <span className="font-medium">Query params:</span> {endpoint.queryParams.join(", ")}
+                    </div>
+                  )}
+                  {endpoint.bodyParams && (
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-medium">Body (POST/PUT):</span>{" "}
+                      <code className="bg-muted-foreground/10 px-1 rounded">
+                        {JSON.stringify(endpoint.bodyParams)}
+                      </code>
                     </div>
                   )}
                   <div className="text-xs">
@@ -210,9 +245,10 @@ export default function ApiDocs() {
         <section>
           <h2 className="text-xl font-semibold mb-4">Integration Guide</h2>
           <Tabs defaultValue="flow" className="w-full">
-            <TabsList>
+            <TabsList className="flex-wrap">
               <TabsTrigger value="flow">How It Works</TabsTrigger>
-              <TabsTrigger value="curl">cURL Example</TabsTrigger>
+              <TabsTrigger value="get">GET Example</TabsTrigger>
+              <TabsTrigger value="post">POST Example</TabsTrigger>
               <TabsTrigger value="typescript">TypeScript</TabsTrigger>
               <TabsTrigger value="python">Python</TabsTrigger>
             </TabsList>
@@ -224,7 +260,7 @@ export default function ApiDocs() {
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">1</div>
                     <div>
                       <h4 className="font-medium">Request without payment</h4>
-                      <p className="text-sm text-muted-foreground">Call any endpoint without the X-Payment header</p>
+                      <p className="text-sm text-muted-foreground">Call any endpoint (GET, POST, or PUT) without the X-Payment header</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-4">
@@ -259,27 +295,57 @@ export default function ApiDocs() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="curl" className="mt-4">
+            <TabsContent value="get" className="mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Test the 402 Response</CardTitle>
+                  <CardTitle className="text-base">GET with Query Parameters</CardTitle>
+                  <CardDescription>Traditional REST-style requests</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <CodeBlock
                     code={`# Get the 402 payment challenge
-curl -X GET "${SUPABASE_URL}/functions/v1/api-portfolio-summary"
+curl -X GET "${SUPABASE_URL}/functions/v1/api-price-feed?type=crypto&symbols=BTC,ETH"
 
-# Response (402):
+# After payment, include X-Payment header
+curl -X GET "${SUPABASE_URL}/functions/v1/api-price-feed?type=crypto&symbols=BTC,ETH" \\
+  -H "X-Payment: <payment_proof>"
+
+# Response (200):
 # {
-#   "x402Version": 1,
-#   "accepts": [{
-#     "scheme": "exact",
-#     "network": "base",
-#     "maxAmountRequired": "10000",
-#     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-#     "payTo": "${WALLET_ADDRESS}",
-#     ...
-#   }]
+#   "timestamp": "2026-02-04T...",
+#   "request": { "method": "GET", "filters": {...} },
+#   "prices": [{ "symbol": "BTC", "price": 98000, ... }],
+#   "paymentDetails": { "amountPaid": "$0.005", ... }
+# }`}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="post" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">POST/PUT with JSON Body</CardTitle>
+                  <CardDescription>Ideal for AI agents with complex filters</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CodeBlock
+                    code={`# POST with JSON body
+curl -X POST "${SUPABASE_URL}/functions/v1/api-price-feed" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Payment: <payment_proof>" \\
+  -d '{"type": "crypto", "symbols": ["BTC", "ETH", "SOL"], "limit": 10}'
+
+# PUT also works the same way
+curl -X PUT "${SUPABASE_URL}/functions/v1/api-debt-strategy" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Payment: <payment_proof>" \\
+  -d '{"debtType": "credit_card", "minInterestRate": 20}'
+
+# Response includes method used:
+# {
+#   "request": { "method": "POST", "filters": {...} },
+#   ...
 # }`}
                   />
                 </CardContent>
@@ -301,13 +367,27 @@ const client = createX402Client({
   wallet: yourWallet, // ethers.js or viem wallet
 });
 
-// Client automatically handles 402 → payment → retry
-const response = await client.fetch(
-  '${SUPABASE_URL}/functions/v1/api-portfolio-summary'
+// GET with query params
+const getResponse = await client.fetch(
+  '${SUPABASE_URL}/functions/v1/api-price-feed?type=crypto'
 );
 
-const data = await response.json();
-console.log(data.marketData);`}
+// POST with JSON body (same endpoint, more flexibility)
+const postResponse = await client.fetch(
+  '${SUPABASE_URL}/functions/v1/api-price-feed',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'crypto',
+      symbols: ['BTC', 'ETH', 'SOL'],
+      limit: 20
+    })
+  }
+);
+
+const data = await postResponse.json();
+console.log(data.prices);`}
                   />
                 </CardContent>
               </Card>
@@ -328,18 +408,56 @@ client = X402Client(
     private_key=your_private_key
 )
 
-# Automatic 402 handling with payment
+# GET with query params
 response = client.get(
     "${SUPABASE_URL}/functions/v1/api-price-feed",
     params={"type": "crypto", "symbols": "BTC,ETH"}
 )
 
-print(response.json()["prices"])`}
+# POST with JSON body
+response = client.post(
+    "${SUPABASE_URL}/functions/v1/api-yield-analysis",
+    json={"category": "crypto", "minYield": 5, "limit": 100}
+)
+
+# PUT also supported
+response = client.put(
+    "${SUPABASE_URL}/functions/v1/api-debt-strategy",
+    json={"debtType": "mortgage"}
+)
+
+print(response.json())`}
                   />
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
+        </section>
+
+        {/* Request Body Schema */}
+        <section>
+          <h2 className="text-xl font-semibold mb-4">Request Body Schema</h2>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">JSON Body Format (POST/PUT/PATCH)</CardTitle>
+              <CardDescription>All fields are optional - omit to use defaults</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CodeBlock
+                language="json"
+                code={`{
+  "type": "crypto | forex | commodities",  // Filter by asset type (price-feed)
+  "symbols": ["BTC", "ETH", "GOLD"],        // Filter by symbols (price-feed)
+  "category": "crypto | banking | real_estate",  // Filter by category (yield)
+  "debtType": "credit_card | mortgage | student_loan",  // Debt type filter
+  "minYield": 3.5,                          // Minimum yield % (yield)
+  "minInterestRate": 15,                    // Minimum rate % (debt)
+  "limit": 50,                              // Max results (1-100 or 1-1000)
+  "includeCategories": true                 // Include breakdown (portfolio)
+}`}
+              />
+            </CardContent>
+          </Card>
         </section>
 
         {/* Resources */}
@@ -415,7 +533,7 @@ print(response.json()["prices"])`}
       {/* Footer */}
       <footer className="border-t mt-12">
         <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground">
-          <p>Powered by x402 Protocol on Base • Payments in USDC</p>
+          <p>Powered by x402 Protocol on Base • Payments in USDC • GET | POST | PUT</p>
         </div>
       </footer>
     </div>

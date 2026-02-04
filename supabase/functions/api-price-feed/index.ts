@@ -1,5 +1,6 @@
 // api-price-feed: x402 Monetized Live Price Feed API
 // Price: $0.005 per request
+// Supports: GET (query params) and POST/PUT/PATCH (request body)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -13,6 +14,49 @@ import {
 
 const PRICE_CENTS = 0.5; // $0.005 (half a cent)
 
+interface Filters {
+  type: string | null;
+  symbols: string[] | null;
+  limit: number;
+}
+
+async function parseFilters(req: Request, url: URL): Promise<Filters> {
+  const filters: Filters = {
+    type: null,
+    symbols: null,
+    limit: 50,
+  };
+
+  if (req.method === "GET") {
+    // Parse from query parameters
+    filters.type = url.searchParams.get("type");
+    const symbolsParam = url.searchParams.get("symbols");
+    filters.symbols = symbolsParam ? symbolsParam.split(",").map(s => s.trim().toUpperCase()) : null;
+    const limitParam = url.searchParams.get("limit");
+    if (limitParam) {
+      filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 50), 100);
+    }
+  } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
+    // Parse from request body
+    try {
+      const body = await req.json();
+      filters.type = body.type || null;
+      if (body.symbols) {
+        filters.symbols = Array.isArray(body.symbols) 
+          ? body.symbols.map((s: string) => s.toUpperCase())
+          : body.symbols.split(",").map((s: string) => s.trim().toUpperCase());
+      }
+      if (body.limit) {
+        filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 50), 100);
+      }
+    } catch {
+      // Empty body is OK, use defaults
+    }
+  }
+
+  return filters;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   const corsResponse = handleCors(req);
@@ -21,10 +65,6 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const resource = url.pathname;
-
-    // Parse query params for filtering
-    const assetType = url.searchParams.get("type"); // crypto, forex, commodities
-    const symbols = url.searchParams.get("symbols")?.split(","); // e.g., BTC,ETH,GOLD
 
     // Check for X-Payment header
     const paymentHeader = req.headers.get("X-Payment");
@@ -51,6 +91,9 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
+    // Parse filters from query params OR request body
+    const filters = await parseFilters(req, url);
+
     // Payment verified - serve the data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -63,16 +106,16 @@ Deno.serve(async (req) => {
       .order("updated_at", { ascending: false });
 
     // Apply filters
-    if (assetType) {
-      query = query.eq("asset_type", assetType);
+    if (filters.type) {
+      query = query.eq("asset_type", filters.type);
     }
 
-    if (symbols && symbols.length > 0) {
-      query = query.in("symbol", symbols.map(s => s.toUpperCase()));
+    if (filters.symbols && filters.symbols.length > 0) {
+      query = query.in("symbol", filters.symbols);
     }
 
     // Limit results
-    query = query.limit(50);
+    query = query.limit(filters.limit);
 
     const { data: prices, error } = await query;
 
@@ -104,9 +147,13 @@ Deno.serve(async (req) => {
 
     const response = {
       timestamp: new Date().toISOString(),
-      filters: {
-        assetType: assetType || "all",
-        symbols: symbols || "all",
+      request: {
+        method: req.method,
+        filters: {
+          assetType: filters.type || "all",
+          symbols: filters.symbols || "all",
+          limit: filters.limit,
+        },
       },
       prices: formattedPrices,
       byType,

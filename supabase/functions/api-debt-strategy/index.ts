@@ -1,5 +1,6 @@
 // api-debt-strategy: x402 Monetized Debt Optimization API
 // Price: $0.02 per request
+// Supports: GET (query params) and POST/PUT/PATCH (request body)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -12,6 +13,47 @@ import {
 } from "../_shared/x402.ts";
 
 const PRICE_CENTS = 2; // $0.02
+
+interface Filters {
+  debtType: string | null;
+  minInterestRate: number | null;
+  limit: number;
+}
+
+async function parseFilters(req: Request, url: URL): Promise<Filters> {
+  const filters: Filters = {
+    debtType: null,
+    minInterestRate: null,
+    limit: 500,
+  };
+
+  if (req.method === "GET") {
+    filters.debtType = url.searchParams.get("debtType") || url.searchParams.get("type");
+    const minRateParam = url.searchParams.get("minInterestRate") || url.searchParams.get("minRate");
+    if (minRateParam) {
+      filters.minInterestRate = parseFloat(minRateParam);
+    }
+    const limitParam = url.searchParams.get("limit");
+    if (limitParam) {
+      filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 500), 1000);
+    }
+  } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
+    try {
+      const body = await req.json();
+      filters.debtType = body.debtType || body.type || null;
+      if (body.minInterestRate !== undefined || body.minRate !== undefined) {
+        filters.minInterestRate = parseFloat(body.minInterestRate || body.minRate);
+      }
+      if (body.limit) {
+        filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 500), 1000);
+      }
+    } catch {
+      // Empty body is OK, use defaults
+    }
+  }
+
+  return filters;
+}
 
 Deno.serve(async (req) => {
   // Handle CORS
@@ -47,16 +89,30 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
+    // Parse filters from query params OR request body
+    const filters = await parseFilters(req, url);
+
     // Payment verified - serve the data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch debt data (anonymized aggregates)
-    const { data: debtData } = await supabase
+    // Build query for debt data (anonymized aggregates)
+    let query = supabase
       .from("debts")
-      .select("debt_type, interest_rate, principal_amount, monthly_payment")
-      .limit(500);
+      .select("debt_type, interest_rate, principal_amount, monthly_payment");
+
+    if (filters.debtType) {
+      query = query.eq("debt_type", filters.debtType);
+    }
+
+    if (filters.minInterestRate !== null) {
+      query = query.gte("interest_rate", filters.minInterestRate);
+    }
+
+    query = query.limit(filters.limit);
+
+    const { data: debtData } = await query;
 
     // Analyze debt by type
     const debtByType: Record<string, { 
@@ -144,6 +200,14 @@ Deno.serve(async (req) => {
 
     const response = {
       timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        filters: {
+          debtType: filters.debtType || "all",
+          minInterestRate: filters.minInterestRate,
+          limit: filters.limit,
+        },
+      },
       debtAnalysis: {
         byType: debtAnalysis,
         totalDebtTypes: debtAnalysis.length,
