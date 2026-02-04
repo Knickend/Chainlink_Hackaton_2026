@@ -1,71 +1,136 @@
 
 
-## Add AI Agent API Link to Landing Page
+## Add POST and PUT Support to x402 APIs
 
-This plan adds visibility for the x402 monetized API documentation on the landing page, making it clear that InControl is also available for AI agents.
+This plan adds full HTTP method flexibility to the x402 monetized APIs, allowing AI agents to use POST/PUT with request bodies as an alternative to GET with query parameters.
+
+---
+
+## Current State
+
+| Component | Current | Issue |
+|-----------|---------|-------|
+| CORS Methods | `GET, POST, OPTIONS` | Missing `PUT`, `PATCH`, `DELETE` |
+| Request Parsing | Query params only | No `req.json()` body parsing |
+| API Docs | Shows only GET examples | No POST/PUT documentation |
 
 ---
 
 ## Changes Overview
 
-We'll add the API documentation link in two strategic locations:
+### 1. Update Shared CORS Headers
 
-### 1. Navigation Bar (Desktop)
+**File:** `supabase/functions/_shared/x402.ts`
 
-Add an "API" link in the main navigation alongside Features, Pricing, and FAQ:
+Update the allowed methods to include all standard HTTP methods:
 
-| Current | After |
-|---------|-------|
-| Features \| Pricing \| FAQ | Features \| Pricing \| FAQ \| **API** |
+```typescript
+"Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+```
 
-This gives developers and AI agent builders immediate visibility.
+### 2. Add Request Body Parsing to Endpoints
 
-### 2. Footer Links
+Each endpoint will accept filters from either:
+- **Query parameters** (GET): `?type=crypto&symbols=BTC,ETH`
+- **Request body** (POST/PUT):`{ "type": "crypto", "symbols": ["BTC", "ETH"] }`
 
-Add "API Docs" link in the footer alongside Terms, Privacy, and Contact:
+**Files to update:**
+- `supabase/functions/api-price-feed/index.ts`
+- `supabase/functions/api-portfolio-summary/index.ts`
+- `supabase/functions/api-yield-analysis/index.ts`
+- `supabase/functions/api-debt-strategy/index.ts`
 
-| Current | After |
-|---------|-------|
-| Terms \| Privacy \| Contact | Terms \| Privacy \| Contact \| **API Docs** |
+**Logic pattern for each endpoint:**
+
+```typescript
+// Parse filters from query params OR request body
+let filters = { type: null, symbols: null };
+
+if (req.method === "GET") {
+  // From query params
+  filters.type = url.searchParams.get("type");
+  filters.symbols = url.searchParams.get("symbols")?.split(",");
+} else if (["POST", "PUT", "PATCH"].includes(req.method)) {
+  // From request body
+  try {
+    const body = await req.json();
+    filters.type = body.type || null;
+    filters.symbols = body.symbols || null;
+  } catch {
+    // Empty body is OK, use defaults
+  }
+}
+```
+
+### 3. Update API Documentation
+
+**File:** `src/pages/ApiDocs.tsx`
+
+Add POST examples alongside existing GET examples:
+
+- Show both `GET` and `POST` badges on endpoint cards
+- Add new tab for POST/PUT examples in the Integration Guide
+- Update code samples to show request body format
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/pages/Landing.tsx` | Add "API" nav link to desktop navigation (line ~49) |
-| `src/components/landing/Footer.tsx` | Add "API Docs" link in footer links section |
+| File | Changes |
+|------|---------|
+| `supabase/functions/_shared/x402.ts` | Add PUT, PATCH, DELETE to CORS |
+| `supabase/functions/api-price-feed/index.ts` | Parse body for POST/PUT |
+| `supabase/functions/api-portfolio-summary/index.ts` | Parse body for POST/PUT |
+| `supabase/functions/api-yield-analysis/index.ts` | Parse body for POST/PUT |
+| `supabase/functions/api-debt-strategy/index.ts` | Parse body for POST/PUT |
+| `src/pages/ApiDocs.tsx` | Add POST/PUT documentation |
 
 ---
 
-## Visual Preview
+## API Usage Examples (After)
 
-**Navigation (Desktop):**
-```
-[InControl]    Features  Pricing  FAQ  API    [Theme] [Sign in] [Get Started]
+**GET (unchanged):**
+```bash
+curl -X GET "https://api/functions/v1/api-price-feed?type=crypto&symbols=BTC,ETH" \
+  -H "X-Payment: <payment_proof>"
 ```
 
-**Footer:**
+**POST (new):**
+```bash
+curl -X POST "https://api/functions/v1/api-price-feed" \
+  -H "Content-Type: application/json" \
+  -H "X-Payment: <payment_proof>" \
+  -d '{"type": "crypto", "symbols": ["BTC", "ETH"]}'
 ```
-InControl.finance    Terms | Privacy | Contact | API Docs    © 2026 InControl
+
+**PUT (new):**
+```bash
+curl -X PUT "https://api/functions/v1/api-price-feed" \
+  -H "Content-Type: application/json" \
+  -H "X-Payment: <payment_proof>" \
+  -d '{"symbols": ["GOLD", "SILVER"]}'
 ```
 
 ---
 
-## Technical Details
+## Request Body Schema
 
-**Landing.tsx changes:**
-- Add a new `<a>` element linking to `/api-docs`
-- Follows existing styling: `text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200`
+All endpoints will accept an optional JSON body:
 
-**Footer.tsx changes:**
-- Add a new `<Link>` component from react-router-dom to `/api-docs`
-- Consistent with existing link styling
+```json
+{
+  "type": "crypto | forex | commodities",  // Filter by asset type
+  "symbols": ["BTC", "ETH", "GOLD"],        // Filter by symbols
+  "limit": 50                                // Optional limit (max 100)
+}
+```
 
 ---
 
-## Implementation Note
+## Technical Notes
 
-Both links will use internal routing (`/api-docs`) rather than anchor tags, maintaining SPA navigation behavior.
+- **Backwards compatible**: GET with query params continues to work exactly as before
+- **Method-agnostic filters**: Same filters work regardless of HTTP method
+- **Empty body handling**: POST/PUT with empty body uses default filters (returns all data)
+- **Error handling**: Invalid JSON body returns 400 Bad Request
 
