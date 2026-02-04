@@ -206,10 +206,48 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     const monthlyNetIncome = totalIncome - totalExpenses;
     
     const yearlyYield = assets.reduce((sum, asset) => {
-      if (asset.yield) {
-        return sum + (asset.value * (asset.yield / 100));
+      if (!asset.yield) return sum;
+      
+      let assetValueInDisplayUnit: number;
+      
+      // Banking/Real Estate: use native currency amount and convert
+      if (asset.category === 'banking' || asset.category === 'realestate') {
+        const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
+        const nativeAmount = asset.quantity ?? asset.value;
+        
+        if (assetCurrency === displayUnit) {
+          assetValueInDisplayUnit = nativeAmount;
+        } else {
+          // Convert from native currency to display unit
+          const liveFromRate = livePrices?.forex?.[assetCurrency];
+          let amountInUSD: number;
+          if (liveFromRate && liveFromRate > 0) {
+            amountInUSD = nativeAmount * (1 / liveFromRate);
+          } else {
+            amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
+          }
+          
+          // Convert USD to display unit
+          const liveToRate = livePrices?.forex?.[displayUnit];
+          if (liveToRate && liveToRate > 0) {
+            assetValueInDisplayUnit = amountInUSD * liveToRate;
+          } else {
+            assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
+          }
+        }
       }
-      return sum;
+      // Stocks with non-USD currencies: convert from native to display unit
+      else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+        const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+        const usdValue = asset.value * rateToUsd;
+        assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
+      }
+      // Other assets (crypto, commodities, USD stocks): value is in USD
+      else {
+        assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
+      }
+      
+      return sum + (assetValueInDisplayUnit * (asset.yield / 100));
     }, 0);
 
     return {

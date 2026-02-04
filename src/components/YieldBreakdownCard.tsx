@@ -2,20 +2,26 @@ import { motion } from 'framer-motion';
 import { Coins, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Asset } from '@/lib/types';
+import { Asset, DisplayUnit, getForexRateToUSD } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface YieldBreakdownCardProps {
   totalYield: number;
   assets: Asset[];
-  formatValue: (value: number) => string;
+  formatDisplayUnitValue: (value: number) => string;
+  livePrices?: { forex?: Record<string, number> };
+  displayUnit: DisplayUnit;
+  conversionRates: Record<DisplayUnit, number>;
   delay?: number;
 }
 
 export function YieldBreakdownCard({
   totalYield,
   assets,
-  formatValue,
+  formatDisplayUnitValue,
+  livePrices,
+  displayUnit,
+  conversionRates,
   delay = 0,
 }: YieldBreakdownCardProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,15 +29,43 @@ export function YieldBreakdownCard({
   // Filter assets that have a yield
   const yieldingAssets = assets.filter((a) => a.yield && a.yield > 0);
 
-  // Calculate yield amount for each asset
-  const yieldBreakdown = yieldingAssets.map((asset) => ({
-    name: asset.name,
-    symbol: asset.symbol,
-    category: asset.category,
-    yieldPercent: asset.yield!,
-    yieldAmount: asset.value * (asset.yield! / 100),
-    assetValue: asset.value,
-  }));
+  // Calculate yield amount for each asset with proper currency conversion
+  const yieldBreakdown = yieldingAssets.map((asset) => {
+    let assetValueInDisplayUnit: number;
+    
+    // Banking/Real Estate: use native currency amount and convert
+    if (asset.category === 'banking' || asset.category === 'realestate') {
+      const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
+      const nativeAmount = asset.quantity ?? asset.value;
+      
+      if (assetCurrency === displayUnit) {
+        assetValueInDisplayUnit = nativeAmount;
+      } else {
+        const rateToUsd = getForexRateToUSD(assetCurrency, livePrices?.forex);
+        const amountInUSD = nativeAmount * rateToUsd;
+        assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
+      }
+    }
+    // Stocks with non-USD currencies: convert from native to display unit
+    else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+      const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+      const usdValue = asset.value * rateToUsd;
+      assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
+    }
+    // Other assets (crypto, commodities, USD stocks): value is in USD
+    else {
+      assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
+    }
+    
+    return {
+      name: asset.name,
+      symbol: asset.symbol,
+      category: asset.category,
+      yieldPercent: asset.yield!,
+      yieldAmount: assetValueInDisplayUnit * (asset.yield! / 100),
+      assetValue: assetValueInDisplayUnit,
+    };
+  });
 
   // Sort by yield amount descending
   yieldBreakdown.sort((a, b) => b.yieldAmount - a.yieldAmount);
@@ -109,7 +143,7 @@ export function YieldBreakdownCard({
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-sm">{item.name}</span>
                         <span className="font-mono text-sm text-success">
-                          +{formatValue(item.yieldAmount)}
+                          +{formatDisplayUnitValue(item.yieldAmount)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1">
@@ -134,7 +168,7 @@ export function YieldBreakdownCard({
       
       <div className="flex-1">
         <p className="stat-label mb-1">Annual Yield</p>
-        <p className="stat-value gradient-text">{formatValue(totalYield)}</p>
+        <p className="stat-value gradient-text">{formatDisplayUnitValue(totalYield)}</p>
       </div>
       <p className="text-xs text-muted-foreground mt-2 min-h-[20px]">From investments</p>
     </motion.div>

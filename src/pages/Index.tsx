@@ -342,7 +342,10 @@ const IndexContent = () => {
           <YieldBreakdownCard
             totalYield={metrics.yearlyYield}
             assets={assets}
-            formatValue={formatValue}
+            formatDisplayUnitValue={formatDisplayUnitValue}
+            livePrices={prices}
+            displayUnit={displayUnit}
+            conversionRates={conversionRates}
             delay={0.3}
           />
         </div>
