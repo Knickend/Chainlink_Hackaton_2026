@@ -35,3 +35,15 @@ verify_jwt = false
 
 [functions.parse-voice-command]
 verify_jwt = false
+
+[functions.api-portfolio-summary]
+verify_jwt = false
+
+[functions.api-yield-analysis]
+verify_jwt = false
+
+[functions.api-debt-strategy]
+verify_jwt = false
+
+[functions.api-price-feed]
+verify_jwt = false
