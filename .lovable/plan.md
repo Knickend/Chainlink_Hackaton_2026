@@ -1,202 +1,120 @@
 
-## Fix Annual Yield Currency Conversion Bug
 
-This plan addresses the currency conversion bug in the Annual Yield calculation where COP-denominated assets are incorrectly inflating the yield total.
+## Build x402 Monetized API Infrastructure
 
----
-
-## Root Cause Analysis
-
-Looking at the database data, the issue is clear:
-
-**Example - PEI (Colombian stock):**
-- `currency`: "COP"
-- `value`: 31,984,000 (stored in COP, NOT USD)
-- `yield`: 4%
-
-**Current (wrong) calculation:**
-`31,984,000 × 4% = 1,279,360` → treated as €956,127 EUR
-
-**Correct calculation:**
-`31,984,000 COP × 0.00024 = $7,676 USD × 4% = ~$307/year`
-
-The bug exists in TWO places:
-1. `usePortfolio.ts` line 208-213 - `yearlyYield` calculation in metrics
-2. `YieldBreakdownCard.tsx` line 32 - `yieldAmount` calculation for breakdown display
+Now that we have your Base wallet address (`0x72F91fb57820A2c5078bECE60C945Fc2981F785b`), this plan implements the complete x402 payment infrastructure for AI agent monetization.
 
 ---
 
-## Changes Required
+## What We're Building
 
-### 1. Fix yearlyYield Calculation in usePortfolio.ts
-
-**File:** `src/hooks/usePortfolio.ts`
-
-**Current code (lines 208-213):**
-```typescript
-const yearlyYield = assets.reduce((sum, asset) => {
-  if (asset.yield) {
-    return sum + (asset.value * (asset.yield / 100));
-  }
-  return sum;
-}, 0);
-```
-
-**Updated code:**
-```typescript
-const yearlyYield = assets.reduce((sum, asset) => {
-  if (!asset.yield) return sum;
-  
-  let assetValueInDisplayUnit: number;
-  
-  // Banking/Real Estate: use native currency amount and convert
-  if (asset.category === 'banking' || asset.category === 'realestate') {
-    const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
-    const nativeAmount = asset.quantity ?? asset.value;
-    
-    if (assetCurrency === displayUnit) {
-      assetValueInDisplayUnit = nativeAmount;
-    } else {
-      // Convert from native currency to display unit
-      const liveFromRate = livePrices?.forex?.[assetCurrency];
-      let amountInUSD: number;
-      if (liveFromRate && liveFromRate > 0) {
-        amountInUSD = nativeAmount * (1 / liveFromRate);
-      } else {
-        amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
-      }
-      
-      // Convert USD to display unit
-      const liveToRate = livePrices?.forex?.[displayUnit];
-      if (liveToRate && liveToRate > 0) {
-        assetValueInDisplayUnit = amountInUSD * liveToRate;
-      } else {
-        assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
-      }
-    }
-  }
-  // Stocks with non-USD currencies: convert from native to display unit
-  else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
-    const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-    const usdValue = asset.value * rateToUsd;
-    assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
-  }
-  // Other assets (crypto, commodities, USD stocks): value is in USD
-  else {
-    assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
-  }
-  
-  return sum + (assetValueInDisplayUnit * (asset.yield / 100));
-}, 0);
-```
+A set of paywalled API endpoints that AI agents can access by paying USDC micropayments on Base blockchain. When an agent calls your API without payment, they receive a `402 Payment Required` response with payment instructions. Once they pay, they get access to financial insights.
 
 ---
 
-### 2. Fix YieldBreakdownCard Component
+## Implementation Steps
 
-**File:** `src/components/YieldBreakdownCard.tsx`
+### Step 1: Add Wallet Secret
 
-The component needs additional props to handle currency conversion, and must apply the same logic for individual asset yield amounts.
-
-**Changes needed:**
-
-1. Add new props for live prices, display unit, and conversion rates
-2. Update the `yieldBreakdown` calculation to convert values properly
-
-**Updated interface:**
-```typescript
-interface YieldBreakdownCardProps {
-  totalYield: number;
-  assets: Asset[];
-  formatValue: (value: number) => string;
-  livePrices?: { forex?: Record<string, number> };
-  displayUnit: DisplayUnit;
-  conversionRates: Record<DisplayUnit, number>;
-  delay?: number;
-}
+Add `X402_WALLET_ADDRESS` secret with value:
+```
+0x72F91fb57820A2c5078bECE60C945Fc2981F785b
 ```
 
-**Updated yieldBreakdown calculation:**
-```typescript
-const yieldBreakdown = yieldingAssets.map((asset) => {
-  let assetValueInDisplayUnit: number;
-  
-  // Apply same currency conversion logic as usePortfolio
-  if (asset.category === 'banking' || asset.category === 'realestate') {
-    const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
-    const nativeAmount = asset.quantity ?? asset.value;
-    
-    if (assetCurrency === displayUnit) {
-      assetValueInDisplayUnit = nativeAmount;
-    } else {
-      const rateToUsd = getForexRateToUSD(assetCurrency, livePrices?.forex);
-      const amountInUSD = nativeAmount * rateToUsd;
-      assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
-    }
-  } else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
-    const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-    const usdValue = asset.value * rateToUsd;
-    assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
-  } else {
-    assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
-  }
-  
-  return {
-    name: asset.name,
-    symbol: asset.symbol,
-    category: asset.category,
-    yieldPercent: asset.yield!,
-    yieldAmount: assetValueInDisplayUnit * (asset.yield! / 100),
-    assetValue: assetValueInDisplayUnit,
-  };
-});
+### Step 2: Create Shared x402 Utility
+
+**New file:** `supabase/functions/_shared/x402.ts`
+
+Shared module for payment verification:
+- `createPaymentChallenge()` - Generates 402 response with USDC payment details
+- `verifyPayment()` - Validates X-Payment header via Coinbase facilitator
+- Constants for Base USDC contract address and facilitator URL
+
+### Step 3: Create Monetized API Endpoints
+
+| Endpoint | Price | What It Returns |
+|----------|-------|-----------------|
+| `api-portfolio-summary` | $0.01 | Aggregated market insights and trends |
+| `api-yield-analysis` | $0.02 | Yield optimization strategies |
+| `api-debt-strategy` | $0.02 | Debt payoff recommendations |
+| `api-price-feed` | $0.005 | Live crypto/stock/forex prices |
+
+Each endpoint:
+1. Checks for `X-Payment` header
+2. If missing → returns 402 with payment challenge
+3. If present → verifies via facilitator → serves data
+
+### Step 4: Update Config
+
+Add function configurations to `supabase/config.toml` with `verify_jwt = false` for public agent access.
+
+### Step 5: Create API Documentation Page
+
+**New file:** `src/pages/ApiDocs.tsx`
+
+Public documentation showing:
+- Available endpoints and pricing
+- x402 protocol integration guide
+- Code examples for AI agents
+- Your wallet address for direct payments
+
+### Step 6: Add Route
+
+Update `src/App.tsx` to add `/api-docs` route.
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `supabase/functions/_shared/x402.ts` | Create |
+| `supabase/functions/api-portfolio-summary/index.ts` | Create |
+| `supabase/functions/api-yield-analysis/index.ts` | Create |
+| `supabase/functions/api-debt-strategy/index.ts` | Create |
+| `supabase/functions/api-price-feed/index.ts` | Create |
+| `supabase/config.toml` | Modify |
+| `src/pages/ApiDocs.tsx` | Create |
+| `src/App.tsx` | Modify |
+
+---
+
+## How It Works (Agent Flow)
+
+```
+AI Agent                         Your API                    Base Chain
+   │                                │                            │
+   │── GET /api-portfolio-summary ──>│                            │
+   │                                │                            │
+   │<── 402 Payment Required ───────│                            │
+   │    {                           │                            │
+   │      payTo: "0x72F9...",       │                            │
+   │      amount: "10000",          │                            │
+   │      asset: "USDC"             │                            │
+   │    }                           │                            │
+   │                                │                            │
+   │── GET + X-Payment header ──────>│                            │
+   │                                │── Verify via facilitator ──>│
+   │                                │<── Payment confirmed ───────│
+   │<── 200 OK + Data ──────────────│                            │
+   │                                │                            │
+   └────────────────────────────────┴────────────────────────────┘
 ```
 
 ---
 
-### 3. Update Index.tsx to Pass New Props
+## Revenue Tracking
 
-**File:** `src/pages/Index.tsx`
-
-Update the `YieldBreakdownCard` usage to pass the required props:
-
-```typescript
-<YieldBreakdownCard
-  totalYield={metrics.yearlyYield}
-  assets={assets}
-  formatValue={formatValue}
-  formatDisplayUnitValue={formatDisplayUnitValue}
-  livePrices={livePrices}
-  displayUnit={displayUnit}
-  conversionRates={conversionRates}
-  delay={0.3}
-/>
-```
-
-Note: The `totalYield` from metrics is already in display units (after the usePortfolio fix), so we should use `formatDisplayUnitValue` instead of `formatValue` for the total.
+All payments go directly to your wallet. You can track incoming USDC on:
+- Base Explorer: `basescan.org/address/0x72F91fb57820A2c5078bECE60C945Fc2981F785b`
+- Your Base app wallet
 
 ---
 
-## Files to Modify
+## After Implementation
 
-| File | Changes |
-|------|---------|
-| `src/hooks/usePortfolio.ts` | Fix `yearlyYield` calculation to handle banking/realestate native currencies and non-USD stock currencies |
-| `src/components/YieldBreakdownCard.tsx` | Add props for currency conversion, update yieldBreakdown to convert values properly |
-| `src/pages/Index.tsx` | Pass additional props (livePrices, displayUnit, conversionRates) to YieldBreakdownCard |
+1. Test endpoints with curl (will return 402)
+2. API docs available at `/api-docs`
+3. Share endpoints with AI agent developers
+4. USDC accumulates in your Base wallet
 
----
-
-## Expected Results After Fix
-
-**PEI (Colombian stock):**
-- Value: COP 31,984,000 × 0.00024 = ~$7,676 USD
-- Yield: $7,676 × 4% = ~$307/year → ~€285/year
-
-**Apto Bogota (Real estate):**
-- Native: COP 500,000,000 × 0.00024 = ~$120,000 USD
-- Yield: $120,000 × 4.5% = ~$5,400/year → ~€5,000/year
-
-**Total Annual Yield:**
-- Current: €981,537 (incorrect - COP treated as EUR)
-- Expected: ~€15,000-20,000 (correct - all currencies properly converted)
