@@ -35,6 +35,7 @@ const FOREX_RATES_TO_USD: Record<string, number> = {
   MXN: 0.058,
   KRW: 0.00073,
   THB: 0.029,
+  COP: 0.00024,
 };
 
 // Get live forex rates from price_cache (USD→Currency rates)
