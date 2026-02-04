@@ -248,6 +248,10 @@ export function AssetCategoryCard({
                       </span>
                     )}
                     <span className="text-sm">{asset.name}</span>
+                    {/* Show interest rate for banking assets */}
+                    {category === 'banking' && asset.yield != null && asset.yield > 0 && (
+                      <span className="text-xs text-success/80">{asset.yield}%</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-right">
