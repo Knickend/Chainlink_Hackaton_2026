@@ -1,5 +1,6 @@
 // api-yield-analysis: x402 Monetized Yield Optimization API
 // Price: $0.02 per request
+// Supports: GET (query params) and POST/PUT/PATCH (request body)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -12,6 +13,47 @@ import {
 } from "../_shared/x402.ts";
 
 const PRICE_CENTS = 2; // $0.02
+
+interface Filters {
+  category: string | null;
+  minYield: number | null;
+  limit: number;
+}
+
+async function parseFilters(req: Request, url: URL): Promise<Filters> {
+  const filters: Filters = {
+    category: null,
+    minYield: null,
+    limit: 500,
+  };
+
+  if (req.method === "GET") {
+    filters.category = url.searchParams.get("category");
+    const minYieldParam = url.searchParams.get("minYield");
+    if (minYieldParam) {
+      filters.minYield = parseFloat(minYieldParam);
+    }
+    const limitParam = url.searchParams.get("limit");
+    if (limitParam) {
+      filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 500), 1000);
+    }
+  } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
+    try {
+      const body = await req.json();
+      filters.category = body.category || null;
+      if (body.minYield !== undefined) {
+        filters.minYield = parseFloat(body.minYield);
+      }
+      if (body.limit) {
+        filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 500), 1000);
+      }
+    } catch {
+      // Empty body is OK, use defaults
+    }
+  }
+
+  return filters;
+}
 
 Deno.serve(async (req) => {
   // Handle CORS
@@ -47,18 +89,28 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
+    // Parse filters from query params OR request body
+    const filters = await parseFilters(req, url);
+
     // Payment verified - serve the data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch yield-bearing assets data (anonymized)
-    const { data: yieldAssets } = await supabase
+    // Build query for yield-bearing assets data (anonymized)
+    let query = supabase
       .from("assets")
       .select("category, yield, value")
       .not("yield", "is", null)
-      .gt("yield", 0)
-      .limit(500);
+      .gt("yield", filters.minYield || 0);
+
+    if (filters.category) {
+      query = query.eq("category", filters.category);
+    }
+
+    query = query.limit(filters.limit);
+
+    const { data: yieldAssets } = await query;
 
     // Calculate yield statistics by category
     const yieldByCategory: Record<string, { totalValue: number; weightedYield: number; count: number }> = {};
@@ -113,6 +165,14 @@ Deno.serve(async (req) => {
 
     const response = {
       timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        filters: {
+          category: filters.category || "all",
+          minYield: filters.minYield || 0,
+          limit: filters.limit,
+        },
+      },
       yieldAnalysis: {
         byCategory: yieldAnalysis,
         totalYieldBearingAssets: yieldAssets?.length || 0,
