@@ -75,17 +75,8 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
         };
       }
 
-      // Handle stocks with non-USD currencies (e.g., Colombian stocks stored in COP)
-      // When no live USD price is available, convert the stored value from native currency to USD
-      if (asset.category === 'stocks' && !price && asset.currency && asset.currency !== 'USD') {
-        const currencyToUsdRate = getForexRateToUSD(asset.currency, livePrices?.forex);
-        const valueInUSD = asset.value * currencyToUsdRate;
-        return {
-          ...asset,
-          value: valueInUSD,
-        };
-      }
-
+      // For stocks with non-USD currencies, keep the original value in native currency
+      // Conversion to display unit happens in categoryTotals and metrics calculations
       return asset;
     });
   }, [baseAssets, livePrices]);
@@ -101,9 +92,10 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
   const btcPrice = livePrices?.btc || 96000; // fallback to ~96k if not available
 
   const metrics: PortfolioMetrics = useMemo(() => {
-    // Calculate total net worth with smart handling for banking assets
-    // Banking assets: use native currency amounts to avoid round-trip conversion errors
-    // Other assets: values are already in USD, convert to display unit
+    // Calculate total net worth with smart handling for different asset types
+    // Banking/realestate: use native currency amounts to avoid round-trip conversion errors
+    // Stocks with non-USD currency: convert from native currency to display unit
+    // Other assets: values are in USD, convert to display unit
     const totalNetWorth = assets.reduce((sum, asset) => {
       if (asset.category === 'banking' || asset.category === 'realestate') {
         const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
@@ -132,7 +124,14 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
         return sum + (amountInUSD * conversionRates[displayUnit]);
       }
       
-      // Non-banking assets: convert USD value to display unit
+      // Handle stocks with non-USD currencies (e.g., Colombian stocks in COP)
+      if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+        const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+        const usdValue = asset.value * rateToUsd;
+        return sum + (usdValue * conversionRates[displayUnit]);
+      }
+      
+      // Other assets (crypto, commodities, USD stocks): convert USD value to display unit
       return sum + (asset.value * conversionRates[displayUnit]);
     }, 0);
     
@@ -311,15 +310,26 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
           // Otherwise convert from native currency to display unit
           return sum + convertFromCurrency(nativeAmount, assetCurrency);
         }, 0);
+      } else if (category === 'stocks') {
+        // For stocks, handle non-USD currencies explicitly
+        total = categoryAssets.reduce((sum, asset) => {
+          if (asset.currency && asset.currency !== 'USD') {
+            // Convert from native currency to display unit
+            const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+            const usdValue = asset.value * rateToUsd;
+            return sum + (usdValue * conversionRates[displayUnit]);
+          }
+          // USD stocks: value is already in USD
+          return sum + convertValue(asset.value);
+        }, 0);
       } else {
-        // For non-banking, values are already in USD
-        // Convert to display unit
+        // For crypto/commodities, values are already in USD
         total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
       }
       
       return { category, total, count: categoryAssets.length };
     });
-  }, [assetsByCategory, displayUnit, convertFromCurrency, convertValue]);
+  }, [assetsByCategory, displayUnit, convertFromCurrency, convertValue, conversionRates, livePrices]);
 
   const formatValue = (valueInUSD: number, showDecimals = true): string => {
     const converted = convertValue(valueInUSD);
