@@ -2,7 +2,7 @@ export type AssetCategory = 'banking' | 'crypto' | 'stocks' | 'commodities' | 'r
 
 export type DisplayUnit = 'USD' | 'BTC' | 'GOLD' | 'EUR' | 'GBP';
 
-export type BankingCurrency = 'USD' | 'EUR' | 'GBP' | 'CHF' | 'JPY' | 'CAD' | 'AUD' | 'CNY' | 'INR' | 'SGD' | 'HKD' | 'NZD' | 'SEK' | 'NOK' | 'DKK' | 'ZAR' | 'BRL' | 'MXN' | 'KRW' | 'THB';
+export type BankingCurrency = 'USD' | 'EUR' | 'GBP' | 'CHF' | 'JPY' | 'CAD' | 'AUD' | 'CNY' | 'INR' | 'SGD' | 'HKD' | 'NZD' | 'SEK' | 'NOK' | 'DKK' | 'ZAR' | 'BRL' | 'MXN' | 'KRW' | 'THB' | 'COP';
 
 export type CommodityUnit = 'oz' | 'g' | 'kg';
 
@@ -33,6 +33,7 @@ export const BANKING_CURRENCIES: { value: BankingCurrency; label: string; symbol
   { value: 'MXN', label: 'Mexican Peso', symbol: '$' },
   { value: 'KRW', label: 'South Korean Won', symbol: '₩' },
   { value: 'THB', label: 'Thai Baht', symbol: '฿' },
+  { value: 'COP', label: 'Colombian Peso', symbol: '$' },
 ];
 
 // Approximate forex rates to USD (fallback values when live rates unavailable)
@@ -57,6 +58,7 @@ export const FOREX_RATES_TO_USD: Record<BankingCurrency, number> = {
   MXN: 0.058,
   KRW: 0.00073,
   THB: 0.029,
+  COP: 0.00024,
 };
 
 // Get forex rate to USD using live rates with fallback to static

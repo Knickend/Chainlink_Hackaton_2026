@@ -11,7 +11,7 @@ const corsHeaders = {
 // Supported currencies (excluding USD as it's the base)
 const SUPPORTED_CURRENCIES = [
   'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD', 'CNY', 'INR', 'SGD', 'HKD',
-  'NZD', 'SEK', 'NOK', 'DKK', 'ZAR', 'BRL', 'MXN', 'KRW', 'THB'
+  'NZD', 'SEK', 'NOK', 'DKK', 'ZAR', 'BRL', 'MXN', 'KRW', 'THB', 'COP'
 ];
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for forex rates
