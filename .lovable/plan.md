@@ -1,166 +1,179 @@
 
-## Fix COP Currency Conversion Bugs
+## Fix Annual Yield Currency Conversion Bug
 
-This plan addresses multiple currency conversion issues across the dashboard affecting Colombian Peso (COP) assets.
+This plan addresses the currency conversion bug in the Annual Yield calculation where COP-denominated assets are incorrectly inflating the yield total.
 
 ---
 
 ## Root Cause Analysis
 
-The investigation revealed three distinct issues:
+Looking at the database data, the issue is clear:
 
-1. **Frankfurter API doesn't support COP** - Live forex rates don't include Colombian Peso, so the system must rely on fallback rates
-2. **categoryTotals uses unconverted stock values** - The `assets` useMemo converts COP stocks to USD, but the value isn't being applied correctly to totals  
-3. **Confusing COP display** - COP uses `$` symbol (same as USD), making native amounts look like USD values
+**Example - PEI (Colombian stock):**
+- `currency`: "COP"
+- `value`: 31,984,000 (stored in COP, NOT USD)
+- `yield`: 4%
+
+**Current (wrong) calculation:**
+`31,984,000 × 4% = 1,279,360` → treated as €956,127 EUR
+
+**Correct calculation:**
+`31,984,000 COP × 0.00024 = $7,676 USD × 4% = ~$307/year`
+
+The bug exists in TWO places:
+1. `usePortfolio.ts` line 208-213 - `yearlyYield` calculation in metrics
+2. `YieldBreakdownCard.tsx` line 32 - `yieldAmount` calculation for breakdown display
 
 ---
 
 ## Changes Required
 
-### 1. Fix Stock Category Total Calculation
+### 1. Fix yearlyYield Calculation in usePortfolio.ts
 
 **File:** `src/hooks/usePortfolio.ts`
 
-**Issue:** The `categoryTotals` for stocks assumes all values are in USD, but the converted values from the `assets` useMemo aren't being used correctly.
-
-**Solution:** Update the stocks category total calculation to explicitly handle non-USD currencies, similar to how banking/realestate are handled:
-
+**Current code (lines 208-213):**
 ```typescript
-// Lines 314-318 - Update the non-banking category total calculation
-} else if (category === 'stocks') {
-  // For stocks, some may have non-USD currencies that need conversion
-  total = categoryAssets.reduce((sum, asset) => {
-    if (asset.currency && asset.currency !== 'USD') {
-      // Convert from native currency to display unit
-      const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-      const usdValue = asset.value * rateToUsd;
-      return sum + (usdValue * conversionRates[displayUnit]);
-    }
-    // USD stocks: value is already in USD
-    return sum + convertValue(asset.value);
-  }, 0);
-} else {
-  // For crypto/commodities, values are already in USD
-  total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
-}
-```
-
-### 2. Fix Net Worth Calculation for Stocks
-
-**File:** `src/hooks/usePortfolio.ts`
-
-**Issue:** The `totalNetWorth` calculation in `metrics` doesn't handle non-USD stocks.
-
-**Solution:** Add a check for stocks with non-USD currencies in the net worth calculation (around lines 103-137):
-
-```typescript
-// After the banking/realestate handling (line 136), add stocks handling
-if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
-  const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-  const usdValue = asset.value * rateToUsd;
-  return sum + (usdValue * conversionRates[displayUnit]);
-}
-```
-
-### 3. Improve COP Display Clarity
-
-**File:** `src/components/AssetCategoryCard.tsx`
-
-**Issue:** COP and USD both use `$` symbol, making COP amounts look like USD.
-
-**Solution:** For real estate assets with COP, show the currency code instead of just the symbol:
-
-```typescript
-// In formatNativeAssetValue function, update the banking/realestate section
-if ((category === 'banking' || category === 'realestate') && asset.symbol && asset.quantity) {
-  const currencySymbol = asset.symbol === 'COP' ? 'COP ' : getCurrencySymbol(asset.symbol);
-  return `${currencySymbol}${asset.quantity.toLocaleString(undefined, { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })}`;
-}
-```
-
-### 4. Remove Duplicate Stock Conversion Logic
-
-**File:** `src/hooks/usePortfolio.ts`
-
-**Issue:** The `assets` useMemo tries to convert COP stocks, but this causes confusion between display and calculation.
-
-**Solution:** Keep the original `asset.value` in native currency (for display purposes) and only convert during total calculations. Remove lines 78-87:
-
-```typescript
-// REMOVE this block - conversion should happen in categoryTotals/metrics instead
-// if (asset.category === 'stocks' && !price && asset.currency && asset.currency !== 'USD') {
-//   ...
-// }
-```
-
----
-
-## Updated categoryTotals Logic
-
-The complete updated `categoryTotals` calculation:
-
-```typescript
-const categoryTotals = useMemo(() => {
-  return Object.entries(assetsByCategory).map(([category, categoryAssets]) => {
-    let total: number;
-    
-    if (category === 'banking' || category === 'realestate') {
-      // For banking and real estate, sum using native currency amounts
-      total = categoryAssets.reduce((sum, asset) => {
-        const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
-        const nativeAmount = asset.quantity ?? asset.value;
-        
-        if (assetCurrency === displayUnit) {
-          return sum + nativeAmount;
-        }
-        return sum + convertFromCurrency(nativeAmount, assetCurrency);
-      }, 0);
-    } else if (category === 'stocks') {
-      // For stocks, handle non-USD currencies explicitly
-      total = categoryAssets.reduce((sum, asset) => {
-        if (asset.currency && asset.currency !== 'USD') {
-          const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-          const usdValue = asset.value * rateToUsd;
-          return sum + (usdValue * conversionRates[displayUnit]);
-        }
-        return sum + convertValue(asset.value);
-      }, 0);
-    } else {
-      // For crypto/commodities, values are in USD
-      total = categoryAssets.reduce((sum, asset) => sum + convertValue(asset.value), 0);
-    }
-    
-    return { category, total, count: categoryAssets.length };
-  });
-}, [assetsByCategory, displayUnit, convertFromCurrency, convertValue, conversionRates, livePrices]);
-```
-
----
-
-## Updated Net Worth Calculation
-
-The `totalNetWorth` in metrics needs to handle stocks with non-USD currencies:
-
-```typescript
-const totalNetWorth = assets.reduce((sum, asset) => {
-  if (asset.category === 'banking' || asset.category === 'realestate') {
-    // ... existing banking/realestate logic ...
+const yearlyYield = assets.reduce((sum, asset) => {
+  if (asset.yield) {
+    return sum + (asset.value * (asset.yield / 100));
   }
-  
-  // Handle stocks with non-USD currencies
-  if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
-    const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
-    const usdValue = asset.value * rateToUsd;
-    return sum + (usdValue * conversionRates[displayUnit]);
-  }
-  
-  // Non-banking assets: convert USD value to display unit
-  return sum + (asset.value * conversionRates[displayUnit]);
+  return sum;
 }, 0);
 ```
+
+**Updated code:**
+```typescript
+const yearlyYield = assets.reduce((sum, asset) => {
+  if (!asset.yield) return sum;
+  
+  let assetValueInDisplayUnit: number;
+  
+  // Banking/Real Estate: use native currency amount and convert
+  if (asset.category === 'banking' || asset.category === 'realestate') {
+    const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
+    const nativeAmount = asset.quantity ?? asset.value;
+    
+    if (assetCurrency === displayUnit) {
+      assetValueInDisplayUnit = nativeAmount;
+    } else {
+      // Convert from native currency to display unit
+      const liveFromRate = livePrices?.forex?.[assetCurrency];
+      let amountInUSD: number;
+      if (liveFromRate && liveFromRate > 0) {
+        amountInUSD = nativeAmount * (1 / liveFromRate);
+      } else {
+        amountInUSD = nativeAmount * (FOREX_RATES_TO_USD[assetCurrency as BankingCurrency] || 1);
+      }
+      
+      // Convert USD to display unit
+      const liveToRate = livePrices?.forex?.[displayUnit];
+      if (liveToRate && liveToRate > 0) {
+        assetValueInDisplayUnit = amountInUSD * liveToRate;
+      } else {
+        assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
+      }
+    }
+  }
+  // Stocks with non-USD currencies: convert from native to display unit
+  else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+    const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+    const usdValue = asset.value * rateToUsd;
+    assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
+  }
+  // Other assets (crypto, commodities, USD stocks): value is in USD
+  else {
+    assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
+  }
+  
+  return sum + (assetValueInDisplayUnit * (asset.yield / 100));
+}, 0);
+```
+
+---
+
+### 2. Fix YieldBreakdownCard Component
+
+**File:** `src/components/YieldBreakdownCard.tsx`
+
+The component needs additional props to handle currency conversion, and must apply the same logic for individual asset yield amounts.
+
+**Changes needed:**
+
+1. Add new props for live prices, display unit, and conversion rates
+2. Update the `yieldBreakdown` calculation to convert values properly
+
+**Updated interface:**
+```typescript
+interface YieldBreakdownCardProps {
+  totalYield: number;
+  assets: Asset[];
+  formatValue: (value: number) => string;
+  livePrices?: { forex?: Record<string, number> };
+  displayUnit: DisplayUnit;
+  conversionRates: Record<DisplayUnit, number>;
+  delay?: number;
+}
+```
+
+**Updated yieldBreakdown calculation:**
+```typescript
+const yieldBreakdown = yieldingAssets.map((asset) => {
+  let assetValueInDisplayUnit: number;
+  
+  // Apply same currency conversion logic as usePortfolio
+  if (asset.category === 'banking' || asset.category === 'realestate') {
+    const assetCurrency = (asset.symbol || 'USD').trim().toUpperCase();
+    const nativeAmount = asset.quantity ?? asset.value;
+    
+    if (assetCurrency === displayUnit) {
+      assetValueInDisplayUnit = nativeAmount;
+    } else {
+      const rateToUsd = getForexRateToUSD(assetCurrency, livePrices?.forex);
+      const amountInUSD = nativeAmount * rateToUsd;
+      assetValueInDisplayUnit = amountInUSD * conversionRates[displayUnit];
+    }
+  } else if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+    const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+    const usdValue = asset.value * rateToUsd;
+    assetValueInDisplayUnit = usdValue * conversionRates[displayUnit];
+  } else {
+    assetValueInDisplayUnit = asset.value * conversionRates[displayUnit];
+  }
+  
+  return {
+    name: asset.name,
+    symbol: asset.symbol,
+    category: asset.category,
+    yieldPercent: asset.yield!,
+    yieldAmount: assetValueInDisplayUnit * (asset.yield! / 100),
+    assetValue: assetValueInDisplayUnit,
+  };
+});
+```
+
+---
+
+### 3. Update Index.tsx to Pass New Props
+
+**File:** `src/pages/Index.tsx`
+
+Update the `YieldBreakdownCard` usage to pass the required props:
+
+```typescript
+<YieldBreakdownCard
+  totalYield={metrics.yearlyYield}
+  assets={assets}
+  formatValue={formatValue}
+  formatDisplayUnitValue={formatDisplayUnitValue}
+  livePrices={livePrices}
+  displayUnit={displayUnit}
+  conversionRates={conversionRates}
+  delay={0.3}
+/>
+```
+
+Note: The `totalYield` from metrics is already in display units (after the usePortfolio fix), so we should use `formatDisplayUnitValue` instead of `formatValue` for the total.
 
 ---
 
@@ -168,24 +181,22 @@ const totalNetWorth = assets.reduce((sum, asset) => {
 
 | File | Changes |
 |------|---------|
-| `src/hooks/usePortfolio.ts` | Fix categoryTotals for stocks, fix net worth calculation, remove duplicate conversion in assets useMemo |
-| `src/components/AssetCategoryCard.tsx` | Show "COP" prefix instead of "$" for Colombian Peso amounts |
+| `src/hooks/usePortfolio.ts` | Fix `yearlyYield` calculation to handle banking/realestate native currencies and non-USD stock currencies |
+| `src/components/YieldBreakdownCard.tsx` | Add props for currency conversion, update yieldBreakdown to convert values properly |
+| `src/pages/Index.tsx` | Pass additional props (livePrices, displayUnit, conversionRates) to YieldBreakdownCard |
 
 ---
 
 ## Expected Results After Fix
 
-**Net Worth**: ~$730,000 (instead of $61,665,725)
-- Banking: ~$400,000 EUR → ~$430,000 USD
-- Real Estate: COP 700M → ~$168,000 USD + €450,000 → ~$485,000 USD
-- Stocks: ~$54,000 USD (AAPL) + COP ~$15,000 USD equivalent
-- Crypto/Commodities: existing values
+**PEI (Colombian stock):**
+- Value: COP 31,984,000 × 0.00024 = ~$7,676 USD
+- Yield: $7,676 × 4% = ~$307/year → ~€285/year
 
-**Stocks Card**: ~$70,000 (instead of $58,974,829)
-- AAPL: ~$27,000
-- Davivienda: $27,000
-- COP stocks: ~$15,000 combined
+**Apto Bogota (Real estate):**
+- Native: COP 500,000,000 × 0.00024 = ~$120,000 USD
+- Yield: $120,000 × 4.5% = ~$5,400/year → ~€5,000/year
 
-**Real Estate Display**:
-- `COP 200,000,000` instead of `$200,000,000.00`
-- `COP 500,000,000` instead of `$500,000,000.00`
+**Total Annual Yield:**
+- Current: €981,537 (incorrect - COP treated as EUR)
+- Expected: ~€15,000-20,000 (correct - all currencies properly converted)
