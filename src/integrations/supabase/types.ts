@@ -122,6 +122,7 @@ export type Database = {
           category: string
           cost_basis: number | null
           created_at: string
+          currency: string | null
           id: string
           name: string
           purchase_date: string | null
@@ -138,6 +139,7 @@ export type Database = {
           category: string
           cost_basis?: number | null
           created_at?: string
+          currency?: string | null
           id?: string
           name: string
           purchase_date?: string | null
@@ -154,6 +156,7 @@ export type Database = {
           category?: string
           cost_basis?: number | null
           created_at?: string
+          currency?: string | null
           id?: string
           name?: string
           purchase_date?: string | null

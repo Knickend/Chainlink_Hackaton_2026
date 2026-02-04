@@ -33,6 +33,7 @@ type AssetFormData = z.infer<typeof assetSchema>;
 interface AddAssetDialogProps {
   onAdd: (asset: AssetFormData & { 
     unit?: CommodityUnit;
+    currency?: string;
     cost_basis?: number;
     purchase_date?: string;
     purchase_price_per_unit?: number;
@@ -180,6 +181,20 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         purchase_date: data.purchase_date || undefined,
         purchase_price_per_unit: data.purchase_price_per_unit,
       });
+    } else if (data.category === 'stocks' && !selectedTicker && data.currency && data.currency !== 'USD') {
+      // Manual stock entry with non-USD currency - store value in native currency
+      onAdd({
+        name: data.name,
+        category: data.category,
+        value: data.value, // Store native currency value
+        symbol: data.symbol,
+        quantity: data.quantity,
+        yield: data.yield,
+        currency: data.currency, // Store the currency
+        cost_basis: costBasis,
+        purchase_date: data.purchase_date || undefined,
+        purchase_price_per_unit: data.purchase_price_per_unit,
+      });
     } else {
       onAdd({
         name: data.name,
@@ -189,6 +204,7 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
         quantity: data.quantity,
         yield: data.yield,
         stakingRate: data.stakingRate,
+        currency: data.currency, // Pass currency for stocks too
         cost_basis: costBasis,
         purchase_date: data.purchase_date || undefined,
         purchase_price_per_unit: data.purchase_price_per_unit,
@@ -683,26 +699,53 @@ export function AddAssetDialog({ onAdd, livePrices, onStockPriceUpdate, onCrypto
                 )}
 
                 {!selectedTicker && (
-                  <FormField
-                    control={form.control}
-                    name="value"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Value (USD)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="10000"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                            className="bg-secondary/50"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Currency</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || 'USD'}>
+                            <FormControl>
+                              <SelectTrigger className="bg-secondary/50">
+                                <SelectValue placeholder="Select currency" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="max-h-60 bg-popover">
+                              {BANKING_CURRENCIES.map((curr) => (
+                                <SelectItem key={curr.value} value={curr.value}>
+                                  {curr.symbol} {curr.value} - {curr.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="value"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Total Value ({getCurrencySymbol(selectedCurrency)})</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="10000"
+                              {...field}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              className="bg-secondary/50"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
                 )}
 
                 {/* Cost Basis Section for P&L Tracking */}
