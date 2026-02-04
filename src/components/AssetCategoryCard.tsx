@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Landmark, Bitcoin, TrendingUp, Package, Home, LucideIcon } from 'lucide-react';
-import { AssetCategory, Asset, getCurrencySymbol, BANKING_CURRENCIES, DisplayUnit } from '@/lib/types';
+import { AssetCategory, Asset, getCurrencySymbol, BANKING_CURRENCIES, DisplayUnit, getForexRateToUSD } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditAssetDialog, BuyMoreData, SellData } from './EditAssetDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
@@ -84,7 +84,9 @@ export function AssetCategoryCard({
   const Icon = config.icon;
 
   // Determine if we should show the two-line layout with price details
-  const showPriceDetails = (category === 'crypto' || category === 'commodities' || category === 'stocks') && formatDisplayUnitValue;
+  // For stocks with non-USD currencies (manual entries), use single-line layout instead
+  const showPriceDetails = (category === 'crypto' || category === 'commodities' || 
+    (category === 'stocks' && assets.some(a => !a.currency || a.currency === 'USD'))) && formatDisplayUnitValue;
 
   return (
     <motion.div
@@ -115,15 +117,21 @@ export function AssetCategoryCard({
           const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
             asset.symbol && BANKING_CURRENCIES.some(c => c.value === asset.symbol);
           
-          // Get unit price for crypto/commodities/stocks
-          const unitPrice = showPriceDetails ? getUnitPrice(asset, category, livePrices) : null;
+          // Check if this is a stock with a non-USD currency (manual entry)
+          const isNonUsdStock = category === 'stocks' && asset.currency && asset.currency !== 'USD';
+          
+          // Get unit price for crypto/commodities/stocks (only for USD-priced assets)
+          const unitPrice = (showPriceDetails && !isNonUsdStock) ? getUnitPrice(asset, category, livePrices) : null;
+          
+          // Determine layout: use single-line for non-USD stocks
+          const useDetailedLayout = showPriceDetails && !isNonUsdStock;
           
           // Format the quantity display
           const formatQuantityDisplay = (): string | null => {
             if (category === 'crypto' && asset.quantity && asset.symbol) {
               return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
             }
-            if (category === 'stocks' && asset.quantity && asset.symbol) {
+            if (category === 'stocks' && asset.quantity && asset.symbol && !isNonUsdStock) {
               return `${asset.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol}`;
             }
             if (category === 'commodities' && asset.quantity) {
@@ -159,6 +167,29 @@ export function AssetCategoryCard({
               })}`;
             }
             
+            // Stocks with non-USD currency: show native currency amount
+            if (isNonUsdStock && asset.currency) {
+              // The asset.value is stored in native currency, so we need to calculate the converted value
+              const nativeValue = asset.value;
+              // Get rate to convert from native currency to USD
+              const rateToUsd = getForexRateToUSD(asset.currency, livePrices?.forex);
+              const usdValue = nativeValue * rateToUsd;
+              // Convert USD to display unit
+              const convertedValue = usdValue * (conversionRates?.[displayUnit || 'USD'] || 1);
+              
+              // Show both native and converted values
+              if (formatDisplayUnitValue) {
+                return `${getCurrencySymbol(asset.currency)}${nativeValue.toLocaleString(undefined, { 
+                  minimumFractionDigits: 0, 
+                  maximumFractionDigits: 0 
+                })} (${formatDisplayUnitValue(convertedValue, true)})`;
+              }
+              return `${getCurrencySymbol(asset.currency)}${nativeValue.toLocaleString(undefined, { 
+                minimumFractionDigits: 0, 
+                maximumFractionDigits: 0 
+              })}`;
+            }
+            
             // Fallback for realestate without proper currency data
             if (category === 'realestate') {
               return formatValue(asset.value);
@@ -187,10 +218,10 @@ export function AssetCategoryCard({
               key={asset.id}
               className={cn(
                 "py-2 px-3 rounded-lg bg-secondary/30 group",
-                showPriceDetails ? "flex flex-col gap-1" : "flex items-center justify-between"
+                useDetailedLayout ? "flex flex-col gap-1" : "flex items-center justify-between"
               )}
             >
-              {showPriceDetails ? (
+              {useDetailedLayout ? (
                 // Two-line layout for crypto/commodities
                 <>
                   {/* Row 1: Symbol, Name, Actions */}
@@ -236,16 +267,24 @@ export function AssetCategoryCard({
                   </div>
                 </>
               ) : (
-                // Original single-line layout for banking/stocks/realestate
+                // Original single-line layout for banking/stocks/realestate and non-USD stocks
                 <>
                   <div className="flex items-center gap-2">
-                    {asset.symbol && !hasForexCurrency && (
+                    {asset.symbol && !hasForexCurrency && !isNonUsdStock && (
                       <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
                     )}
                     {hasForexCurrency && (
                       <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                         {asset.symbol}
                       </span>
+                    )}
+                    {isNonUsdStock && asset.currency && (
+                      <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                        {asset.currency}
+                      </span>
+                    )}
+                    {isNonUsdStock && asset.symbol && (
+                      <span className="text-xs font-mono text-muted-foreground">{asset.symbol}</span>
                     )}
                     <span className="text-sm">{asset.name}</span>
                     {/* Show interest rate for banking assets */}

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit, convertCurrency, FOREX_RATES_TO_USD, BankingCurrency, isBitcoinCurrency, convertBtcToUSD, BitcoinCurrency } from '@/lib/types';
+import { DisplayUnit, PortfolioMetrics, DEFAULT_CONVERSION_RATES, UNIT_SYMBOLS, calculateConversionRates, Asset, Income, Expense, convertToTroyOz, CommodityUnit, convertCurrency, FOREX_RATES_TO_USD, BankingCurrency, isBitcoinCurrency, convertBtcToUSD, BitcoinCurrency, getForexRateToUSD } from '@/lib/types';
 import { LivePrices } from './useLivePrices';
 import { usePortfolioData } from './usePortfolioData';
 import { mockAssets, mockIncome, mockExpenses } from '@/lib/mockData';
@@ -51,6 +51,7 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
 
   // Compute market-priced asset values from quantity × live price when possible.
   // For commodities, convert quantity to troy oz first (prices are per oz)
+  // For stocks with non-USD currencies (e.g., Colombian stocks in COP), convert to USD
   const assets = useMemo(() => {
     return baseAssets.map((asset) => {
       const price = getLiveAssetPriceUSD(asset, livePrices);
@@ -71,6 +72,17 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
         return {
           ...asset,
           value: effectiveQuantity * price,
+        };
+      }
+
+      // Handle stocks with non-USD currencies (e.g., Colombian stocks stored in COP)
+      // When no live USD price is available, convert the stored value from native currency to USD
+      if (asset.category === 'stocks' && !price && asset.currency && asset.currency !== 'USD') {
+        const currencyToUsdRate = getForexRateToUSD(asset.currency, livePrices?.forex);
+        const valueInUSD = asset.value * currencyToUsdRate;
+        return {
+          ...asset,
+          value: valueInUSD,
         };
       }
 

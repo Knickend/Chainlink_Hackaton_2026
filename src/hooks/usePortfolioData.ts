@@ -43,6 +43,7 @@ export function usePortfolioData() {
         symbol: a.symbol || undefined,
         yield: a.yield ? Number(a.yield) : undefined,
         unit: (a as any).unit as CommodityUnit | undefined,
+        currency: (a as any).currency || undefined,
         cost_basis: (a as any).cost_basis ? Number((a as any).cost_basis) : undefined,
         purchase_date: (a as any).purchase_date || undefined,
         purchase_price_per_unit: (a as any).purchase_price_per_unit ? Number((a as any).purchase_price_per_unit) : undefined,
@@ -92,6 +93,7 @@ export function usePortfolioData() {
     yield?: number;
     stakingRate?: number;
     unit?: CommodityUnit;
+    currency?: string;
     cost_basis?: number;
     purchase_date?: string;
     purchase_price_per_unit?: number;
@@ -108,6 +110,7 @@ export function usePortfolioData() {
         symbol: assetData.symbol || null,
         yield: assetData.yield || assetData.stakingRate || null,
         unit: assetData.unit || null,
+        currency: assetData.currency || null,
         cost_basis: assetData.cost_basis || null,
         purchase_date: assetData.purchase_date || null,
         purchase_price_per_unit: assetData.purchase_price_per_unit || null,
@@ -124,6 +127,7 @@ export function usePortfolioData() {
         symbol: data.symbol || undefined,
         yield: data.yield ? Number(data.yield) : undefined,
         unit: (data as any).unit as CommodityUnit | undefined,
+        currency: (data as any).currency || undefined,
         cost_basis: (data as any).cost_basis ? Number((data as any).cost_basis) : undefined,
         purchase_date: (data as any).purchase_date || undefined,
         purchase_price_per_unit: (data as any).purchase_price_per_unit ? Number((data as any).purchase_price_per_unit) : undefined,
@@ -151,6 +155,7 @@ export function usePortfolioData() {
         symbol: assetData.symbol || null,
         yield: assetData.yield || null,
         unit: assetData.unit || null,
+        currency: assetData.currency ?? null,
         cost_basis: assetData.cost_basis ?? null,
         purchase_date: assetData.purchase_date ?? null,
         purchase_price_per_unit: assetData.purchase_price_per_unit ?? null,

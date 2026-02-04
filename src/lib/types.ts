@@ -87,6 +87,7 @@ export interface Asset {
   quantity?: number; // for banking, this stores the original currency amount
   symbol?: string; // for banking, this stores the currency code (USD, EUR, etc.)
   unit?: CommodityUnit; // for commodities, the measurement unit
+  currency?: string; // for stocks/crypto, the currency the value is stored in (default: USD)
   // P&L tracking fields
   cost_basis?: number; // Total amount paid for this asset (in USD)
   purchase_date?: string; // ISO date string when asset was acquired
