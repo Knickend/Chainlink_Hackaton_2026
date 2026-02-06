@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.api-price-feed]
 verify_jwt = false
+
+[functions.api-price-feed-test]
+verify_jwt = false
