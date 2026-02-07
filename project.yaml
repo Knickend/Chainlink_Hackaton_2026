@@ -28,6 +28,10 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: https://ethereum-sepolia-rpc.publicnode.com
+  workflow-artifacts:
+    workflow-path: "workflow.yaml"
+    config-path: "config.staging.json"
+    secrets-path: "secrets.staging.yaml"
 
 # Test target settings (added to allow local simulation)
 test-settings:
