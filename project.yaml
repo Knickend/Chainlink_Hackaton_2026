@@ -1,5 +1,5 @@
 # ==========================================================================
-# CRE PROJECT SETTINGS FILE
+# CRE PROJECT SETTINGS FILE (moved to repository root for CLI path resolution)
 # ==========================================================================
 # Project-specific settings for CRE CLI targets.
 # Each target defines cre-cli, account, and rpcs groups.
@@ -28,6 +28,15 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: https://ethereum-sepolia-rpc.publicnode.com
+
+# Test target settings (added to allow local simulation)
+test-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com
+  workflow-artifacts:
+    workflow-path: "workflow.yaml"
+    config-path: "config.test.json"
 
 # ==========================================================================
 production-settings:

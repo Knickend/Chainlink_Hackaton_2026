@@ -1,3 +1,59 @@
 {
-  "schedule": "*/30 * * * * *"
+  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed-test",
+  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
+  "workflows": [
+    {
+      "name": "crypto-prices",
+      "type": "crypto",
+      "symbols": ["BTC", "ETH"],
+      "schedule": "0 */5 * * * *",
+      "enabled": true,
+      "priority": "high"
+    },
+    {
+      "name": "stock-prices",
+      "type": "stock",
+      "symbols": ["AAPL", "MSFT"],
+      "schedule": "0 */15 * * * *",
+      "enabled": true,
+      "priority": "medium"
+    },
+    {
+      "name": "commodities-prices",
+      "type": "commodity",
+      "symbols": ["GOLD", "OIL"],
+      "schedule": "0 */10 * * * *",
+      "enabled": true,
+      "priority": "medium"
+    },
+    {
+      "name": "etf-prices",
+      "type": "etf",
+      "symbols": ["SPY", "QQQ"],
+      "schedule": "0 */20 * * * *",
+      "enabled": true,
+      "priority": "low"
+    },
+    {
+      "name": "bond-prices",
+      "type": "bond",
+      "symbols": ["US10Y", "US30Y"],
+      "schedule": "0 */30 * * * *",
+      "enabled": true,
+      "priority": "low"
+    },
+    {
+      "name": "forex-prices",
+      "type": "forex",
+      "symbols": ["EUR/USD", "GBP/USD"],
+      "schedule": "0 */3 * * * *",
+      "enabled": true,
+      "priority": "high"
+    }
+  ],
+  "general": {
+    "maxRetries": 2,
+    "timeout": 15000,
+    "consensusNodes": 3
+  }
 }
