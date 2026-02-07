@@ -26,3 +26,7 @@ dist-ssr
 incontrol-cre-ts/**/tmp.js
 incontrol-cre-ts/**/tmp.wasm
 *.wasm
+
+# Ignore CRE secrets
+**/secrets*.yaml
+incontrol-cre-ts/**/secrets*.yaml
