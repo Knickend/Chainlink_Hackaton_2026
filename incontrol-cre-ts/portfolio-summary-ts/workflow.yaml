@@ -23,6 +23,14 @@ staging-settings:
     config-path: "./config.staging.json"
     secrets-path: ""
 
+sepolia-settings:
+  user-workflow:
+    workflow-name: "portfolio-summary-ts-sepolia"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.sepolia.json"
+    secrets-path: "./secrets.sepolia.yaml"
+
 
 # ==========================================================================
 production-settings:

@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.fetch-forex-rates]
 verify_jwt = false
 
+[functions.fetch-chainlink-feeds]
+verify_jwt = false
+
 [functions.sales-bot]
 verify_jwt = false
 
