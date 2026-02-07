@@ -24,6 +24,7 @@ export interface LivePrices {
   commodities?: Record<string, CommodityPriceData>;
   forex?: Record<string, number>;
   forexTimestamp?: string;
+  chainlinkForex?: Array<{ pair: string; network: string; answer: number; decimals?: number; updatedAt?: string; address?: string; error?: string }>;
 }
 
 const RESERVED_SPOT_SYMBOLS = new Set(['BTC', 'ETH', 'LINK', 'GOLD', 'SILVER', 'XAU', 'XAG']);
@@ -48,6 +49,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCached, setIsCached] = useState(false);
+  const [chainlinkLoading, setChainlinkLoading] = useState(false);
   const { toast } = useToast();
   const hasFetchedRef = useRef(false);
   const hasFetchedAdditionalRef = useRef(false);
@@ -173,6 +175,30 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
       console.error('Failed to fetch forex rates:', err);
     }
   }, []);
+
+  // Fetch Chainlink feeds (lazy)
+  const fetchChainlinkFeeds = useCallback(async () => {
+    if (chainlinkLoading) return;
+    setChainlinkLoading(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('fetch-chainlink-feeds');
+
+      if (fnError) {
+        console.error('Chainlink fetch error:', fnError);
+        return;
+      }
+
+      if (data?.success && Array.isArray(data.data)) {
+        setPrices((prev) => ({ ...prev, chainlinkForex: data.data }));
+      } else if (data?.error) {
+        console.error('Chainlink function error:', data.error);
+      }
+    } catch (err) {
+      console.error('Failed to fetch chainlink feeds:', err);
+    } finally {
+      setChainlinkLoading(false);
+    }
+  }, [chainlinkLoading]);
 
   // Initial load: first try cache, then fetch live
   useEffect(() => {
@@ -322,5 +348,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     isCached,
     refetch: refetchAll,
     addStockPrice,
+    fetchChainlinkFeeds,
+    chainlinkLoading,
   };
 }

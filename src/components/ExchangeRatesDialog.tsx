@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, DollarSign, Bitcoin, Gem } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { LivePrices } from '@/hooks/useLivePrices';
+import { LivePrices, useLivePrices } from '@/hooks/useLivePrices';
 import { BANKING_CURRENCIES, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
 
 interface ExchangeRatesDialogProps {
@@ -62,6 +62,7 @@ export function ExchangeRatesDialog({
   onRefresh,
 }: ExchangeRatesDialogProps) {
   const [activeTab, setActiveTab] = useState('forex');
+  const { fetchChainlinkFeeds, chainlinkLoading, prices: livePrices } = useLivePrices();
 
   const forexDate = forexTimestamp ? new Date(forexTimestamp) : null;
 
@@ -142,7 +143,7 @@ export function ExchangeRatesDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+          <TabsList className="grid w-full grid-cols-4 flex-shrink-0">
             <TabsTrigger value="forex" className="gap-2">
               <DollarSign className="w-4 h-4" />
               Forex
@@ -154,6 +155,10 @@ export function ExchangeRatesDialog({
             <TabsTrigger value="commodities" className="gap-2">
               <Gem className="w-4 h-4" />
               Commodities
+            </TabsTrigger>
+            <TabsTrigger value="chainlink" className="gap-2">
+              <span className="w-4 h-4 inline-block font-mono">CL</span>
+              Chainlink
             </TabsTrigger>
           </TabsList>
 
@@ -259,6 +264,36 @@ export function ExchangeRatesDialog({
               <p className="text-xs text-muted-foreground mt-4 px-1">
                 Last updated: {formatRelativeTime(lastUpdated)}
               </p>
+            </TabsContent>
+
+            <TabsContent value="chainlink" className="mt-0 h-full">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pair</TableHead>
+                    <TableHead>Network</TableHead>
+                    <TableHead className="text-right">Answer</TableHead>
+                    <TableHead className="text-right">Updated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(livePrices?.chainlinkForex || []).map((feed) => (
+                    <TableRow key={`${feed.network}-${feed.pair}`}>
+                      <TableCell className="font-medium">{feed.pair}</TableCell>
+                      <TableCell className="text-muted-foreground">{feed.network}</TableCell>
+                      <TableCell className="text-right font-mono">{feed.answer !== undefined ? `$${Number(feed.answer).toFixed(6)}` : '—'}</TableCell>
+                      <TableCell className="text-right">{feed.updatedAt ? new Date(feed.updatedAt).toLocaleString() : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {(!livePrices?.chainlinkForex || livePrices.chainlinkForex.length === 0) && (
+                <div className="p-4 text-sm text-muted-foreground">
+                  <Button onClick={() => fetchChainlinkFeeds()} disabled={chainlinkLoading}>
+                    {chainlinkLoading ? 'Loading...' : 'Load Chainlink Feeds'}
+                  </Button>
+                </div>
+              )}
             </TabsContent>
           </div>
         </Tabs>
