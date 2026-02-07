@@ -1,0 +1,5 @@
+{
+  "supabaseApiUrl": "https://api.exchangerate.host/convert?from=EUR&to=USD",
+  "supabaseApiKey": "", 
+  "notes": "Fill `supabaseApiKey` if your provider requires an API key. Remove `notes` before publishing."
+}
