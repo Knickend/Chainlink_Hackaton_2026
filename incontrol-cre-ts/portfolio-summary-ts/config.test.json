@@ -1,0 +1,5 @@
+{
+  "supabaseApiUrl": "https://api.exchangerate.host/convert?from=EUR&to=USD",
+  "supabaseApiKey": "test-key",
+  "testPrice": 1.0945
+}

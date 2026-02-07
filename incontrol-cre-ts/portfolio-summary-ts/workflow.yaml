@@ -22,7 +22,7 @@ staging-settings:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
     secrets-path: ""
-    
+
 
 # ==========================================================================
 production-settings:
@@ -32,3 +32,11 @@ production-settings:
     workflow-path: "./main.ts"
     config-path: "./config.production.json"
     secrets-path: ""
+
+#
+test-settings:
+  user-workflow:
+    workflow-name: "eurusd-test"
+  workflow-artifacts:
+    workflow-path: "./test-eurusd.ts"
+    config-path: "./config.test.json"

@@ -1,5 +1,5 @@
 # ==========================================================================
-# CRE PROJECT SETTINGS FILE
+# CRE PROJECT SETTINGS FILE (moved to repository root for CLI path resolution)
 # ==========================================================================
 # Project-specific settings for CRE CLI targets.
 # Each target defines cre-cli, account, and rpcs groups.
@@ -28,6 +28,32 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: https://ethereum-sepolia-rpc.publicnode.com
+  workflow-artifacts:
+    workflow-path: "workflow.yaml"
+    config-path: "config.staging.json"
+    secrets-path: "secrets.staging.yaml"
+
+# Test target settings (added to allow local simulation)
+test-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com
+  workflow-artifacts:
+    workflow-path: "workflow.yaml"
+    config-path: "config.test.json"
+
+# Sepolia deployment target - used for publishing to a Chainlink DON on Sepolia
+sepolia-settings:
+  account:
+    # Optional: replace with your workflow owner address or leave blank to use wallet in secrets
+    workflow-owner-address: ""
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: "<YOUR_SEPOLIA_RPC_URL>" # e.g. https://sepolia.infura.io/v3/<key>
+  workflow-artifacts:
+    workflow-path: "workflow.yaml"
+    config-path: "config.sepolia.json"
+    secrets-path: "secrets.sepolia.yaml"
 
 # ==========================================================================
 production-settings:

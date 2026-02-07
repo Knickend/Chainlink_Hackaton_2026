@@ -1,3 +1,8 @@
 {
-  "schedule": "*/30 * * * * *"
+  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed-test",
+  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
+  "cryptoAssets": ["BTC", "ETH", "SOL", "LINK", "USDC"],
+  "updateInterval": 300,
+  "type": "crypto"
 }
+
