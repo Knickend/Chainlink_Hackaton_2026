@@ -30,3 +30,5 @@ How the frontend uses it
 
 - The frontend calls the Edge Function via `supabase.functions.invoke('fetch-chainlink-feeds')` and receives the normalized feed array.
 - All on-chain interaction remains inside the Edge Function; the frontend never holds RPC URLs or feed addresses.
+
+<!-- CI: trigger rerun -->
