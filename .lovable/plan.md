@@ -1,73 +1,28 @@
 
 
+## Add CHAINLINK_FEEDS Secret
 
-## Save Chainlink Frontend Integration Plan
+### What Changes
 
-Append the Chainlink frontend integration plan to the existing `.lovable/plan.md` file, preserving the current Test Price Feed API plan that's already there.
+Add the `CHAINLINK_FEEDS` secret to the backend so the `fetch-chainlink-feeds` edge function can read feed configurations and return on-chain price data.
 
----
+### Steps
 
-## What Changes
+1. Use the secrets tool to prompt you for the `CHAINLINK_FEEDS` value
+2. You will paste in the JSON string containing your feed configurations (pairs, networks, RPC URLs, and contract addresses)
 
-**File:** `.lovable/plan.md`
+### Example Value (Sepolia Testnet)
 
-Append a new section after the existing content with the full Chainlink frontend integration plan covering:
+If you want to start with the Sepolia example feeds from your repo, use this value:
 
-- Adding a 4th "Chainlink" tab to the Exchange Rates dialog
-- Expected edge function response format (the API contract to code against)
-- UI layout: table with Pair, Network, Answer, Deviation, Heartbeat columns
-- Lazy-loading strategy (fetch only when tab is opened)
-- Files to modify: `ExchangeRatesDialog.tsx` and optionally `useLivePrices.ts`
-- Dependency on backend: the `fetch-chainlink-feeds` edge function being built separately
-
-This keeps both plans documented in one place for future reference.
-
----
-
-## Chainlink Frontend Integration Plan
-
-### Overview
-Add a 4th "Chainlink" tab to the Exchange Rates dialog to display on-chain forex prices from Chainlink Data Feeds.
-
-### Expected Edge Function Response Format
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "pair": "EUR/USD",
-      "network": "sepolia",
-      "address": "0x...",
-      "answer": 1.1817,
-      "decimals": 8,
-      "updatedAt": "2026-02-07T12:00:00.000Z"
-    }
-  ]
-}
+```text
+[{"pair":"AUD/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x7D45Af19782C6f765477f105E626E686FBE84377"},{"pair":"CZK/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0xC32f0A9D70A34B9E7377C10FDAd88512596f61EA"},{"pair":"EUR/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x01653D082a836a0197a962687B92a54bf47d7923"},{"pair":"GBP/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x91FAB41F5f3bE955963a986366edAcff1aaeaa83"},{"pair":"JPY/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x8A6af2B75F23831ADc973ce6288e5329F63D86c6"}]
 ```
 
-### UI Layout
-| Column | Source |
-|--------|--------|
-| Pair | `feed.pair` |
-| Network | `feed.network` |
-| Answer | `feed.answer` (formatted to 6 decimals) |
-| Updated | `feed.updatedAt` (relative or absolute time) |
+You can modify this to include your own RPC endpoint or different feeds before pasting.
 
-- "On-chain" status badge in a distinct color
-- Footer link to https://data.chain.link/feeds?categories=Fiat
+### After Adding the Secret
 
-### Lazy-Loading Strategy
-- Data is fetched only when the Chainlink tab is first selected
-- Results are cached in component state to avoid re-fetching on tab switches
-- A "Load Chainlink Feeds" button is shown if no data is loaded yet
+- The edge function will automatically pick up the new secret on next invocation
+- Open the Exchange Rates dialog and click the Chainlink tab to verify feeds load correctly
 
-### Files to Modify
-| File | Changes |
-|------|---------|
-| `src/components/ExchangeRatesDialog.tsx` | Already has 4th Chainlink tab with feed table and lazy loading |
-| `src/hooks/useLivePrices.ts` | Already exposes `fetchChainlinkFeeds`, `chainlinkLoading`, and `chainlinkForex` in `LivePrices` |
-
-### Dependencies
-- Backend: `fetch-chainlink-feeds` edge function (built separately)
-- Environment: `CHAINLINK_FEEDS` secret configured with feed addresses
