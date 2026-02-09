@@ -1,0 +1,7 @@
+[
+  { "pair": "AUD/USD", "network": "sepolia", "rpc": "https://rpc.sepolia.org", "address": "0x7D45Af19782C6f765477f105E626E686FBE84377" },
+  { "pair": "CZK/USD", "network": "sepolia", "rpc": "https://rpc.sepolia.org", "address": "0xC32f0A9D70A34B9E7377C10FDAd88512596f61EA" },
+  { "pair": "EUR/USD", "network": "sepolia", "rpc": "https://rpc.sepolia.org", "address": "0x01653D082a836a0197a962687B92a54bf47d7923" },
+  { "pair": "GBP/USD", "network": "sepolia", "rpc": "https://rpc.sepolia.org", "address": "0x91FAB41F5f3bE955963a986366edAcff1aaeaa83" },
+  { "pair": "JPY/USD", "network": "sepolia", "rpc": "https://rpc.sepolia.org", "address": "0x8A6af2B75F23831ADc973ce6288e5329F63D86c6" }
+]
