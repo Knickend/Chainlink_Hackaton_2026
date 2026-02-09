@@ -31,4 +31,19 @@ How the frontend uses it
 - The frontend calls the Edge Function via `supabase.functions.invoke('fetch-chainlink-feeds')` and receives the normalized feed array.
 - All on-chain interaction remains inside the Edge Function; the frontend never holds RPC URLs or feed addresses.
 
+Sepolia example feeds
+
+We include a safe example file listing several Chainlink forex feeds on Sepolia. This file is for local testing and documentation only:
+
+- `supabase/chainlink-feeds.sepolia.example.json` — contains a JSON array of feed objects (pair, network, rpc, address).
+
+To use these feeds in your Supabase project, copy the file contents into the `CHAINLINK_FEEDS` environment variable (set via the Supabase dashboard or your deployment system). Example using the file contents as a single-line value:
+
+```bash
+# replace the value in the dashboard or CI with the single-line JSON string
+CHAINLINK_FEEDS='$(cat supabase/chainlink-feeds.sepolia.example.json | tr -d "\n")'
+```
+
+Important: do not commit secrets (service role keys, private RPC keys) to the repo. The feed contract addresses are public on-chain and are safe to include as examples.
+
 <!-- CI: trigger rerun -->
