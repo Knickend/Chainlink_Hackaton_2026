@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.9.1/+esm";
+import { ethers, Contract } from "https://cdn.jsdelivr.net/npm/ethers@6.9.1/+esm";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -47,7 +47,8 @@ serve(async (req) => {
           'function decimals() view returns (uint8)'
         ];
         const address = (f.address || '').toLowerCase();
-        const contract = new ethers.Contract(address, abi, provider);
+        // deno-lint-ignore no-explicit-any
+        const contract = new ethers.Contract(address, abi, provider) as any;
 
         const [decimals, latest] = await Promise.all([
           contract.decimals().catch(() => 8),
