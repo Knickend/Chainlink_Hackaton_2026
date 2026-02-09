@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,18 +19,21 @@ interface ExchangeRatesDialogProps {
   onRefresh: () => void;
 }
 
-type RateStatus = 'live' | 'cached' | 'fallback';
+type RateStatus = 'live' | 'cached' | 'fallback' | 'on-chain';
 
 function StatusBadge({ status }: { status: RateStatus }) {
   const variants = {
     live: 'bg-success/20 text-success border-success/30',
     cached: 'bg-warning/20 text-warning border-warning/30',
     fallback: 'bg-muted text-muted-foreground border-muted-foreground/30',
+    'on-chain': 'bg-primary/20 text-primary border-primary/30',
   };
+
+  const label = status === 'on-chain' ? 'On-chain' : status === 'live' ? 'Live' : status === 'cached' ? 'Cached' : 'Fallback';
 
   return (
     <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${variants[status]}`}>
-      {status === 'live' ? 'Live' : status === 'cached' ? 'Cached' : 'Fallback'}
+      {label}
     </Badge>
   );
 }
@@ -63,6 +66,15 @@ export function ExchangeRatesDialog({
 }: ExchangeRatesDialogProps) {
   const [activeTab, setActiveTab] = useState('forex');
   const { fetchChainlinkFeeds, chainlinkLoading, prices: livePrices } = useLivePrices();
+  const chainlinkFetchedRef = useRef(false);
+
+  // Lazy-load Chainlink feeds when tab is first selected
+  useEffect(() => {
+    if (activeTab === 'chainlink' && !chainlinkFetchedRef.current && !livePrices?.chainlinkForex?.length) {
+      chainlinkFetchedRef.current = true;
+      fetchChainlinkFeeds();
+    }
+  }, [activeTab, livePrices?.chainlinkForex, fetchChainlinkFeeds]);
 
   const forexDate = forexTimestamp ? new Date(forexTimestamp) : null;
 
@@ -267,30 +279,46 @@ export function ExchangeRatesDialog({
             </TabsContent>
 
             <TabsContent value="chainlink" className="mt-0 h-full">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Pair</TableHead>
-                    <TableHead>Network</TableHead>
-                    <TableHead className="text-right">Answer</TableHead>
-                    <TableHead className="text-right">Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(livePrices?.chainlinkForex || []).map((feed) => (
-                    <TableRow key={`${feed.network}-${feed.pair}`}>
-                      <TableCell className="font-medium">{feed.pair}</TableCell>
-                      <TableCell className="text-muted-foreground">{feed.network}</TableCell>
-                      <TableCell className="text-right font-mono">{feed.answer !== undefined ? `$${Number(feed.answer).toFixed(6)}` : '—'}</TableCell>
-                      <TableCell className="text-right">{feed.updatedAt ? new Date(feed.updatedAt).toLocaleString() : '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {(!livePrices?.chainlinkForex || livePrices.chainlinkForex.length === 0) && (
-                <div className="p-4 text-sm text-muted-foreground">
-                  <Button onClick={() => fetchChainlinkFeeds()} disabled={chainlinkLoading}>
-                    {chainlinkLoading ? 'Loading...' : 'Load Chainlink Feeds'}
+              {chainlinkLoading && (!livePrices?.chainlinkForex || livePrices.chainlinkForex.length === 0) ? (
+                <div className="flex items-center justify-center p-8 text-muted-foreground">
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  Loading on-chain feeds…
+                </div>
+              ) : livePrices?.chainlinkForex && livePrices.chainlinkForex.length > 0 ? (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Pair</TableHead>
+                        <TableHead>Network</TableHead>
+                        <TableHead className="text-right">Answer</TableHead>
+                        <TableHead className="text-right">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {livePrices.chainlinkForex.map((feed) => (
+                        <TableRow key={`${feed.network}-${feed.pair}`}>
+                          <TableCell className="font-medium">{feed.pair}</TableCell>
+                          <TableCell className="text-muted-foreground capitalize">{feed.network}</TableCell>
+                          <TableCell className="text-right font-mono">
+                            {feed.error ? <span className="text-destructive text-xs">Error</span> : feed.answer !== undefined ? Number(feed.answer).toFixed(6) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {feed.error ? <StatusBadge status="fallback" /> : <StatusBadge status="on-chain" />}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <p className="text-xs text-muted-foreground mt-4 px-1">
+                    Source: <a href="https://data.chain.link/feeds?categories=Fiat" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Chainlink Data Feeds</a>
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 gap-3 text-muted-foreground">
+                  <p className="text-sm">No Chainlink feeds configured.</p>
+                  <Button variant="outline" size="sm" onClick={() => { chainlinkFetchedRef.current = false; fetchChainlinkFeeds(); }} disabled={chainlinkLoading}>
+                    {chainlinkLoading ? 'Loading...' : 'Retry'}
                   </Button>
                 </div>
               )}
