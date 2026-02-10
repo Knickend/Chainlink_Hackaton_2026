@@ -55,6 +55,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
   const hasFetchedAdditionalRef = useRef(false);
   const hasFetchedForexRef = useRef(false);
   const previousSymbolsRef = useRef<string>('');
+  const lastChainlinkFetchRef = useRef<number>(0);
 
   // Add or update a stock price
   const addStockPrice = useCallback((symbol: string, price: number, change: number, changePercent: number) => {
@@ -176,9 +177,14 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     }
   }, []);
 
-  // Fetch Chainlink feeds (lazy)
+  // Fetch Chainlink feeds (lazy, 30s throttle)
   const fetchChainlinkFeeds = useCallback(async () => {
     if (chainlinkLoading) return;
+    // Skip if fetched within last 30 seconds
+    if (Date.now() - lastChainlinkFetchRef.current < 30_000) {
+      console.log('Chainlink fetch skipped (throttled)');
+      return;
+    }
     setChainlinkLoading(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('fetch-chainlink-feeds');
@@ -190,6 +196,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
 
       if (data?.success && Array.isArray(data.data)) {
         setPrices((prev) => ({ ...prev, chainlinkForex: data.data }));
+        lastChainlinkFetchRef.current = Date.now();
       } else if (data?.error) {
         console.error('Chainlink function error:', data.error);
       }

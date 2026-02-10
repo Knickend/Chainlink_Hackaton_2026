@@ -65,6 +65,7 @@ export function ExchangeRatesDialog({
   onRefresh,
 }: ExchangeRatesDialogProps) {
   const [activeTab, setActiveTab] = useState('forex');
+  const [refreshCooldown, setRefreshCooldown] = useState(false);
   const { fetchChainlinkFeeds, chainlinkLoading, prices: livePrices } = useLivePrices();
   const chainlinkFetchedRef = useRef(false);
 
@@ -75,6 +76,13 @@ export function ExchangeRatesDialog({
       fetchChainlinkFeeds();
     }
   }, [activeTab, livePrices?.chainlinkForex, fetchChainlinkFeeds]);
+
+  const handleRefresh = () => {
+    if (refreshCooldown) return;
+    onRefresh();
+    setRefreshCooldown(true);
+    setTimeout(() => setRefreshCooldown(false), 5000);
+  };
 
   const forexDate = forexTimestamp ? new Date(forexTimestamp) : null;
 
@@ -139,8 +147,8 @@ export function ExchangeRatesDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={onRefresh}
-              disabled={isLoading}
+              onClick={handleRefresh}
+              disabled={isLoading || refreshCooldown}
               className="gap-2"
             >
               <motion.div

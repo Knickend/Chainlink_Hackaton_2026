@@ -9,9 +9,71 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
-// Expected environment variable: CHAINLINK_FEEDS
-// Example value (JSON string):
-// [{"pair":"EUR/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x..."}, ...]
+// ── In-memory cache (per-isolate) ──────────────────────────────────────
+const CACHE_TTL_MS = 30_000; // 30 seconds
+let cachedResponse: { data: any[]; timestamp: number } | null = null;
+
+// Fallback public RPC (no API key needed)
+const FALLBACK_RPC = 'https://rpc.ankr.com/eth_sepolia';
+
+const ABI = [
+  'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
+  'function decimals() view returns (uint8)',
+];
+
+// ── Shared provider pool (reuse across feeds in one cycle) ─────────────
+const providerCache = new Map<string, ethers.JsonRpcProvider>();
+
+function getProvider(rpcUrl: string): ethers.JsonRpcProvider {
+  let provider = providerCache.get(rpcUrl);
+  if (!provider) {
+    provider = new ethers.JsonRpcProvider(rpcUrl);
+    providerCache.set(rpcUrl, provider);
+  }
+  return provider;
+}
+
+// ── Fetch a single feed, with fallback on error ────────────────────────
+async function fetchFeed(
+  f: { pair: string; network: string; rpc: string; address: string }
+): Promise<any> {
+  const address = ethers.getAddress(f.address.toLowerCase());
+
+  async function queryProvider(provider: ethers.JsonRpcProvider) {
+    const contract = new ethers.Contract(address, ABI, provider);
+    const [decimals, latest] = await Promise.all([
+      contract.decimals().catch(() => 8),
+      contract.latestRoundData(),
+    ]);
+    const answerRaw = BigInt(latest[1].toString());
+    const updatedAt = Number(latest[3]) || Date.now() / 1000;
+    const answer = Number(answerRaw) / Math.pow(10, Number(decimals || 8));
+    return {
+      pair: f.pair,
+      network: f.network,
+      address: f.address,
+      answer,
+      decimals: Number(decimals || 8),
+      updatedAt: new Date(updatedAt * 1000).toISOString(),
+    };
+  }
+
+  // Try primary RPC first
+  try {
+    return await queryProvider(getProvider(f.rpc));
+  } catch (primaryErr) {
+    console.warn(`Primary RPC failed for ${f.pair}:`, String(primaryErr));
+  }
+
+  // Fallback RPC
+  try {
+    console.log(`Retrying ${f.pair} with fallback RPC`);
+    return await queryProvider(getProvider(FALLBACK_RPC));
+  } catch (fallbackErr) {
+    console.error(`Fallback RPC also failed for ${f.pair}:`, String(fallbackErr));
+    return { pair: f.pair, network: f.network, address: f.address, error: String(fallbackErr) };
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -19,11 +81,19 @@ serve(async (req) => {
   try {
     console.log('fetch-chainlink-feeds: start');
 
+    // ── Return cached response if still fresh ──────────────────────────
+    if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+      console.log('fetch-chainlink-feeds: returning cached result');
+      return new Response(JSON.stringify({ success: true, data: cachedResponse.data, cached: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Parse configured feeds from env var; fallback to empty list
+    // Parse configured feeds
     const raw = Deno.env.get('CHAINLINK_FEEDS') || '[]';
     let feeds: Array<{ pair: string; network: string; rpc: string; address: string }> = [];
     try {
@@ -39,47 +109,20 @@ serve(async (req) => {
       });
     }
 
-    const results: Array<any> = [];
+    // ── Fetch all feeds concurrently ───────────────────────────────────
+    const settled = await Promise.allSettled(feeds.map(fetchFeed));
+    const results = settled.map((s) =>
+      s.status === 'fulfilled' ? s.value : { error: String((s as PromiseRejectedResult).reason) }
+    );
 
-    for (const f of feeds) {
-      try {
-        const provider = new ethers.JsonRpcProvider(f.rpc);
-        const abi = [
-          'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
-          'function decimals() view returns (uint8)'
-        ];
-        const contract = new ethers.Contract(ethers.getAddress(f.address.toLowerCase()), abi, provider);
+    // Cache successful results
+    cachedResponse = { data: results, timestamp: Date.now() };
 
-        // Call decimals and latestRoundData
-        const [decimals, latest] = await Promise.all([
-          contract.decimals().catch(() => 8),
-          contract.latestRoundData(),
-        ]);
-
-        // latestRoundData -> [roundId, answer, startedAt, updatedAt, answeredInRound]
-        const answerRaw = BigInt(latest[1].toString());
-        const updatedAt = Number(latest[3]) || Date.now() / 1000;
-        const answer = Number(answerRaw) / Math.pow(10, Number(decimals || 8));
-
-        results.push({
-          pair: f.pair,
-          network: f.network,
-          address: f.address,
-          answer,
-          decimals: Number(decimals || 8),
-          updatedAt: new Date(updatedAt * 1000).toISOString(),
-        });
-      } catch (err) {
-        console.error('feed error', f, err);
-        results.push({ pair: f.pair, network: f.network, address: f.address, error: String(err) });
-      }
-    }
-
-    // Optionally cache results in Supabase price_cache table
+    // Upsert to price_cache
     try {
       const toUpsert = results
-        .filter(r => r && r.pair && r.answer !== undefined)
-        .map(r => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
+        .filter((r: any) => r && r.pair && r.answer !== undefined)
+        .map((r: any) => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
 
       if (toUpsert.length > 0) {
         for (const u of toUpsert) {
