@@ -55,6 +55,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
   const hasFetchedAdditionalRef = useRef(false);
   const hasFetchedForexRef = useRef(false);
   const previousSymbolsRef = useRef<string>('');
+  const lastChainlinkFetchRef = useRef<number>(0);
 
   // Add or update a stock price
   const addStockPrice = useCallback((symbol: string, price: number, change: number, changePercent: number) => {
