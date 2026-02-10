@@ -196,6 +196,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
 
       if (data?.success && Array.isArray(data.data)) {
         setPrices((prev) => ({ ...prev, chainlinkForex: data.data }));
+        lastChainlinkFetchRef.current = Date.now();
       } else if (data?.error) {
         console.error('Chainlink function error:', data.error);
       }

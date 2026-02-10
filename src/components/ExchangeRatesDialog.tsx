@@ -147,8 +147,8 @@ export function ExchangeRatesDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={onRefresh}
-              disabled={isLoading}
+              onClick={handleRefresh}
+              disabled={isLoading || refreshCooldown}
               className="gap-2"
             >
               <motion.div
