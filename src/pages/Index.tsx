@@ -682,17 +682,6 @@ const IndexContent = () => {
           )}
         </div>
 
-        {/* Upcoming Expenses Agenda */}
-        {!isDemo && isPro && (
-          <div className="mb-8">
-            <UpcomingExpensesCard
-              expenses={expenses}
-              onUpdateExpense={updateExpense}
-              onDeleteExpense={deleteExpense}
-            />
-          </div>
-        )}
-
         {/* Income, Expenses & Debt */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div data-tutorial="income-card">
@@ -732,6 +721,7 @@ const IndexContent = () => {
               onUpdateExpense={isDemo ? undefined : updateExpense}
               onDeleteExpense={isDemo ? undefined : deleteExpense}
               displayUnit={displayUnit}
+              allExpenses={expenses}
             />
           </div>
           <div data-tutorial="debt-card">
