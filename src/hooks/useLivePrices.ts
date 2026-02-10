@@ -177,9 +177,14 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
     }
   }, []);
 
-  // Fetch Chainlink feeds (lazy)
+  // Fetch Chainlink feeds (lazy, 30s throttle)
   const fetchChainlinkFeeds = useCallback(async () => {
     if (chainlinkLoading) return;
+    // Skip if fetched within last 30 seconds
+    if (Date.now() - lastChainlinkFetchRef.current < 30_000) {
+      console.log('Chainlink fetch skipped (throttled)');
+      return;
+    }
     setChainlinkLoading(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('fetch-chainlink-feeds');
