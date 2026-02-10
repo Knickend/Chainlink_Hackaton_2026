@@ -1,72 +1,76 @@
 
 
-## Optimize Expenses Section: Tabbed Filters + Compact Upcoming Agenda
+## Chainlink Edge Function: Caching, Fallback RPC, and Frontend Throttling
 
-### Problem
+### Overview
 
-From the screenshot:
-- The **Expenses card** tries to show 18 items (10 recurring + 8 non-recurring) in a tiny 180px scrollable list, making it hard to find specific entries
-- The **Upcoming Expenses card** takes up a full-width row for just 1 item, wasting vertical space
-- Information density is poor -- too much scrolling in the expense list, too much whitespace in upcoming
+Three layers of optimization to eliminate Infura 429 rate-limit errors:
 
-### Solution
-
-**1. Add filter tabs to the Expenses card**
-
-Replace the flat expense list with tab-based filtering so users can focus on what matters:
-- **All** (default) -- shows all current-month expenses
-- **Recurring** -- only recurring expenses  
-- **One-time** -- only non-recurring expenses for this month
-
-This uses small pill/toggle buttons below the stats grid. The item count updates dynamically with the filter.
-
-**2. Merge Upcoming Expenses into the Expenses card**
-
-Instead of a separate full-width card, add **"Upcoming"** as a fourth filter tab in the Expenses card. When selected, it shows future non-recurring expenses with their date badges -- exactly what the standalone card shows today, but inline.
-
-This eliminates the standalone `UpcomingExpensesCard` from the layout and saves an entire dashboard row.
-
-**3. Add an upcoming count indicator**
-
-Show a small badge/count next to the "Upcoming" tab so users always know if planned expenses exist, even when viewing other filters.
+1. **Edge function in-memory cache** -- avoid hitting RPC on repeated requests within 30 seconds
+2. **Fallback RPC** -- if Infura returns 429/timeout, retry with a public RPC endpoint
+3. **Frontend throttling** -- debounce manual refresh and prevent redundant fetches
 
 ---
 
-### Files Changed
+### Changes
 
-**`src/components/IncomeExpenseCard.tsx`**
-- Add a `filter` state: `'all' | 'recurring' | 'one-time' | 'upcoming'` (only for expense type)
-- Render small toggle buttons below the stats grid when `type === 'expense'`
-- Filter the displayed items based on the active tab
-- For "upcoming" tab, filter to `!is_recurring && expense_date > today`
-- For "one-time" tab, filter to `!is_recurring && expense_date <= today` (current month only)
-- Accept new props: `allExpenses` (unfiltered list for upcoming tab) so the card can show future items too
-- Increase `max-h` from 180px to 220px to give slightly more room per filter view
+#### 1. Edge Function: In-memory cache + shared provider + fallback RPC
 
-**`src/pages/Index.tsx`**
-- Remove the standalone `<UpcomingExpensesCard>` section (lines 685-694)
-- Pass the full `expenses` array to the expense `IncomeExpenseCard` via a new `allExpenses` prop so it can compute the "upcoming" filter internally
+**File: `supabase/functions/fetch-chainlink-feeds/index.ts`**
 
-**`src/components/UpcomingExpensesCard.tsx`**
-- No changes needed (kept for potential reuse), but no longer rendered on the dashboard
+- Add a module-level cache variable (`let cachedResult / cachedAt`) that stores the last successful response. If a request arrives within 30 seconds of the last fetch, return the cached result immediately without any RPC calls.
+- Reuse a **single provider instance** per RPC URL across all feeds in one request cycle (instead of creating a new `JsonRpcProvider` per feed).
+- Add a **fallback RPC** (`https://rpc.ankr.com/eth_sepolia`). If the primary Infura call for a feed throws (429, timeout, or network error), retry that single feed with the fallback provider.
+- Remove the sequential loop; use `Promise.allSettled` to fetch all feeds concurrently (fewer round-trips, faster overall).
+
+Logic outline:
+
+```text
+const CACHE_TTL_MS = 30_000; // 30 seconds
+let cachedResponse: { data: any[]; timestamp: number } | null = null;
+
+// At start of request handler:
+if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+  return cached response;
+}
+
+// Group feeds by RPC URL -> create one provider per unique RPC
+// For each feed, try primary provider; on error, retry with fallback
+// Store successful results in cachedResponse
+```
+
+#### 2. Frontend: Debounce and guard Chainlink fetches
+
+**File: `src/hooks/useLivePrices.ts`**
+
+- Add a `lastChainlinkFetchRef` timestamp ref. In `fetchChainlinkFeeds`, skip if called within 30 seconds of the last successful fetch (matches edge function cache TTL).
+- This prevents the UI from spamming the edge function on rapid tab switches or repeated refresh clicks.
+
+**File: `src/components/ExchangeRatesDialog.tsx`**
+
+- Disable the global "Refresh" button for 5 seconds after a click (simple cooldown via `setTimeout`).
+- On the Chainlink tab, respect the existing `chainlinkLoading` guard but also skip re-fetch if data is already loaded and less than 30 seconds old.
 
 ---
 
 ### Technical Details
 
-Filter logic inside `IncomeExpenseCard` (expense type only):
+**Edge function cache behavior:**
+- First request in a 30-second window: fetches all feeds from RPC, caches result, returns data
+- Subsequent requests within 30s: returns cached data instantly (zero RPC calls)
+- Cache is per-isolate (Deno edge function instances); cold starts always fetch fresh
 
-```text
-const today = new Date().toISOString().slice(0, 10);
+**Fallback RPC strategy:**
+- Primary: user's configured Infura URL (from `CHAINLINK_FEEDS` JSON)
+- Fallback: `https://rpc.ankr.com/eth_sepolia` (public, no key needed)
+- Fallback only used per-feed when the primary throws; not a global switch
 
-Filters:
-- "all":       items as passed (current month expenses from usePortfolio)
-- "recurring": items.filter(e => e.is_recurring)
-- "one-time":  items.filter(e => !e.is_recurring)
-- "upcoming":  allExpenses.filter(e => !e.is_recurring && e.expense_date > today)
-```
+**Concurrent fetching:**
+- Current code uses a `for` loop (sequential, 5 serial RPC calls)
+- Changed to `Promise.allSettled` (parallel, all 5 feeds at once)
+- Reduces total request time from ~5x to ~1x single feed latency
 
-Filter UI: Small pill buttons rendered in a flex row, using existing Badge/toggle styling to match the glassmorphism theme. The active filter gets a filled background; inactive filters are outlined.
-
-The stats grid updates to reflect the filtered view -- showing count and total for the active filter rather than always showing the full breakdown.
-
+**Files modified:**
+- `supabase/functions/fetch-chainlink-feeds/index.ts` -- cache, shared provider, fallback RPC, parallel fetch
+- `src/hooks/useLivePrices.ts` -- 30s debounce on `fetchChainlinkFeeds`
+- `src/components/ExchangeRatesDialog.tsx` -- refresh cooldown, skip redundant Chainlink fetches
