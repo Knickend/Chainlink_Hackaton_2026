@@ -48,7 +48,7 @@ serve(async (req) => {
           'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
           'function decimals() view returns (uint8)'
         ];
-        const contract = new ethers.Contract(f.address, abi, provider);
+        const contract = new ethers.Contract(ethers.getAddress(f.address.toLowerCase()), abi, provider);
 
         // Call decimals and latestRoundData
         const [decimals, latest] = await Promise.all([
