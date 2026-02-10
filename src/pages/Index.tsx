@@ -41,6 +41,7 @@ import { InvestmentStrategyCard } from '@/components/InvestmentStrategyCard';
 import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
 import { ProfitLossCard } from '@/components/ProfitLossCard';
 import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
+import { UpcomingExpensesCard } from '@/components/UpcomingExpensesCard';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -680,6 +681,17 @@ const IndexContent = () => {
             </div>
           )}
         </div>
+
+        {/* Upcoming Expenses Agenda */}
+        {!isDemo && isPro && (
+          <div className="mb-8">
+            <UpcomingExpensesCard
+              expenses={expenses}
+              onUpdateExpense={updateExpense}
+              onDeleteExpense={deleteExpense}
+            />
+          </div>
+        )}
 
         {/* Income, Expenses & Debt */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

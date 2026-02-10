@@ -187,12 +187,22 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
     const totalIncome = recurringIncome + oneTimeIncome;
     
     // Calculate expenses with recurring/one-time breakdown
+    // Only include non-recurring expenses whose expense_date falls in the current month
+    const currentYearMonth = new Date().toISOString().slice(0, 7); // "2026-02"
+    const today = new Date().toISOString().slice(0, 10); // "2026-02-10"
+    
+    const isCurrentMonthExpense = (exp: Expense): boolean => {
+      if (exp.is_recurring) return true;
+      if (!exp.expense_date) return true; // backward compat
+      return exp.expense_date.startsWith(currentYearMonth) && exp.expense_date <= today;
+    };
+    
     const recurringExpenses = expenses
       .filter(exp => exp.is_recurring)
       .reduce((sum, exp) => sum + convertExpenseToUSD(exp), 0);
     
     const oneTimeExpenses = expenses
-      .filter(exp => !exp.is_recurring)
+      .filter(exp => !exp.is_recurring && isCurrentMonthExpense(exp))
       .reduce((sum, exp) => sum + convertExpenseToUSD(exp), 0);
     
     const totalExpenses = recurringExpenses + oneTimeExpenses;

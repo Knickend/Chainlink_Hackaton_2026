@@ -1,6 +1,7 @@
 import { ReactNode, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownRight, Repeat, Zap } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Repeat, Zap, CalendarDays } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
 import { Income, Expense, DisplayUnit, convertCurrency, UNIT_SYMBOLS, FOREX_RATES_TO_USD, BankingCurrency, DEFAULT_CONVERSION_RATES, isBitcoinCurrency, getBitcoinCurrencySymbol, BitcoinCurrency } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EditIncomeDialog } from './EditIncomeDialog';
@@ -209,6 +210,13 @@ export function IncomeExpenseCard({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {/* Show date for non-recurring expenses */}
+                {expense && expense.expense_date && (
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                    <CalendarDays className="w-2.5 h-2.5" />
+                    {format(parseISO(expense.expense_date), 'MMM d')}
+                  </span>
+                )}
                 <span className="font-mono text-sm">{formatNativeValue(item.amount, (item as any).currency || 'USD')}</span>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {isIncome && 'source' in item && onUpdateIncome && (
