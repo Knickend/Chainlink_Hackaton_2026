@@ -370,6 +370,9 @@ const IndexContent = () => {
                 currentNetWorth={adjustedNetWorth} 
                 formatValue={formatValue}
                 formatDisplayUnitValue={formatDisplayUnitValue}
+                assets={assets}
+                freeMonthlyIncome={netCashFlow}
+                goals={demoGoals}
                 delay={0.2}
               />
             </div>
@@ -442,7 +445,6 @@ const IndexContent = () => {
                 debts={demoDebts}
                 monthlyPayments={demoMonthlyPayments}
                 goals={demoGoals}
-                assets={assets}
                 delay={0.3}
               />
             ) : (
