@@ -13,6 +13,9 @@ export interface InvestmentPreferences {
   commodities_allocation: number;
   emergency_fund_target: number;
   debt_allocation: number;
+  rebalance_threshold: number;
+  rebalance_frequency: string;
+  last_rebalance_check: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +75,8 @@ export function useInvestmentPreferences(
     commodities_allocation: number;
     emergency_fund_target: number;
     debt_allocation: number;
+    rebalance_threshold?: number;
+    rebalance_frequency?: string;
   }) => {
     if (!user) return;
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings2, Target } from 'lucide-react';
+import { Settings2, Target, Scale } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { Goal } from '@/lib/types';
 import { GoalAnalysis } from '@/lib/goalAnalysis';
@@ -32,6 +33,8 @@ interface InvestmentPreferencesDialogProps {
     commodities_allocation: number;
     emergency_fund_target: number;
     debt_allocation: number;
+    rebalance_threshold?: number;
+    rebalance_frequency?: string;
   }) => Promise<boolean>;
   goals?: Goal[];
   goalAnalysis?: GoalAnalysis;
@@ -61,6 +64,8 @@ export function InvestmentPreferencesDialog({
   const [crypto, setCrypto] = useState(30);
   const [commodities, setCommodities] = useState(20);
   const [emergency, setEmergency] = useState(10);
+  const [rebalanceThreshold, setRebalanceThreshold] = useState(10);
+  const [rebalanceFrequency, setRebalanceFrequency] = useState('weekly');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -70,6 +75,12 @@ export function InvestmentPreferencesDialog({
       setCrypto(currentPreferences.crypto_allocation);
       setCommodities(currentPreferences.commodities_allocation);
       setEmergency(currentPreferences.emergency_fund_target);
+      if ('rebalance_threshold' in currentPreferences) {
+        setRebalanceThreshold((currentPreferences as any).rebalance_threshold ?? 10);
+      }
+      if ('rebalance_frequency' in currentPreferences) {
+        setRebalanceFrequency((currentPreferences as any).rebalance_frequency ?? 'weekly');
+      }
     }
   }, [currentPreferences, open]);
 
@@ -92,6 +103,8 @@ export function InvestmentPreferencesDialog({
       crypto_allocation: crypto,
       commodities_allocation: commodities,
       emergency_fund_target: emergency,
+      rebalance_threshold: rebalanceThreshold,
+      rebalance_frequency: rebalanceFrequency,
     });
     setSaving(false);
     if (success) {
@@ -267,6 +280,45 @@ export function InvestmentPreferencesDialog({
               />
             </PieChart>
           </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Rebalance Settings */}
+        <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-4">
+          <div className="flex items-center gap-2">
+            <Scale className="w-4 h-4 text-primary" />
+            <h4 className="text-sm font-semibold">Rebalance Settings</h4>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <Label className="text-sm">Drift Threshold</Label>
+              <span className="text-sm font-medium text-primary">{rebalanceThreshold}%</span>
+            </div>
+            <Slider
+              value={[rebalanceThreshold]}
+              onValueChange={([v]) => setRebalanceThreshold(v)}
+              min={5}
+              max={20}
+              step={5}
+            />
+            <p className="text-xs text-muted-foreground">
+              Get notified when any category drifts more than {rebalanceThreshold}% from target.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm">Check Frequency</Label>
+            <Select value={rebalanceFrequency} onValueChange={setRebalanceFrequency}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

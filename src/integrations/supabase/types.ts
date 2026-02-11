@@ -561,6 +561,33 @@ export type Database = {
         }
         Relationships: []
       }
+      rebalance_alerts: {
+        Row: {
+          created_at: string
+          drift_data: Json
+          id: string
+          is_dismissed: boolean
+          max_drift: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          drift_data: Json
+          id?: string
+          is_dismissed?: boolean
+          max_drift: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          drift_data?: Json
+          id?: string
+          is_dismissed?: boolean
+          max_drift?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       sales_bot_interactions: {
         Row: {
           created_at: string
@@ -629,6 +656,9 @@ export type Database = {
           debt_allocation: number
           emergency_fund_target: number
           id: string
+          last_rebalance_check: string | null
+          rebalance_frequency: string
+          rebalance_threshold: number
           stocks_allocation: number
           updated_at: string
           user_id: string
@@ -640,6 +670,9 @@ export type Database = {
           debt_allocation?: number
           emergency_fund_target?: number
           id?: string
+          last_rebalance_check?: string | null
+          rebalance_frequency?: string
+          rebalance_threshold?: number
           stocks_allocation?: number
           updated_at?: string
           user_id: string
@@ -651,6 +684,9 @@ export type Database = {
           debt_allocation?: number
           emergency_fund_target?: number
           id?: string
+          last_rebalance_check?: string | null
+          rebalance_frequency?: string
+          rebalance_threshold?: number
           stocks_allocation?: number
           updated_at?: string
           user_id?: string
