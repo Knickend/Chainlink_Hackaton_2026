@@ -5,11 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useInvestmentPreferences, InvestmentAllocation } from '@/hooks/useInvestmentPreferences';
-import { useRebalancer } from '@/hooks/useRebalancer';
 import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
-import { RebalanceCard } from './RebalanceCard';
 import { DebtOptimizationDialog } from './DebtOptimizationDialog';
-import { Asset, Debt, Goal } from '@/lib/types';
+import { Debt, Goal } from '@/lib/types';
 import { analyzeDebts, calculateDebtAwareAllocations, DebtAnalysis, DebtAwareAllocation } from '@/lib/debtAnalysis';
 import { calculateEmergencyFundProgress } from '@/lib/goalAnalysis';
 
@@ -19,7 +17,6 @@ interface InvestmentStrategyCardProps {
   debts?: Debt[];
   monthlyPayments?: number;
   goals?: Goal[];
-  assets?: Asset[];
   delay?: number;
 }
 
@@ -29,7 +26,6 @@ export function InvestmentStrategyCard({
   debts = [],
   monthlyPayments = 0,
   goals = [],
-  assets = [],
   delay = 0,
 }: InvestmentStrategyCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -45,8 +41,6 @@ export function InvestmentStrategyCard({
     goalAnalysis,
   } = useInvestmentPreferences(freeMonthlyIncome, goals);
 
-  // Rebalancer hook
-  const rebalancer = useRebalancer(assets, preferences);
 
   const baseAllocations = calculateGoalAwareAllocations();
   const debtAnalysis = analyzeDebts(debts, freeMonthlyIncome);
@@ -272,22 +266,6 @@ export function InvestmentStrategyCard({
           <span className="font-semibold text-lg">{formatValue(adjustedInvestable)}/month</span>
         </div>
       </div>
-      {/* Rebalance Card */}
-      {rebalancer.shouldShow && hasPreferences && (
-        <div className="mt-6 pt-4 border-t border-border">
-          <RebalanceCard
-            driftData={rebalancer.driftData}
-            tradeSuggestions={rebalancer.tradeSuggestions}
-            maxDrift={rebalancer.maxDrift}
-            threshold={rebalancer.threshold}
-            alerts={rebalancer.alerts}
-            onDismiss={(alertId) => {
-              if (alertId) rebalancer.dismissAlert(alertId);
-            }}
-            formatValue={formatValue}
-          />
-        </div>
-      )}
     </motion.div>
   );
 }

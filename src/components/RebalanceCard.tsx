@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Scale, X, ArrowUpRight, ArrowDownRight, CheckCircle2 } from 'lucide-react';
+import { Scale, X, ArrowUpRight, ArrowDownRight, CheckCircle2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -13,6 +13,7 @@ interface RebalanceCardProps {
   alerts: RebalanceAlert[];
   onDismiss: (alertId?: string) => void;
   formatValue: (value: number) => string;
+  onEdit?: () => void;
 }
 
 function getDriftColor(diff: number, threshold: number): string {
@@ -37,6 +38,7 @@ export function RebalanceCard({
   alerts,
   onDismiss,
   formatValue,
+  onEdit,
 }: RebalanceCardProps) {
   if (driftData.length === 0) return null;
 
@@ -71,16 +73,28 @@ export function RebalanceCard({
             </Badge>
           )}
         </div>
-        {hasActiveAlert && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDismiss(alerts[0]?.id)}
-            title="Dismiss alert"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onEdit}
+              title="Edit rebalance settings"
+            >
+              <Settings2 className="w-4 h-4" />
+            </Button>
+          )}
+          {hasActiveAlert && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDismiss(alerts[0]?.id)}
+              title="Dismiss alert"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Drift bars */}
