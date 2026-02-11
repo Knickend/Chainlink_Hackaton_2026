@@ -1,49 +1,50 @@
 
 
-## Penfield Integration Plan + Pro-Only Memory Gating
+## Inject Portfolio Context into the Financial Advisor
 
-### 1. Penfield Development-Time Integration
-- Use `store`/`recall` during development to persist architectural decisions and debugging context
-- Use `connect` to build knowledge graphs linking financial concepts
-- Use `save_context` to checkpoint investigation progress for multi-session work
+### What this does
 
-### 2. Production Runtime Architecture — `chat_memories` Table
-- Create a `chat_memories` table with pgvector embeddings for semantic recall in the Financial Advisor chat
-- Store conversation history, user financial profiles (risk tolerance, goals, preferences), and advisor insights
-- Enable the advisor to reference past conversations and user context for personalized responses
+Right now, the AI advisor cannot see your actual portfolio data -- it only receives your chat messages. After this change, every message you send will include a compact summary of your assets, income, expenses, debts, and goals so the advisor can give specific, personalized answers like "You have 60% in crypto, consider adding stocks for diversification."
 
-### 3. Proposed Schema
+### Changes
+
+**1. Add `buildPortfolioSummary()` helper in `FinancialAdvisorChat.tsx`**
+
+A function that serializes the already-loaded dashboard data into a concise text block:
 
 ```text
-chat_memories
-  - id: uuid (PK, default gen_random_uuid())
-  - user_id: uuid (NOT NULL)
-  - content: text (NOT NULL)
-  - memory_type: text ('conversation', 'preference', 'insight', 'goal')
-  - embedding: vector(1536) (for semantic search via pgvector)
-  - metadata: jsonb (tags, session IDs, financial context)
-  - created_at: timestamptz (default now())
-  - updated_at: timestamptz (default now())
+## Current Portfolio Snapshot
+Assets (5 total, $47,200):
+- Banking: Savings Account -- $10,000 (USD)
+- Crypto: Bitcoin -- 0.25 BTC
+- Stocks: AAPL -- 10 shares
+...
+Monthly Income: $5,500 (recurring) + $200 (one-time)
+Monthly Expenses: $3,200
+Debts: $15,000 total (mortgage 4.5%, credit card 19.9%)
+Goals: Emergency Fund -- $3,000/$10,000 (30%)
 ```
 
-RLS policies: users can only read/write their own memories.
+This uses `assets`, `income`, `expenses`, `debts`, and `goals` which are already available in the component (lines 118-139). No extra database calls needed.
 
-### 4. Pro-Only Gating
+**2. Pass `portfolioContext` in the `streamChat()` call**
 
-Chat memory is a Pro-exclusive feature:
-- In `FinancialAdvisorChat`, check `isPro` from `useSubscription()` before storing or recalling memories
-- Free/Standard users get the normal stateless advisor (no memory persistence)
-- Pro users get personalized, context-aware advice that remembers past conversations and preferences
-- The `financial-advisor` edge function receives a `memories` array only when the client includes recalled context (Pro path)
-- Non-Pro users simply send messages without the memory context — the edge function works the same either way
-- Add a subtle "Pro" badge or hint in the chat UI when memory is active (e.g., "I remember you mentioned...")
+Update `streamChat` (line 179) and `sendMessage` (line 253) to include the portfolio summary string in the request body alongside `messages` and `memories`.
 
-### 5. Integration with Financial Advisor Chat
+**3. Update the `financial-advisor` edge function**
 
-The `FinancialAdvisorChat` component and its `financial-advisor` edge function would be enhanced to:
-- **(Pro only)** Store each conversation turn as a memory after the response completes
-- **(Pro only)** On new messages, recall relevant past context via embedding similarity search
-- **(Pro only)** Inject recalled context into the system prompt so the advisor "remembers" the user
-- **(Pro only)** Store detected user preferences (risk tolerance, financial goals) as dedicated memory entries
-- Free/Standard users continue to use the advisor normally without memory features
+- Extract `portfolioContext` from the request body
+- Update `buildSystemPrompt()` to accept and inject the portfolio snapshot between the base prompt and memory context
+- Not Pro-gated -- all users benefit from the advisor seeing their data
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `src/components/FinancialAdvisorChat.tsx` | Add `buildPortfolioSummary(assets, income, expenses, debts, goals)` helper. Update `streamChat` to accept and send `portfolioContext`. Call it in `sendMessage` before streaming. |
+| `supabase/functions/financial-advisor/index.ts` | Extract `portfolioContext` from request body. Update `buildSystemPrompt` signature to accept it and inject between base prompt and memories section. |
+
+### Privacy note
+
+The portfolio summary is built client-side from data the user already owns and is visible on their dashboard. It is sent only to the AI advisor backend function and not stored or shared externally.
 
