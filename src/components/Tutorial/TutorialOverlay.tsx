@@ -118,8 +118,9 @@ export function TutorialOverlay() {
         // Retry with increasing delays for elements that render later
         setTimeout(() => scrollToElement(attempt + 1), 200);
       } else {
-        console.warn(`Tutorial element not found: ${currentStepData.target}`);
+        console.warn(`Tutorial element not found: ${currentStepData.target}, auto-advancing`);
         setTargetRect(null);
+        nextStep(); // Auto-advance instead of getting stuck
       }
     };
 

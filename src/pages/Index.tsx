@@ -174,11 +174,12 @@ const IndexContent = () => {
   // Show Terms Agreement Dialog for authenticated users who haven't agreed yet
   const showTermsDialog = !isDemo && !hasAgreedToTos;
 
-  // Use mock debts for demo mode
-  const demoDebts = isDemo ? mockDebts : debts;
-  const demoTotalDebt = isDemo ? mockDebts.reduce((sum, d) => sum + d.principal_amount, 0) : totalDebt;
-  const demoMonthlyPayments = isDemo ? mockDebts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0) : monthlyPayments;
-  const demoMonthlyInterest = isDemo ? mockDebts.reduce((sum, d) => sum + (d.principal_amount * d.interest_rate / 100 / 12), 0) : monthlyInterest;
+  // Use mock debts for demo mode or during tutorial (ensures debt-related tutorial steps have data)
+  const useMockDebts = isDemo || isTutorialActive;
+  const demoDebts = useMockDebts ? mockDebts : debts;
+  const demoTotalDebt = useMockDebts ? mockDebts.reduce((sum, d) => sum + d.principal_amount, 0) : totalDebt;
+  const demoMonthlyPayments = useMockDebts ? mockDebts.reduce((sum, d) => sum + (d.monthly_payment || 0), 0) : monthlyPayments;
+  const demoMonthlyInterest = useMockDebts ? mockDebts.reduce((sum, d) => sum + (d.principal_amount * d.interest_rate / 100 / 12), 0) : monthlyInterest;
 
   // Use mock goals for demo mode
   const demoGoals = isDemo ? mockGoals : goals;
