@@ -442,6 +442,7 @@ const IndexContent = () => {
                 debts={demoDebts}
                 monthlyPayments={demoMonthlyPayments}
                 goals={demoGoals}
+                assets={assets}
                 delay={0.3}
               />
             ) : (
