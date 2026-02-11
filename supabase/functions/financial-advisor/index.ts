@@ -6,10 +6,9 @@ const corsHeaders = {
 };
 
 // Rate limiting configuration
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 20; // 20 requests per minute for authenticated users
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 20;
 
-// In-memory rate limit store
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
 function checkRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; remaining: number; resetTime: number } {
@@ -42,7 +41,6 @@ function getUserIdFromAuth(req: Request): string | null {
   
   try {
     const token = authHeader.replace("Bearer ", "");
-    // Decode JWT payload (base64url) without verification - just for rate limit key
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     
@@ -61,7 +59,7 @@ function getRateLimitHeaders(remaining: number, resetTime: number): Record<strin
   };
 }
 
-const SYSTEM_PROMPT = `You are InControl's AI Financial Advisor, a knowledgeable and friendly expert in personal finance. You help users with:
+const BASE_SYSTEM_PROMPT = `You are InControl's AI Financial Advisor, a knowledgeable and friendly expert in personal finance. You help users with:
 
 1. **Budgeting**: Creating and maintaining budgets, expense tracking, identifying areas to save money
 2. **Investing**: Understanding different asset classes (cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, commodities), portfolio diversification, risk management, and long-term wealth building strategies
@@ -78,19 +76,37 @@ Guidelines:
 
 Remember: You're here to educate and empower users to make informed financial decisions.`;
 
+function buildSystemPrompt(memories?: Array<{ content: string; memory_type: string; created_at: string }>): string {
+  if (!memories || memories.length === 0) {
+    return BASE_SYSTEM_PROMPT;
+  }
+
+  const memoryContext = memories.map(m => {
+    const typeLabel = m.memory_type === 'preference' ? '🎯 User Preference' 
+      : m.memory_type === 'insight' ? '💡 Insight'
+      : m.memory_type === 'goal' ? '🎯 Goal'
+      : '💬 Previous Conversation';
+    return `${typeLabel}: ${m.content}`;
+  }).join('\n');
+
+  return `${BASE_SYSTEM_PROMPT}
+
+## User Context (from past conversations — Pro feature)
+You have access to the following memories from past interactions with this user. Use them to provide personalized, context-aware advice. Reference past conversations naturally (e.g., "As we discussed before..." or "Given your preference for...").
+
+${memoryContext}`;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // Determine rate limit key - prefer user ID, fallback to IP
     const userId = getUserIdFromAuth(req);
     const clientIP = getClientIP(req);
     const rateLimitKey = userId ? `user:${userId}` : `ip:${clientIP}`;
     
-    // Check rate limit
     const { allowed, remaining, resetTime } = checkRateLimit(
       rateLimitKey, 
       MAX_REQUESTS_PER_WINDOW, 
@@ -103,14 +119,11 @@ serve(async (req) => {
       console.log(`Rate limit exceeded for ${rateLimitKey}`);
       return new Response(
         JSON.stringify({ error: "You're sending messages too quickly. Please wait a moment before trying again." }),
-        { 
-          status: 429, 
-          headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } 
-        }
+        { status: 429, headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { messages } = await req.json();
+    const { messages, memories } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -128,7 +141,8 @@ serve(async (req) => {
       );
     }
 
-    console.log("Starting financial advisor chat with", messages.length, "messages", `(${rateLimitKey})`);
+    const systemPrompt = buildSystemPrompt(memories);
+    console.log("Starting financial advisor chat with", messages.length, "messages", memories?.length ? `+ ${memories.length} memories` : "(no memories)", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -139,7 +153,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           ...messages,
         ],
         stream: true,
@@ -172,7 +186,6 @@ serve(async (req) => {
 
     console.log("Streaming response from AI gateway");
 
-    // Return the stream directly with rate limit headers
     return new Response(response.body, {
       headers: { ...corsHeaders, ...rateLimitHeaders, "Content-Type": "text/event-stream" },
     });
