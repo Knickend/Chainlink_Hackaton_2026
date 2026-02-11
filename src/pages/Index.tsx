@@ -193,10 +193,14 @@ const IndexContent = () => {
       {/* Terms Agreement Dialog - blocks app until accepted */}
       <TermsAgreementDialog open={showTermsDialog} onAccept={acceptTerms} />
       
-      {/* Tutorial Components */}
-      <WelcomeModal />
-      <CompletionModal />
-      <TutorialOverlay />
+      {/* Tutorial Components - only show after terms accepted */}
+      {!showTermsDialog && (
+        <>
+          <WelcomeModal />
+          <CompletionModal />
+          <TutorialOverlay />
+        </>
+      )}
       
       <div className="min-h-screen bg-background">
         {/* Ambient glow effect */}
