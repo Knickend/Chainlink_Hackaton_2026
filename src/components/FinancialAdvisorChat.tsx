@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +12,8 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useDebts } from '@/hooks/useDebts';
 import { useGoals } from '@/hooks/useGoals';
 import { useToast } from '@/hooks/use-toast';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useChatMemories } from '@/hooks/useChatMemories';
 
 import { Asset, Income, Expense, Debt, Goal } from '@/lib/types';
 
@@ -75,6 +77,8 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { isPro } = useSubscription();
+  const { recallMemories, storeConversationTurn } = useChatMemories(isPro);
 
   // Voice chat hook with fallback callback
   const {
@@ -172,14 +176,21 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     }
   }, [isOpen, voiceMode]);
 
-  const streamChat = useCallback(async (userMessage: string, allMessages: Message[]) => {
+  const streamChat = useCallback(async (userMessage: string, allMessages: Message[], memories?: Array<{ content: string; memory_type: string; created_at: string }>) => {
+    const body: Record<string, any> = {
+      messages: allMessages.map(m => ({ role: m.role, content: m.content })),
+    };
+    if (memories && memories.length > 0) {
+      body.memories = memories;
+    }
+
     const resp = await fetch(CHAT_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
       },
-      body: JSON.stringify({ messages: allMessages.map(m => ({ role: m.role, content: m.content })) }),
+      body: JSON.stringify(body),
     });
 
     if (!resp.ok) {
@@ -251,11 +262,18 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     setIsLoading(true);
 
     try {
-      const assistantContent = await streamChat(text, newMessages);
+      // Pro users: recall relevant memories for context
+      const memories = isPro ? await recallMemories() : undefined;
+
+      const assistantContent = await streamChat(text, newMessages, memories);
       
+      // Pro users: store conversation turn for future recall
+      if (isPro && assistantContent) {
+        storeConversationTurn(text, assistantContent);
+      }
+
       // Auto-play response in voice mode
       if (voiceMode && !skipVoicePlayback && assistantContent) {
-        // Extract plain text from markdown for TTS
         const plainText = assistantContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
         await playResponse(plainText, messages.length);
       }
@@ -271,7 +289,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, streamChat, voiceMode, playResponse]);
+  }, [input, isLoading, messages, streamChat, voiceMode, playResponse, isPro, recallMemories, storeConversationTurn]);
 
   const handleVoiceCommand = useCallback(async (transcribedText: string) => {
     // Add user message to chat
@@ -523,6 +541,12 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold">Financial Advisor</h3>
+                    {isPro && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
+                        <Brain className="w-3 h-3" />
+                        Memory
+                      </span>
+                    )}
                     {isUsingFallback && voiceMode && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
                         <WifiOff className="w-3 h-3" />
@@ -533,7 +557,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                   <p className="text-xs text-muted-foreground">
                     {voiceMode 
                       ? (sttProvider === 'webspeech' ? 'Click mic to speak' : 'Voice mode')
-                      : 'AI-powered guidance'
+                      : isPro ? 'Personalized AI guidance' : 'AI-powered guidance'
                     }
                   </p>
                 </div>
