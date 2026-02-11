@@ -76,25 +76,29 @@ Guidelines:
 
 Remember: You're here to educate and empower users to make informed financial decisions.`;
 
-function buildSystemPrompt(memories?: Array<{ content: string; memory_type: string; created_at: string }>): string {
-  if (!memories || memories.length === 0) {
-    return BASE_SYSTEM_PROMPT;
+function buildSystemPrompt(
+  portfolioContext?: string,
+  memories?: Array<{ content: string; memory_type: string; created_at: string }>
+): string {
+  let prompt = BASE_SYSTEM_PROMPT;
+
+  if (portfolioContext) {
+    prompt += `\n\n## User's Current Portfolio Data\nThe user's real-time portfolio data is shown below. Use it to give specific, data-driven advice. Reference their actual holdings, income, expenses, debts, and goals naturally.\n\n${portfolioContext}`;
   }
 
-  const memoryContext = memories.map(m => {
-    const typeLabel = m.memory_type === 'preference' ? '🎯 User Preference' 
-      : m.memory_type === 'insight' ? '💡 Insight'
-      : m.memory_type === 'goal' ? '🎯 Goal'
-      : '💬 Previous Conversation';
-    return `${typeLabel}: ${m.content}`;
-  }).join('\n');
+  if (memories && memories.length > 0) {
+    const memoryContext = memories.map(m => {
+      const typeLabel = m.memory_type === 'preference' ? '🎯 User Preference' 
+        : m.memory_type === 'insight' ? '💡 Insight'
+        : m.memory_type === 'goal' ? '🎯 Goal'
+        : '💬 Previous Conversation';
+      return `${typeLabel}: ${m.content}`;
+    }).join('\n');
 
-  return `${BASE_SYSTEM_PROMPT}
+    prompt += `\n\n## User Context (from past conversations — Pro feature)\nYou have access to the following memories from past interactions with this user. Use them to provide personalized, context-aware advice. Reference past conversations naturally (e.g., "As we discussed before..." or "Given your preference for...").\n\n${memoryContext}`;
+  }
 
-## User Context (from past conversations — Pro feature)
-You have access to the following memories from past interactions with this user. Use them to provide personalized, context-aware advice. Reference past conversations naturally (e.g., "As we discussed before..." or "Given your preference for...").
-
-${memoryContext}`;
+  return prompt;
 }
 
 serve(async (req) => {
@@ -123,7 +127,7 @@ serve(async (req) => {
       );
     }
 
-    const { messages, memories } = await req.json();
+    const { messages, memories, portfolioContext } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -141,8 +145,8 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = buildSystemPrompt(memories);
-    console.log("Starting financial advisor chat with", messages.length, "messages", memories?.length ? `+ ${memories.length} memories` : "(no memories)", `(${rateLimitKey})`);
+    const systemPrompt = buildSystemPrompt(portfolioContext, memories);
+    console.log("Starting financial advisor chat with", messages.length, "messages", portfolioContext ? "+ portfolio context" : "(no portfolio)", memories?.length ? `+ ${memories.length} memories` : "(no memories)", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
