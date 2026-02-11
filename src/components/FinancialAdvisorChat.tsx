@@ -17,6 +17,35 @@ import { useChatMemories } from '@/hooks/useChatMemories';
 
 import { Asset, Income, Expense, Debt, Goal, getCurrencySymbol } from '@/lib/types';
 
+// Helper to get the native currency code for an asset
+function getAssetCurrency(a: Asset): string {
+  // Stocks with explicit currency field (e.g. COP)
+  if (a.currency && a.currency !== 'USD') return a.currency;
+  // Banking/realestate: symbol stores the currency code (EUR, COP, etc.)
+  if ((a.category === 'banking' || a.category === 'realestate') && a.symbol) return a.symbol;
+  return 'USD';
+}
+
+// Format a number with its currency code
+function fmtCurrency(amount: number, currency: string): string {
+  const sym = getCurrencySymbol(currency);
+  // For ambiguous symbols like '$' used by USD, COP, MXN — prefix with code
+  const needsCode = ['COP', 'MXN', 'AUD', 'CAD', 'NZD', 'HKD', 'SGD'].includes(currency);
+  const formatted = amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  return needsCode ? `${currency} ${sym}${formatted}` : `${sym}${formatted}`;
+}
+
+// Group amounts by currency and produce a summary string like "USD $11,200 | COP $50,000,000"
+function groupByCurrency(items: { amount: number; currency: string }[]): string {
+  const totals: Record<string, number> = {};
+  for (const it of items) {
+    totals[it.currency] = (totals[it.currency] || 0) + it.amount;
+  }
+  return Object.entries(totals)
+    .map(([cur, total]) => fmtCurrency(total, cur))
+    .join(' | ');
+}
+
 function buildPortfolioSummary(
   assets: Asset[],
   income: Income[],
@@ -26,9 +55,18 @@ function buildPortfolioSummary(
 ): string {
   const lines: string[] = ['## Current Portfolio Snapshot'];
 
-  // Assets
-  const totalAssets = assets.reduce((s, a) => s + a.value, 0);
-  lines.push(`\nAssets (${assets.length} total, $${totalAssets.toLocaleString('en-US', { maximumFractionDigits: 0 })}):`);
+  // Assets — group totals by currency
+  const assetCurrencyItems = assets.map(a => {
+    const cur = getAssetCurrency(a);
+    // For banking/realestate, use quantity (native amount) if available
+    const nativeAmount = (a.category === 'banking' || a.category === 'realestate') && a.quantity
+      ? a.quantity : a.value;
+    return { amount: nativeAmount, currency: cur };
+  });
+  const assetTotalStr = groupByCurrency(assetCurrencyItems);
+  lines.push(`\nAssets (${assets.length} total):`);
+  lines.push(`  By currency: ${assetTotalStr}`);
+
   const categoryLabels: Record<string, string> = {
     banking: 'Cash & Stablecoins',
     crypto: 'Cryptocurrency',
@@ -41,34 +79,43 @@ function buildPortfolioSummary(
     return acc;
   }, {});
   for (const [cat, items] of Object.entries(grouped)) {
-    const catTotal = items.reduce((s, a) => s + a.value, 0);
-    lines.push(`- ${categoryLabels[cat] || cat} ($${catTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}):`);
+    lines.push(`- ${categoryLabels[cat] || cat}:`);
     for (const a of items.slice(0, 5)) {
-      const detail = a.quantity ? ` — ${a.quantity} ${a.symbol || ''}` : '';
-      lines.push(`  • ${a.name}${detail} ($${a.value.toLocaleString('en-US', { maximumFractionDigits: 0 })})`);
+      const cur = getAssetCurrency(a);
+      if (a.category === 'banking' || a.category === 'realestate') {
+        const amt = a.quantity ?? a.value;
+        lines.push(`  • ${a.name} — ${fmtCurrency(amt, cur)}`);
+      } else {
+        // Market-priced: show quantity + symbol + value in native currency
+        const detail = a.quantity ? `${a.quantity} ${a.symbol || ''}` : '';
+        lines.push(`  • ${a.name}${detail ? ` — ${detail}` : ''} (${fmtCurrency(a.value, cur)})`);
+      }
     }
     if (items.length > 5) lines.push(`  • ... and ${items.length - 5} more`);
   }
 
-  // Income
+  // Income — group by currency
   const recurring = income.filter(i => i.is_recurring);
   const oneTime = income.filter(i => !i.is_recurring);
-  const recurringTotal = recurring.reduce((s, i) => s + i.amount, 0);
-  const oneTimeTotal = oneTime.reduce((s, i) => s + i.amount, 0);
-  lines.push(`\nMonthly Income: $${recurringTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${recurring.length} recurring)${oneTime.length ? ` + $${oneTimeTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${oneTime.length} one-time)` : ''}`);
+  const recurringStr = groupByCurrency(recurring.map(i => ({ amount: i.amount, currency: i.currency || 'USD' })));
+  const oneTimeStr = oneTime.length ? groupByCurrency(oneTime.map(i => ({ amount: i.amount, currency: i.currency || 'USD' }))) : '';
+  lines.push(`\nMonthly Income: ${recurringStr} (${recurring.length} recurring)${oneTime.length ? ` + ${oneTimeStr} (${oneTime.length} one-time)` : ''}`);
 
-  // Expenses
+  // Expenses — group by currency
   const recurringExp = expenses.filter(e => e.is_recurring);
   const oneTimeExp = expenses.filter(e => !e.is_recurring);
-  const recurringExpTotal = recurringExp.reduce((s, e) => s + e.amount, 0);
-  const oneTimeExpTotal = oneTimeExp.reduce((s, e) => s + e.amount, 0);
-  lines.push(`Monthly Expenses: $${recurringExpTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${recurringExp.length} recurring)${oneTimeExp.length ? ` + $${oneTimeExpTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${oneTimeExp.length} one-time)` : ''}`);
+  const recurringExpStr = groupByCurrency(recurringExp.map(e => ({ amount: e.amount, currency: e.currency || 'USD' })));
+  const oneTimeExpStr = oneTimeExp.length ? groupByCurrency(oneTimeExp.map(e => ({ amount: e.amount, currency: e.currency || 'USD' }))) : '';
+  lines.push(`Monthly Expenses: ${recurringExpStr} (${recurringExp.length} recurring)${oneTimeExp.length ? ` + ${oneTimeExpStr} (${oneTimeExp.length} one-time)` : ''}`);
 
-  // Debts
+  // Debts — group by currency
   if (debts.length > 0) {
-    const totalDebt = debts.reduce((s, d) => s + d.principal_amount, 0);
-    const debtDetails = debts.map(d => `${d.name} (${d.debt_type}, ${getCurrencySymbol(d.currency)}${d.principal_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}, ${d.interest_rate}% APR${d.monthly_payment ? `, ${getCurrencySymbol(d.currency)}${d.monthly_payment}/mo` : ''})`).join(', ');
-    lines.push(`\nDebts ($${totalDebt.toLocaleString('en-US', { maximumFractionDigits: 0 })} total): ${debtDetails}`);
+    const debtTotalStr = groupByCurrency(debts.map(d => ({ amount: d.principal_amount, currency: d.currency || 'USD' })));
+    const debtDetails = debts.map(d => {
+      const cur = d.currency || 'USD';
+      return `${d.name} (${d.debt_type}, ${fmtCurrency(d.principal_amount, cur)}, ${d.interest_rate}% APR${d.monthly_payment ? `, ${fmtCurrency(d.monthly_payment, cur)}/mo` : ''})`;
+    }).join(', ');
+    lines.push(`\nDebts (${debtTotalStr} total): ${debtDetails}`);
   }
 
   // Goals
@@ -76,7 +123,8 @@ function buildPortfolioSummary(
     lines.push(`\nGoals:`);
     for (const g of goals) {
       const pct = g.target_amount > 0 ? Math.round((g.current_amount / g.target_amount) * 100) : 0;
-      lines.push(`- ${g.name} (${g.category}): ${getCurrencySymbol(g.currency)}${g.current_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} / ${getCurrencySymbol(g.currency)}${g.target_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${pct}%)${g.is_completed ? ' ✅' : ''}`);
+      const cur = g.currency || 'USD';
+      lines.push(`- ${g.name} (${g.category}): ${fmtCurrency(g.current_amount, cur)} / ${fmtCurrency(g.target_amount, cur)} (${pct}%)${g.is_completed ? ' ✅' : ''}`);
     }
   }
 
