@@ -15,7 +15,73 @@ import { useToast } from '@/hooks/use-toast';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useChatMemories } from '@/hooks/useChatMemories';
 
-import { Asset, Income, Expense, Debt, Goal } from '@/lib/types';
+import { Asset, Income, Expense, Debt, Goal, getCurrencySymbol } from '@/lib/types';
+
+function buildPortfolioSummary(
+  assets: Asset[],
+  income: Income[],
+  expenses: Expense[],
+  debts: Debt[],
+  goals: Goal[],
+): string {
+  const lines: string[] = ['## Current Portfolio Snapshot'];
+
+  // Assets
+  const totalAssets = assets.reduce((s, a) => s + a.value, 0);
+  lines.push(`\nAssets (${assets.length} total, $${totalAssets.toLocaleString('en-US', { maximumFractionDigits: 0 })}):`);
+  const categoryLabels: Record<string, string> = {
+    banking: 'Cash & Stablecoins',
+    crypto: 'Cryptocurrency',
+    stocks: 'Stocks, Bonds & ETFs',
+    commodities: 'Commodities',
+    realestate: 'Real Estate',
+  };
+  const grouped = assets.reduce<Record<string, Asset[]>>((acc, a) => {
+    (acc[a.category] ??= []).push(a);
+    return acc;
+  }, {});
+  for (const [cat, items] of Object.entries(grouped)) {
+    const catTotal = items.reduce((s, a) => s + a.value, 0);
+    lines.push(`- ${categoryLabels[cat] || cat} ($${catTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}):`);
+    for (const a of items.slice(0, 5)) {
+      const detail = a.quantity ? ` — ${a.quantity} ${a.symbol || ''}` : '';
+      lines.push(`  • ${a.name}${detail} ($${a.value.toLocaleString('en-US', { maximumFractionDigits: 0 })})`);
+    }
+    if (items.length > 5) lines.push(`  • ... and ${items.length - 5} more`);
+  }
+
+  // Income
+  const recurring = income.filter(i => i.is_recurring);
+  const oneTime = income.filter(i => !i.is_recurring);
+  const recurringTotal = recurring.reduce((s, i) => s + i.amount, 0);
+  const oneTimeTotal = oneTime.reduce((s, i) => s + i.amount, 0);
+  lines.push(`\nMonthly Income: $${recurringTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${recurring.length} recurring)${oneTime.length ? ` + $${oneTimeTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${oneTime.length} one-time)` : ''}`);
+
+  // Expenses
+  const recurringExp = expenses.filter(e => e.is_recurring);
+  const oneTimeExp = expenses.filter(e => !e.is_recurring);
+  const recurringExpTotal = recurringExp.reduce((s, e) => s + e.amount, 0);
+  const oneTimeExpTotal = oneTimeExp.reduce((s, e) => s + e.amount, 0);
+  lines.push(`Monthly Expenses: $${recurringExpTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${recurringExp.length} recurring)${oneTimeExp.length ? ` + $${oneTimeExpTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${oneTimeExp.length} one-time)` : ''}`);
+
+  // Debts
+  if (debts.length > 0) {
+    const totalDebt = debts.reduce((s, d) => s + d.principal_amount, 0);
+    const debtDetails = debts.map(d => `${d.name} (${d.debt_type}, ${getCurrencySymbol(d.currency)}${d.principal_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}, ${d.interest_rate}% APR${d.monthly_payment ? `, ${getCurrencySymbol(d.currency)}${d.monthly_payment}/mo` : ''})`).join(', ');
+    lines.push(`\nDebts ($${totalDebt.toLocaleString('en-US', { maximumFractionDigits: 0 })} total): ${debtDetails}`);
+  }
+
+  // Goals
+  if (goals.length > 0) {
+    lines.push(`\nGoals:`);
+    for (const g of goals) {
+      const pct = g.target_amount > 0 ? Math.round((g.current_amount / g.target_amount) * 100) : 0;
+      lines.push(`- ${g.name} (${g.category}): ${getCurrencySymbol(g.currency)}${g.current_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} / ${getCurrencySymbol(g.currency)}${g.target_amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${pct}%)${g.is_completed ? ' ✅' : ''}`);
+    }
+  }
+
+  return lines.join('\n');
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -176,12 +242,15 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     }
   }, [isOpen, voiceMode]);
 
-  const streamChat = useCallback(async (userMessage: string, allMessages: Message[], memories?: Array<{ content: string; memory_type: string; created_at: string }>) => {
+  const streamChat = useCallback(async (userMessage: string, allMessages: Message[], memories?: Array<{ content: string; memory_type: string; created_at: string }>, portfolioContext?: string) => {
     const body: Record<string, any> = {
       messages: allMessages.map(m => ({ role: m.role, content: m.content })),
     };
     if (memories && memories.length > 0) {
       body.memories = memories;
+    }
+    if (portfolioContext) {
+      body.portfolioContext = portfolioContext;
     }
 
     const resp = await fetch(CHAT_URL, {
@@ -265,7 +334,10 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       // Pro users: recall relevant memories for context
       const memories = isPro ? await recallMemories() : undefined;
 
-      const assistantContent = await streamChat(text, newMessages, memories);
+      // Build portfolio context from current dashboard data
+      const portfolioContext = buildPortfolioSummary(assets, income, expenses, debts, goals);
+
+      const assistantContent = await streamChat(text, newMessages, memories, portfolioContext);
       
       // Pro users: store conversation turn for future recall
       if (isPro && assistantContent) {
