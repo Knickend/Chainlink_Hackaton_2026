@@ -1,63 +1,57 @@
 
 
-## Fix: Unclickable Tutorial Modal + Duplicate Confirmation Emails
+## Fix: Tutorial Step 14 (Debt Payoff Calculator) Stuck When User Has No Debts
 
-### Bug 1: Tutorial Welcome Modal Buttons Not Clickable
+### Root Cause
 
-**Root Cause**: When a new user logs in for the first time, two overlapping modals appear simultaneously:
-1. The `TermsAgreementDialog` (uses AlertDialog with `z-50`)
-2. The Tutorial `WelcomeModal` (uses `z-[100]`)
+When a logged-in user runs the tutorial, `isDemo` is `false`, so `demoDebts` uses their real debts (not mock data). If the user has zero debts, the condition `demoDebts.length > 0` is false, and the `data-tutorial="debt-payoff-calculator"` element is never rendered. The `TutorialOverlay` retries 5 times looking for the element, fails, shows a dark loading overlay, and the tour gets permanently stuck -- there are no skip/next buttons visible.
 
-The WelcomeModal renders visually on top (higher z-index), but the TermsAgreementDialog's overlay still captures pointer events underneath, making the WelcomeModal buttons unresponsive.
+This is the same class of problem that was solved for Step 7 (Add Asset button) using a placeholder element in demo mode.
 
-**Fix**: Prevent the tutorial from starting until the Terms dialog has been accepted. In `IndexContent`, gate the tutorial rendering behind `!showTermsDialog`:
-- Only render `<WelcomeModal />`, `<CompletionModal />`, and `<TutorialOverlay />` when `showTermsDialog` is `false`.
-- Alternatively, delay the tutorial auto-start in `useTutorial.ts` by accepting a `disabled` flag that prevents activation while Terms are pending.
+### Fix
 
-**File to modify**: `src/pages/Index.tsx` (lines ~192-199)
-- Wrap tutorial components in a conditional: render only when `showTermsDialog` is `false`.
+In `src/pages/Index.tsx`, also use mock debts when the tutorial is active (same pattern as Pro tier override):
 
----
+```
+const demoDebts = (isDemo || isTutorialActive) ? mockDebts : debts;
+const demoTotalDebt = (isDemo || isTutorialActive)
+  ? mockDebts.reduce(...)
+  : totalDebt;
+const demoMonthlyPayments = (isDemo || isTutorialActive)
+  ? mockDebts.reduce(...)
+  : monthlyPayments;
+const demoMonthlyInterest = (isDemo || isTutorialActive)
+  ? mockDebts.reduce(...)
+  : monthlyInterest;
+```
 
-### Bug 2: Two Confirmation Emails Sent on Signup
+This ensures the Debt Payoff Calculator (and the Debt Overview card at step 13) always renders with sample data during the tutorial, just like assets do in demo mode.
 
-**Root Cause**: The `signUp` function in `AuthContext.tsx` does two things:
-1. Calls `supabase.auth.signUp()` which triggers Supabase's built-in confirmation email (the plain "InControl-app / Confirm your signup" email).
-2. Then explicitly calls the `send-confirmation-email` edge function to send a branded email via Resend (the styled green "InControl / Confirm your InControl account" email).
+### Additionally: Prevent Future Stuck States
 
-The code even has a comment acknowledging this: *"Supabase sends its own confirmation email by default."*
+As a safety net, update `TutorialOverlay.tsx` so that if an element is not found after all retries, the overlay auto-advances to the next step instead of showing an indefinite dark screen:
 
-**Fix**: Remove the custom edge function call from the `signUp` method in `AuthContext.tsx`. Instead, customize the built-in Supabase email template so only one branded email is sent.
+```text
+// In the retry logic (currently around line 104):
+} else if (attempt < 5) {
+  setTimeout(() => scrollToElement(attempt + 1), 200);
+} else {
+  console.warn(`Tutorial element not found: ${currentStepData.target}`);
+  setTargetRect(null);
+  nextStep();  // <-- auto-advance instead of getting stuck
+}
+```
 
-Alternatively (recommended): Disable the default Supabase confirmation email by configuring the auth settings, and keep only the custom Resend-powered email. This is done by updating `supabase/config.toml` to disable the default mailer -- however, since `config.toml` is auto-managed, the better approach is:
-
-**Recommended approach**: Remove the custom edge function invocation from `AuthContext.tsx` (lines ~96-112) so only Supabase's built-in email is sent. Then customize the Supabase email template via the auth config to match the InControl branding.
-
-**File to modify**: `src/contexts/AuthContext.tsx`
-- Remove or comment out the block that calls `supabase.functions.invoke('send-confirmation-email', ...)` inside the `signUp` function.
-
----
-
-### Summary of Changes
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Conditionally render tutorial components only when Terms dialog is not showing |
-| `src/contexts/AuthContext.tsx` | Remove the duplicate `send-confirmation-email` edge function call from `signUp` |
+| `src/pages/Index.tsx` (lines 178-181) | Use mock debts when `isTutorialActive` is true |
+| `src/components/Tutorial/TutorialOverlay.tsx` (line ~108) | Auto-advance on missing target element instead of staying stuck |
 
-### Technical Details
+### Why This Works
 
-**Index.tsx change** (around line 196):
-```tsx
-{/* Tutorial Components - only show after terms accepted */}
-{!showTermsDialog && (
-  <>
-    <WelcomeModal />
-    <CompletionModal />
-    <TutorialOverlay />
-  </>
-)}
-```
-
-**AuthContext.tsx change**: Remove lines 96-112 (the entire block that invokes `send-confirmation-email` after signup). The built-in Supabase email will handle confirmation.
+- The root fix ensures the calculator always has data to render during the tour
+- The safety net prevents any future steps from causing the same stuck state if their target is conditionally rendered
+- Matches the existing pattern used for Pro tier gating (`isPro` is already forced true during tutorial)
 
