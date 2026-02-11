@@ -1,72 +1,63 @@
 
 
-## Save Financial Advisor + Penfield Analysis to Plan Folder
+## Fix: Unclickable Tutorial Modal + Duplicate Confirmation Emails
 
-### What
-Update `.lovable/plan.md` to include the analysis of how Penfield can enhance the financial advisor bot, along with the production-ready chat memory architecture.
+### Bug 1: Tutorial Welcome Modal Buttons Not Clickable
 
-### Content to Save
-The new section will cover:
-- Three Penfield integration patterns (session continuity, knowledge graph, context management)
-- Production architecture using a `chat_memories` table with vector embeddings for semantic recall
-- Schema design for persisting advisor conversations and user financial profiles
-- How the advisor can recall past topics, risk tolerance, and goals across sessions
+**Root Cause**: When a new user logs in for the first time, two overlapping modals appear simultaneously:
+1. The `TermsAgreementDialog` (uses AlertDialog with `z-50`)
+2. The Tutorial `WelcomeModal` (uses `z-[100]`)
 
-### File Modified
-- `.lovable/plan.md` -- append new section below the existing Chainlink caching plan
+The WelcomeModal renders visually on top (higher z-index), but the TermsAgreementDialog's overlay still captures pointer events underneath, making the WelcomeModal buttons unresponsive.
+
+**Fix**: Prevent the tutorial from starting until the Terms dialog has been accepted. In `IndexContent`, gate the tutorial rendering behind `!showTermsDialog`:
+- Only render `<WelcomeModal />`, `<CompletionModal />`, and `<TutorialOverlay />` when `showTermsDialog` is `false`.
+- Alternatively, delay the tutorial auto-start in `useTutorial.ts` by accepting a `disabled` flag that prevents activation while Terms are pending.
+
+**File to modify**: `src/pages/Index.tsx` (lines ~192-199)
+- Wrap tutorial components in a conditional: render only when `showTermsDialog` is `false`.
 
 ---
 
-## Financial Advisor + Penfield Integration Analysis
+### Bug 2: Two Confirmation Emails Sent on Signup
 
-### Penfield Integration Patterns (Development-Time)
+**Root Cause**: The `signUp` function in `AuthContext.tsx` does two things:
+1. Calls `supabase.auth.signUp()` which triggers Supabase's built-in confirmation email (the plain "InControl-app / Confirm your signup" email).
+2. Then explicitly calls the `send-confirmation-email` edge function to send a branded email via Resend (the styled green "InControl / Confirm your InControl account" email).
 
-**1. Session Continuity** — `store` / `recall`
-- After each advisor conversation, store a summary: key topics discussed, user preferences revealed (risk tolerance, investment style), action items.
-- On next session, `recall("user financial profile")` to prime the system prompt with prior context.
-- Example: *"User previously discussed paying off credit card debt before investing. Risk tolerance: moderate. Interested in index funds."*
+The code even has a comment acknowledging this: *"Supabase sends its own confirmation email by default."*
 
-**2. Knowledge Graph** — `connect`
-- Link related financial events across sessions:
-  - `"Paid off credit card"` → `enables` → `"Start emergency fund"`
-  - `"Emergency fund complete"` → `prerequisite_for` → `"Begin investing"`
-- Enables the agent to understand the user's financial journey holistically.
+**Fix**: Remove the custom edge function call from the `signUp` method in `AuthContext.tsx`. Instead, customize the built-in Supabase email template so only one branded email is sent.
 
-**3. Context Management** — `save_context` / `restore_context`
-- Save cognitive state when switching between complex financial planning topics.
-- Restore full context when revisiting a multi-session plan (e.g., debt payoff strategy spanning weeks).
+Alternatively (recommended): Disable the default Supabase confirmation email by configuring the auth settings, and keep only the custom Resend-powered email. This is done by updating `supabase/config.toml` to disable the default mailer -- however, since `config.toml` is auto-managed, the better approach is:
 
-### Production Architecture (Runtime Memory)
+**Recommended approach**: Remove the custom edge function invocation from `AuthContext.tsx` (lines ~96-112) so only Supabase's built-in email is sent. Then customize the Supabase email template via the auth config to match the InControl branding.
 
-For the actual deployed app, implement a similar pattern using a Supabase table:
+**File to modify**: `src/contexts/AuthContext.tsx`
+- Remove or comment out the block that calls `supabase.functions.invoke('send-confirmation-email', ...)` inside the `signUp` function.
 
-```sql
-CREATE TABLE chat_memories (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  content text NOT NULL,
-  memory_type text DEFAULT 'conversation', -- conversation | preference | goal | insight
-  embedding vector(1536),                  -- For semantic search / recall
-  metadata jsonb DEFAULT '{}',             -- risk_tolerance, topics, action_items
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
+---
 
-ALTER TABLE chat_memories ENABLE ROW LEVEL SECURITY;
+### Summary of Changes
 
-CREATE POLICY "Users can manage own memories"
-  ON chat_memories FOR ALL
-  USING (auth.uid() = user_id);
+| File | Change |
+|------|--------|
+| `src/pages/Index.tsx` | Conditionally render tutorial components only when Terms dialog is not showing |
+| `src/contexts/AuthContext.tsx` | Remove the duplicate `send-confirmation-email` edge function call from `signUp` |
+
+### Technical Details
+
+**Index.tsx change** (around line 196):
+```tsx
+{/* Tutorial Components - only show after terms accepted */}
+{!showTermsDialog && (
+  <>
+    <WelcomeModal />
+    <CompletionModal />
+    <TutorialOverlay />
+  </>
+)}
 ```
 
-### How It Works at Runtime
-
-1. **After each conversation**: The edge function extracts key facts (risk tolerance, goals mentioned, advice given) and stores them as memories with embeddings.
-2. **Before each conversation**: Query `chat_memories` with semantic search to find relevant past context, inject into the system prompt.
-3. **User profile builds over time**: Metadata accumulates preferences — the advisor gets smarter with each session.
-
-### Key User-Facing Benefits
-- Advisor remembers past topics without user repeating themselves
-- Personalized advice based on accumulated financial profile
-- Continuity across sessions: *"Last time we discussed your student loans — have you started the avalanche strategy?"*
+**AuthContext.tsx change**: Remove lines 96-112 (the entire block that invokes `send-confirmation-email` after signup). The built-in Supabase email will handle confirmation.
 
