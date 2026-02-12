@@ -1,47 +1,23 @@
 
 
-## Align Rebalancer Categories with Asset Categories
+## Fix: Make Save Button Visible in Investment Preferences Dialog
 
 ### Problem
-The Portfolio Rebalancer uses mismatched category labels compared to the rest of the app:
-
-| Asset Category | Current Rebalancer Label | Correct Label |
-|---|---|---|
-| banking | Emergency Fund | Cash & Stablecoins |
-| realestate | *(missing)* | Real Estate, Equity & Misc. |
-| crypto | Crypto | Cryptocurrency |
-| stocks | Stocks/ETFs | Stocks, Bonds & ETFs |
-| commodities | Commodities | Commodities |
-
-The `realestate` category is also completely excluded from drift calculations.
+The dialog content (sliders, pie chart, rebalance settings, footer) overflows the viewport. The Cancel and Save Strategy buttons in the `DialogFooter` are pushed below the visible area.
 
 ### Solution
-
-Update the `CATEGORY_MAP` and `CATEGORY_COLORS` in `src/hooks/useRebalancer.ts` to match the canonical labels used throughout the app (AllocationChart, Add Asset dialog, etc.):
+Apply the project's standard scrollable dialog pattern: give `DialogContent` a fixed height with `max-h-[85vh]` and a flex column layout, then wrap the scrollable middle content in a div with `overflow-y-auto` while keeping the header and footer pinned.
 
 ### Technical Details
 
-**`src/hooks/useRebalancer.ts`** -- update constants:
+**File: `src/components/InvestmentPreferencesDialog.tsx`**
 
-```text
-CATEGORY_MAP:
-  banking    -> label: "Cash & Stablecoins",        prefKey: emergency_fund_target
-  realestate -> label: "Real Estate, Equity & Misc.", prefKey: (see note below)
-  crypto     -> label: "Cryptocurrency",             prefKey: crypto_allocation
-  stocks     -> label: "Stocks, Bonds & ETFs",       prefKey: stocks_allocation
-  commodities-> label: "Commodities",                prefKey: commodities_allocation
+1. Update `DialogContent` classes:
+   - Add `h-[85vh] max-h-[85vh] flex flex-col` to establish a bounded flex container
 
-CATEGORY_COLORS:
-  "Cash & Stablecoins"          -> #3B82F6
-  "Real Estate, Equity & Misc." -> #8B5CF6
-  "Cryptocurrency"              -> #F7931A (orange, matching AllocationChart)
-  "Stocks, Bonds & ETFs"        -> #22C55E (green, matching AllocationChart)
-  "Commodities"                 -> #EAB308 (yellow, matching AllocationChart)
-```
+2. Wrap all content between `DialogHeader` and `DialogFooter` (goals panel, sliders grid, rebalance settings) in a scrollable container:
+   - `<div className="flex-1 min-h-0 overflow-y-auto space-y-4 py-2">`
 
-**Note on Real Estate**: The current investment preferences don't have a dedicated `realestate_allocation` field. Real estate assets will be included in the total portfolio value calculation (they already are), but without a target allocation they won't generate drift entries. This is correct behavior -- if there's no target for a category, the rebalancer simply skips it. The `realestate` entry in CATEGORY_MAP will be added but will only produce a drift row if a matching preference key exists in the future.
+3. Keep `DialogHeader` and `DialogFooter` outside the scroll wrapper so they remain fixed at top and bottom.
 
-Alternatively, real estate assets can remain unmapped (contributing to total value but not tracked for drift), which is arguably more correct since there's no allocation slider for real estate. The labels and colors for the four mapped categories will still be updated to match.
-
-**`src/components/RebalanceCard.tsx`** -- no changes needed (it reads labels from the drift data).
-
+This follows the same pattern used across other dialogs in the app (e.g., Asset Detail, P&L Details) per the established dialog UX standard.
