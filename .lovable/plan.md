@@ -1,69 +1,47 @@
 
-## Embed Rebalancer into Portfolio History Card
+
+## Align Rebalancer Categories with Asset Categories
 
 ### Problem
-The Portfolio Rebalancer currently lives as a separate section inside the InvestmentStrategyCard, adding visual clutter. The user wants to:
-1. Move the Rebalancer into the Portfolio History Card to reduce card count
-2. Add an "Edit" button on the Rebalancer to open rebalance settings
+The Portfolio Rebalancer uses mismatched category labels compared to the rest of the app:
 
-### Changes
+| Asset Category | Current Rebalancer Label | Correct Label |
+|---|---|---|
+| banking | Emergency Fund | Cash & Stablecoins |
+| realestate | *(missing)* | Real Estate, Equity & Misc. |
+| crypto | Crypto | Cryptocurrency |
+| stocks | Stocks/ETFs | Stocks, Bonds & ETFs |
+| commodities | Commodities | Commodities |
 
-**`src/components/PortfolioHistoryCard.tsx`**
-- Accept new props: `rebalancer` data (driftData, tradeSuggestions, maxDrift, threshold, alerts, dismissAlert, shouldShow), `hasPreferences`, `formatValueSimple` (the non-decimal version), and a callback `onEditRebalanceSettings` to open the preferences dialog.
-- Below the existing Portfolio History content (after the action buttons), render a collapsible "Portfolio Rebalancer" section using the existing `RebalanceCard` component when `rebalancer.shouldShow && hasPreferences` is true.
-- Add a small Settings2 (gear) icon button in the RebalanceCard header that triggers `onEditRebalanceSettings`.
+The `realestate` category is also completely excluded from drift calculations.
 
-**`src/components/RebalanceCard.tsx`**
-- Add an optional `onEdit` prop (callback).
-- When provided, render a gear/settings button next to the dismiss button in the header that calls `onEdit` -- this opens the InvestmentPreferencesDialog for rebalance settings.
+### Solution
 
-**`src/components/InvestmentStrategyCard.tsx`**
-- Remove the RebalanceCard rendering from this component (lines 275-290). The rebalancer will no longer appear here.
-- Keep the `useRebalancer` hook call but expose the rebalancer data via a new export or keep it internal (since it moves to PortfolioHistoryCard, the hook will be called there instead).
-
-**`src/pages/Index.tsx`**
-- Import `useRebalancer` and `InvestmentPreferencesDialog` (or just pass a callback).
-- Call `useRebalancer(assets, preferences)` at the page level (or pass the necessary data down).
-- Pass rebalancer data + an `onEditRebalanceSettings` callback to `PortfolioHistoryCard`.
-- The edit callback will open the existing `InvestmentPreferencesDialog` focused on rebalance settings. Since the dialog is already managed in `InvestmentStrategyCard`, the simplest approach is to add a standalone state + dialog instance in `PortfolioHistoryCard` or pass the open/close controls down.
-
-### Simpler Approach
-
-To minimize prop-drilling, the cleanest path:
-
-1. **Move `useRebalancer` call into `PortfolioHistoryCard`** -- it needs `assets` and `preferences` props.
-2. **Add a local `InvestmentPreferencesDialog`** inside `PortfolioHistoryCard` triggered by the edit button, reusing the same dialog component.
-
-### Revised File Changes
-
-**`src/components/RebalanceCard.tsx`**
-- Add optional `onEdit?: () => void` prop.
-- Render a Settings2 icon button in the header when `onEdit` is provided.
-
-**`src/components/PortfolioHistoryCard.tsx`**
-- Add props: `assets`, `investmentPreferences`, `onSavePreferences`, `goals`, `goalAnalysis`.
-- Call `useRebalancer(assets, preferences)` internally.
-- Render `RebalanceCard` after the history content with `onEdit` wired to open a local `InvestmentPreferencesDialog`.
-- Include the `InvestmentPreferencesDialog` in the component with a local `useState` for open/close.
-
-**`src/components/InvestmentStrategyCard.tsx`**
-- Remove the `useRebalancer` import and hook call.
-- Remove the `RebalanceCard` import and rendering (lines 275-290).
-- Remove `assets` from the props interface since it was only needed for the rebalancer.
-
-**`src/pages/Index.tsx`**
-- Pass `assets`, investment preferences data, and save callback to `PortfolioHistoryCard`.
-- Remove `assets` prop from `InvestmentStrategyCard`.
+Update the `CATEGORY_MAP` and `CATEGORY_COLORS` in `src/hooks/useRebalancer.ts` to match the canonical labels used throughout the app (AllocationChart, Add Asset dialog, etc.):
 
 ### Technical Details
 
-Props added to `PortfolioHistoryCard`:
+**`src/hooks/useRebalancer.ts`** -- update constants:
+
 ```text
-assets: Asset[]
-investmentPreferences: InvestmentPreferences | null
-onSavePreferences: (prefs) => Promise<void>
-goals?: Goal[]
-goalAnalysis?: GoalAnalysis
+CATEGORY_MAP:
+  banking    -> label: "Cash & Stablecoins",        prefKey: emergency_fund_target
+  realestate -> label: "Real Estate, Equity & Misc.", prefKey: (see note below)
+  crypto     -> label: "Cryptocurrency",             prefKey: crypto_allocation
+  stocks     -> label: "Stocks, Bonds & ETFs",       prefKey: stocks_allocation
+  commodities-> label: "Commodities",                prefKey: commodities_allocation
+
+CATEGORY_COLORS:
+  "Cash & Stablecoins"          -> #3B82F6
+  "Real Estate, Equity & Misc." -> #8B5CF6
+  "Cryptocurrency"              -> #F7931A (orange, matching AllocationChart)
+  "Stocks, Bonds & ETFs"        -> #22C55E (green, matching AllocationChart)
+  "Commodities"                 -> #EAB308 (yellow, matching AllocationChart)
 ```
 
-The RebalanceCard edit button will use `Settings2` icon matching the existing edit button pattern in InvestmentStrategyCard.
+**Note on Real Estate**: The current investment preferences don't have a dedicated `realestate_allocation` field. Real estate assets will be included in the total portfolio value calculation (they already are), but without a target allocation they won't generate drift entries. This is correct behavior -- if there's no target for a category, the rebalancer simply skips it. The `realestate` entry in CATEGORY_MAP will be added but will only produce a drift row if a matching preference key exists in the future.
+
+Alternatively, real estate assets can remain unmapped (contributing to total value but not tracked for drift), which is arguably more correct since there's no allocation slider for real estate. The labels and colors for the four mapped categories will still be updated to match.
+
+**`src/components/RebalanceCard.tsx`** -- no changes needed (it reads labels from the drift data).
+
