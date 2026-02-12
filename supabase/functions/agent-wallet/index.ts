@@ -21,15 +21,22 @@ function base64UrlEncodeString(str: string): string {
   return base64UrlEncode(new TextEncoder().encode(str));
 }
 
+
+
+// PKCS8 prefix for Ed25519 (ASN.1 wrapper for a 32-byte seed)
+const ED25519_PKCS8_PREFIX = new Uint8Array([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+  0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+]);
+
 /**
- * Decode a PEM-encoded Ed25519 private key to raw 32-byte seed.
- * CDP keys come as PKCS8-wrapped Ed25519 keys (48 bytes total, last 32 are the seed).
+ * Decode an Ed25519 private key from PEM or base64 format.
+ * Returns a PKCS8-formatted ArrayBuffer for Web Crypto import.
  */
-function decodeEd25519PrivateKey(pemOrBase64: string): Uint8Array {
-  // Strip PEM headers if present
+function decodeEd25519PrivateKey(pemOrBase64: string): ArrayBuffer {
   const cleaned = pemOrBase64
-    .replace(/-----BEGIN (EC |PRIVATE )?PRIVATE KEY-----/g, '')
-    .replace(/-----END (EC |PRIVATE )?PRIVATE KEY-----/g, '')
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
     .replace(/\s/g, '');
 
   const binaryString = atob(cleaned);
@@ -38,17 +45,24 @@ function decodeEd25519PrivateKey(pemOrBase64: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
 
-  // PKCS8-wrapped Ed25519 key is 48 bytes; raw seed is last 32 bytes
+  // If already a valid PKCS8 structure (48 bytes), use directly
   if (bytes.length === 48) {
-    return bytes.slice(16);
+    return bytes.buffer;
   }
-  // If already 32 bytes, use as-is
+  // If raw 32-byte seed, wrap in PKCS8
   if (bytes.length === 32) {
-    return bytes;
+    const pkcs8 = new Uint8Array(48);
+    pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+    pkcs8.set(bytes, 16);
+    return pkcs8.buffer;
   }
-  // For longer DER-encoded keys, extract the last 32 bytes
+  // For longer DER-encoded keys, extract last 32 bytes and wrap
   if (bytes.length > 32) {
-    return bytes.slice(bytes.length - 32);
+    const seed = bytes.slice(bytes.length - 32);
+    const pkcs8 = new Uint8Array(48);
+    pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+    pkcs8.set(seed, 16);
+    return pkcs8.buffer;
   }
   throw new Error(`Unexpected key length: ${bytes.length}`);
 }
@@ -88,11 +102,11 @@ async function generateCdpJwt(
   const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // Import the Ed25519 private key
-  const rawKey = decodeEd25519PrivateKey(apiKeySecret);
+  // Import the Ed25519 private key as PKCS8
+  const pkcs8Key = decodeEd25519PrivateKey(apiKeySecret);
   const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    rawKey,
+    'pkcs8',
+    pkcs8Key,
     { name: 'Ed25519' },
     false,
     ['sign'],
