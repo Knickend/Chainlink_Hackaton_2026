@@ -29,17 +29,17 @@ export interface RebalanceAlert {
 
 // Map asset categories to investment allocation categories
 const CATEGORY_MAP: Record<string, { label: string; prefKey: keyof InvestmentPreferences }> = {
-  crypto: { label: 'Crypto', prefKey: 'crypto_allocation' },
-  stocks: { label: 'Stocks/ETFs', prefKey: 'stocks_allocation' },
+  banking: { label: 'Cash & Stablecoins', prefKey: 'emergency_fund_target' },
+  crypto: { label: 'Cryptocurrency', prefKey: 'crypto_allocation' },
+  stocks: { label: 'Stocks, Bonds & ETFs', prefKey: 'stocks_allocation' },
   commodities: { label: 'Commodities', prefKey: 'commodities_allocation' },
-  banking: { label: 'Emergency Fund', prefKey: 'emergency_fund_target' },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Crypto: '#8b5cf6',
-  'Stocks/ETFs': '#f59e0b',
-  Commodities: '#10b981',
-  'Emergency Fund': '#3b82f6',
+  'Cash & Stablecoins': '#3B82F6',
+  'Cryptocurrency': '#F7931A',
+  'Stocks, Bonds & ETFs': '#22C55E',
+  'Commodities': '#EAB308',
 };
 
 export function useRebalancer(
