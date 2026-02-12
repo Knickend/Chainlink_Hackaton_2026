@@ -96,7 +96,10 @@ async function generateCdpJwt(
     nbf: now,
     exp: now + 120, // 2 minute expiry
     uris: [uri],
+    uri,
   };
+
+  console.log(`[CDP JWT] kid=${apiKeyId}, uri=${uri}, nbf=${now}, exp=${now + 120}`);
 
   const headerB64 = base64UrlEncodeString(JSON.stringify(header));
   const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
