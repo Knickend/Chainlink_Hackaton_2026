@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -8,11 +8,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ProfileSection } from '@/components/settings/ProfileSection';
 import { SubscriptionSection } from '@/components/settings/SubscriptionSection';
 import { SecuritySection } from '@/components/settings/SecuritySection';
+import { AgentSection } from '@/components/settings/AgentSection';
+import { AgentTeaser } from '@/components/settings/AgentTeaser';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useSubscription } from '@/hooks/useSubscription';
+import { SubscriptionDialog } from '@/components/SubscriptionDialog';
 
 const Settings = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { isPro } = useSubscription();
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -76,10 +82,11 @@ const Settings = () => {
           transition={{ delay: 0.1 }}
         >
           <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-flex">
+            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="subscription">Subscription</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="agent">Agent</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="space-y-6">
@@ -93,7 +100,21 @@ const Settings = () => {
             <TabsContent value="security" className="space-y-6">
               <SecuritySection />
             </TabsContent>
+
+            <TabsContent value="agent" className="space-y-6">
+              {isPro ? (
+                <AgentSection />
+              ) : (
+                <AgentTeaser onUpgrade={() => setShowUpgradeDialog(true)} />
+              )}
+            </TabsContent>
           </Tabs>
+
+          <SubscriptionDialog
+            open={showUpgradeDialog}
+            onOpenChange={setShowUpgradeDialog}
+            onSubscribe={() => setShowUpgradeDialog(false)}
+          />
         </motion.div>
       </div>
     </div>

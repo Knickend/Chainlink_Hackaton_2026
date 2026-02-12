@@ -31,6 +31,10 @@ ADD_GOAL: { action: "ADD_GOAL", data: { name: string, category: "emergency_fund"
 UPDATE_GOAL: { action: "UPDATE_GOAL", data: { name: string, target_amount?: number, current_amount?: number, monthly_contribution?: number } }
 DELETE_GOAL: { action: "DELETE_GOAL", data: { name: string } }
 
+SEND_USDC: { action: "SEND_USDC", data: { amount: number, recipient: string } }
+TRADE_TOKENS: { action: "TRADE_TOKENS", data: { amount: number, from_token: string, to_token: string } }
+FUND_WALLET: { action: "FUND_WALLET", data: { amount: number } }
+
 QUESTION: { action: "QUESTION", data: { question: string } } // For general questions about finances
 
 CLARIFY: { action: "CLARIFY", data: { message: string } } // When command is unclear

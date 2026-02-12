@@ -266,6 +266,31 @@ export function useVoiceActions(handlers: ActionHandlers) {
           };
         }
         
+        // ===== DEFI ACTIONS (Agent Wallet) =====
+        case 'SEND_USDC': {
+          return {
+            success: false,
+            needsConfirmation: true,
+            message: `Send ${data.amount} USDC to ${data.recipient} on Base — approve or reject?`,
+          };
+        }
+
+        case 'TRADE_TOKENS': {
+          return {
+            success: false,
+            needsConfirmation: true,
+            message: `Swap ${data.amount} ${data.from_token || 'USDC'} for ${data.to_token || 'ETH'} on Base — approve or reject?`,
+          };
+        }
+
+        case 'FUND_WALLET': {
+          return {
+            success: false,
+            needsConfirmation: true,
+            message: `Fund your agent wallet with $${data.amount} via Coinbase Onramp — approve or reject?`,
+          };
+        }
+
         // ===== QUESTION =====
         case 'QUESTION':
           return { success: true, isQuestion: true, message: '' };
