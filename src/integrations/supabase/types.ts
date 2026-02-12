@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_actions_log: {
+        Row: {
+          action_type: string
+          created_at: string
+          error_message: string | null
+          id: string
+          params: Json
+          result: Json | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          params?: Json
+          result?: Json | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          params?: Json
+          result?: Json | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      agent_wallets: {
+        Row: {
+          created_at: string
+          daily_reset_at: string
+          daily_spent: number
+          enabled_skills: string[]
+          id: string
+          is_authenticated: boolean
+          spending_limit_daily: number
+          spending_limit_per_tx: number
+          updated_at: string
+          user_id: string
+          wallet_address: string | null
+          wallet_email: string | null
+        }
+        Insert: {
+          created_at?: string
+          daily_reset_at?: string
+          daily_spent?: number
+          enabled_skills?: string[]
+          id?: string
+          is_authenticated?: boolean
+          spending_limit_daily?: number
+          spending_limit_per_tx?: number
+          updated_at?: string
+          user_id: string
+          wallet_address?: string | null
+          wallet_email?: string | null
+        }
+        Update: {
+          created_at?: string
+          daily_reset_at?: string
+          daily_spent?: number
+          enabled_skills?: string[]
+          id?: string
+          is_authenticated?: boolean
+          spending_limit_daily?: number
+          spending_limit_per_tx?: number
+          updated_at?: string
+          user_id?: string
+          wallet_address?: string | null
+          wallet_email?: string | null
+        }
+        Relationships: []
+      }
       asset_transactions: {
         Row: {
           asset_id: string | null
