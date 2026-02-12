@@ -8,8 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useAgentWallet } from '@/hooks/useAgentWallet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
@@ -26,16 +24,13 @@ export function AgentSection() {
     logs,
     isLoading,
     isActing,
-    startAuth,
-    verifyAuth,
+    connectWallet,
     disconnect,
     updateSkills,
     updateLimits,
   } = useAgentWallet();
 
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [perTxLimit, setPerTxLimit] = useState(String(status.spending_limit_per_tx));
   const [dailyLimit, setDailyLimit] = useState(String(status.spending_limit_daily));
 
@@ -45,15 +40,8 @@ export function AgentSection() {
     setDailyLimit(String(status.spending_limit_daily));
   });
 
-  const handleStartAuth = async () => {
-    await startAuth(email);
-    setOtpSent(true);
-  };
-
-  const handleVerify = async () => {
-    await verifyAuth(email, otp);
-    setOtpSent(false);
-    setOtp('');
+  const handleConnect = async () => {
+    await connectWallet(email);
   };
 
   const toggleSkill = (skillId: string) => {
@@ -120,33 +108,13 @@ export function AgentSection() {
                   Disconnect Wallet
                 </Button>
               </div>
-            ) : otpSent ? (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enter the 6-digit code sent to <strong>{email}</strong>
-                </p>
-                <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-                <div className="flex gap-2">
-                  <Button onClick={handleVerify} disabled={otp.length !== 6 || isActing}>
-                    {isActing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                    Verify
-                  </Button>
-                  <Button variant="ghost" onClick={() => setOtpSent(false)}>Back</Button>
-                </div>
-              </div>
             ) : (
               <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Enter your email to create a CDP wallet. A server-managed EVM account will be provisioned on Base instantly.
+                </p>
                 <div className="space-y-2">
-                  <Label htmlFor="wallet-email">Coinbase Email</Label>
+                  <Label htmlFor="wallet-email">Email</Label>
                   <Input
                     id="wallet-email"
                     type="email"
@@ -155,7 +123,7 @@ export function AgentSection() {
                     onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
-                <Button onClick={handleStartAuth} disabled={!email || isActing}>
+                <Button onClick={handleConnect} disabled={!email || isActing}>
                   {isActing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
                   Connect Wallet
                 </Button>

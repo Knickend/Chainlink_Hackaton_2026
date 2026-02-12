@@ -80,18 +80,21 @@ export function useAgentWallet() {
     fetchLogs();
   }, [fetchStatus, fetchLogs]);
 
-  const startAuth = useCallback(async (email: string) => {
+  const connectWallet = useCallback(async (email: string) => {
     setIsActing(true);
     try {
-      await invoke('auth-start', { email });
-      toast({ title: 'OTP Sent', description: 'Check your email for the verification code.' });
+      const result = await invoke('auth-start', { email });
+      toast({ title: 'Wallet Connected', description: `CDP wallet created at ${result.wallet_address?.slice(0, 10)}…` });
+      await fetchStatus();
+      await fetchLogs();
+      return result;
     } catch (err) {
-      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to start auth', variant: 'destructive' });
+      toast({ title: 'Connection Failed', description: err instanceof Error ? err.message : 'Failed to connect wallet', variant: 'destructive' });
       throw err;
     } finally {
       setIsActing(false);
     }
-  }, [invoke, toast]);
+  }, [invoke, toast, fetchStatus, fetchLogs]);
 
   const verifyAuth = useCallback(async (email: string, otp: string) => {
     setIsActing(true);
@@ -189,8 +192,7 @@ export function useAgentWallet() {
     logs,
     isLoading,
     isActing,
-    startAuth,
-    verifyAuth,
+    connectWallet,
     disconnect,
     updateSkills,
     updateLimits,
