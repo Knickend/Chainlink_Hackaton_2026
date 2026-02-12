@@ -14,6 +14,7 @@ import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
 import { cn } from '@/lib/utils';
 import { ProBadge } from './ProBadge';
 import { Asset, Goal } from '@/lib/types';
+import { LivePrices } from '@/hooks/useLivePrices';
 
 interface PortfolioHistoryCardProps {
   currentNetWorth: number;
@@ -23,6 +24,7 @@ interface PortfolioHistoryCardProps {
   assets?: Asset[];
   freeMonthlyIncome?: number;
   goals?: Goal[];
+  livePrices?: LivePrices | null;
 }
 
 // Helper to check if a snapshot is from the current month
@@ -31,7 +33,7 @@ const isCurrentMonthSnapshot = (snapshotMonth: string) => {
   return snapshotMonth.startsWith(currentMonth);
 };
 
-export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDisplayUnitValue, delay = 0, assets = [], freeMonthlyIncome = 0, goals = [] }: PortfolioHistoryCardProps) {
+export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDisplayUnitValue, delay = 0, assets = [], freeMonthlyIncome = 0, goals = [], livePrices }: PortfolioHistoryCardProps) {
   const {
     snapshots,
     isLoading,
@@ -58,7 +60,7 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDispl
   } = useInvestmentPreferences(freeMonthlyIncome, goals);
 
   // Rebalancer hook
-  const rebalancer = useRebalancer(assets, preferences);
+  const rebalancer = useRebalancer(assets, preferences, livePrices);
 
   const [showComparison, setShowComparison] = useState(false);
   const [showDetails, setShowDetails] = useState(false);

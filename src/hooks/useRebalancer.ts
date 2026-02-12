@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Asset } from '@/lib/types';
+import { Asset, getForexRateToUSD } from '@/lib/types';
 import { InvestmentPreferences } from './useInvestmentPreferences';
+import { LivePrices } from './useLivePrices';
 
 export interface DriftItem {
   category: string;
@@ -46,7 +47,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function useRebalancer(
   assets: Asset[],
-  preferences: InvestmentPreferences | null
+  preferences: InvestmentPreferences | null,
+  livePrices?: LivePrices | null
 ) {
   const { user } = useAuth();
   const [alerts, setAlerts] = useState<RebalanceAlert[]>([]);
@@ -82,26 +84,50 @@ export function useRebalancer(
     fetchAlerts();
   }, [fetchAlerts]);
 
+  // Helper: convert asset value to USD
+  const getAssetValueUSD = useCallback((asset: Asset): number => {
+    const liveForex = livePrices?.forex;
+
+    if (asset.category === 'banking' || asset.category === 'realestate') {
+      // Banking/RE store native currency amounts; symbol holds the currency code
+      const nativeAmount = asset.quantity ?? asset.value;
+      const currency = (asset.symbol || 'USD').trim().toUpperCase();
+      const rate = getForexRateToUSD(currency, liveForex);
+      return nativeAmount * rate;
+    }
+
+    if (asset.category === 'stocks' && asset.currency && asset.currency.trim().toUpperCase() !== 'USD') {
+      // Non-USD stocks: value is in native currency
+      const currency = asset.currency.trim().toUpperCase();
+      const rate = getForexRateToUSD(currency, liveForex);
+      return asset.value * rate;
+    }
+
+    // Crypto, commodities, USD stocks – already in USD
+    return asset.value;
+  }, [livePrices?.forex]);
+
   // Compute drift from current assets vs target allocations
   const driftData = useMemo((): DriftItem[] => {
     if (!preferences || assets.length === 0) return [];
 
-    // Sum asset values by mapped category
+    // Sum asset values by mapped category (all in USD)
     const categoryTotals: Record<string, number> = {};
     let totalPortfolioValue = 0;
 
     for (const asset of assets) {
       const mapping = CATEGORY_MAP[asset.category];
-      if (!mapping) continue; // skip realestate etc
+      if (!mapping) continue;
       const label = mapping.label;
-      categoryTotals[label] = (categoryTotals[label] || 0) + asset.value;
-      totalPortfolioValue += asset.value;
+      const usdValue = getAssetValueUSD(asset);
+      categoryTotals[label] = (categoryTotals[label] || 0) + usdValue;
+      totalPortfolioValue += usdValue;
     }
 
-    // Also count realestate in total but not in any target category
+    // Also count unmapped categories in total
     for (const asset of assets) {
       if (!CATEGORY_MAP[asset.category]) {
-        totalPortfolioValue += asset.value;
+        totalPortfolioValue += getAssetValueUSD(asset);
       }
     }
 
@@ -110,7 +136,7 @@ export function useRebalancer(
     const items: DriftItem[] = [];
     for (const [, mapping] of Object.entries(CATEGORY_MAP)) {
       const target = Number(preferences[mapping.prefKey]) || 0;
-      if (target <= 0) continue; // skip categories with 0% target
+      if (target <= 0) continue;
 
       const actual = ((categoryTotals[mapping.label] || 0) / totalPortfolioValue) * 100;
       const diff = actual - target;
@@ -125,7 +151,7 @@ export function useRebalancer(
     }
 
     return items;
-  }, [assets, preferences]);
+  }, [assets, preferences, getAssetValueUSD]);
 
   const threshold = preferences?.rebalance_threshold ?? 10;
 

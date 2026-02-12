@@ -373,6 +373,7 @@ const IndexContent = () => {
                 assets={assets}
                 freeMonthlyIncome={netCashFlow}
                 goals={demoGoals}
+                livePrices={prices}
                 delay={0.2}
               />
             </div>
