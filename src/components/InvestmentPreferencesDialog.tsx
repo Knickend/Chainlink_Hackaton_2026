@@ -129,7 +129,7 @@ export function InvestmentPreferencesDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] h-[85vh] max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-5 h-5" />
@@ -145,6 +145,7 @@ export function InvestmentPreferencesDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 py-2">
         {/* Goals Summary Panel */}
         {goalAnalysis && goalAnalysis.activeContributingGoals.length > 0 && (
           <div className="p-3 rounded-lg bg-pink-500/10 border border-pink-500/20">
@@ -339,6 +340,7 @@ export function InvestmentPreferencesDialog({
               </SelectContent>
             </Select>
           </div>
+        </div>
         </div>
 
         <DialogFooter>
