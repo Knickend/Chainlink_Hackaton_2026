@@ -24,6 +24,7 @@ interface InvestmentPreferencesDialogProps {
     stocks_allocation: number;
     crypto_allocation: number;
     commodities_allocation: number;
+    realestate_allocation?: number;
     emergency_fund_target: number;
     debt_allocation?: number;
   } | null;
@@ -31,6 +32,7 @@ interface InvestmentPreferencesDialogProps {
     stocks_allocation: number;
     crypto_allocation: number;
     commodities_allocation: number;
+    realestate_allocation: number;
     emergency_fund_target: number;
     debt_allocation: number;
     rebalance_threshold?: number;
@@ -44,10 +46,11 @@ interface InvestmentPreferencesDialogProps {
 const COLORS = [
   'hsl(0, 84%, 60%)',     // red for debt payoff
   '#ec4899',              // pink for goal savings
-  '#f59e0b',              // amber/gold for stocks
-  '#8b5cf6',              // purple for crypto
-  '#10b981',              // green for commodities
-  '#3b82f6',              // blue for emergency fund
+  '#22C55E',              // green for stocks
+  '#F7931A',              // orange for crypto
+  '#EAB308',              // yellow for commodities
+  '#8B5CF6',              // purple for real estate
+  '#3B82F6',              // blue for emergency fund
 ];
 
 export function InvestmentPreferencesDialog({
@@ -60,9 +63,10 @@ export function InvestmentPreferencesDialog({
   trigger,
 }: InvestmentPreferencesDialogProps) {
   const [debtPayoff, setDebtPayoff] = useState(0);
-  const [stocks, setStocks] = useState(40);
-  const [crypto, setCrypto] = useState(30);
-  const [commodities, setCommodities] = useState(20);
+  const [stocks, setStocks] = useState(35);
+  const [crypto, setCrypto] = useState(25);
+  const [commodities, setCommodities] = useState(15);
+  const [realestate, setRealestate] = useState(15);
   const [emergency, setEmergency] = useState(10);
   const [rebalanceThreshold, setRebalanceThreshold] = useState(10);
   const [rebalanceFrequency, setRebalanceFrequency] = useState('weekly');
@@ -74,6 +78,7 @@ export function InvestmentPreferencesDialog({
       setStocks(currentPreferences.stocks_allocation);
       setCrypto(currentPreferences.crypto_allocation);
       setCommodities(currentPreferences.commodities_allocation);
+      setRealestate(currentPreferences.realestate_allocation || 0);
       setEmergency(currentPreferences.emergency_fund_target);
       if ('rebalance_threshold' in currentPreferences) {
         setRebalanceThreshold((currentPreferences as any).rebalance_threshold ?? 10);
@@ -84,15 +89,16 @@ export function InvestmentPreferencesDialog({
     }
   }, [currentPreferences, open]);
 
-  const total = debtPayoff + stocks + crypto + commodities + emergency;
+  const total = debtPayoff + stocks + crypto + commodities + realestate + emergency;
   const isValid = Math.abs(total - 100) < 0.01;
 
   const chartData = [
     { name: 'Debt Payoff', value: debtPayoff },
-    { name: 'Stocks/ETFs', value: stocks },
-    { name: 'Crypto', value: crypto },
+    { name: 'Stocks, Bonds & ETFs', value: stocks },
+    { name: 'Cryptocurrency', value: crypto },
     { name: 'Commodities', value: commodities },
-    { name: 'Emergency Fund', value: emergency },
+    { name: 'Real Estate, Equity & Misc.', value: realestate },
+    { name: 'Cash & Stablecoins', value: emergency },
   ].filter(item => item.value > 0);
 
   const handleSave = async () => {
@@ -102,6 +108,7 @@ export function InvestmentPreferencesDialog({
       stocks_allocation: stocks,
       crypto_allocation: crypto,
       commodities_allocation: commodities,
+      realestate_allocation: realestate,
       emergency_fund_target: emergency,
       rebalance_threshold: rebalanceThreshold,
       rebalance_frequency: rebalanceFrequency,
@@ -220,7 +227,20 @@ export function InvestmentPreferencesDialog({
 
             <div className="space-y-3">
               <div className="flex justify-between">
-                <Label>Emergency Fund</Label>
+                <Label>Real Estate, Equity & Misc.</Label>
+                <span className="text-sm font-medium text-primary">{realestate}%</span>
+              </div>
+              <Slider
+                value={[realestate]}
+                onValueChange={([v]) => handleSliderChange(setRealestate, v)}
+                max={100}
+                step={5}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <Label>Cash & Stablecoins</Label>
                 <span className="text-sm font-medium text-primary">{emergency}%</span>
               </div>
               <Slider
@@ -259,8 +279,7 @@ export function InvestmentPreferencesDialog({
                 dataKey="value"
               >
                 {chartData.map((entry, index) => {
-                  // Find the correct color based on category name
-                  const colorIndex = ['Debt Payoff', 'Stocks/ETFs', 'Crypto', 'Commodities', 'Emergency Fund'].indexOf(entry.name);
+                  const colorIndex = ['Debt Payoff', 'Goal Savings', 'Stocks, Bonds & ETFs', 'Cryptocurrency', 'Commodities', 'Real Estate, Equity & Misc.', 'Cash & Stablecoins'].indexOf(entry.name);
                   return <Cell key={`cell-${index}`} fill={COLORS[colorIndex >= 0 ? colorIndex : index]} />;
                 })}
               </Pie>

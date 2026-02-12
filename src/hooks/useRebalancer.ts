@@ -30,6 +30,7 @@ export interface RebalanceAlert {
 // Map asset categories to investment allocation categories
 const CATEGORY_MAP: Record<string, { label: string; prefKey: keyof InvestmentPreferences }> = {
   banking: { label: 'Cash & Stablecoins', prefKey: 'emergency_fund_target' },
+  realestate: { label: 'Real Estate, Equity & Misc.', prefKey: 'realestate_allocation' },
   crypto: { label: 'Cryptocurrency', prefKey: 'crypto_allocation' },
   stocks: { label: 'Stocks, Bonds & ETFs', prefKey: 'stocks_allocation' },
   commodities: { label: 'Commodities', prefKey: 'commodities_allocation' },
@@ -37,6 +38,7 @@ const CATEGORY_MAP: Record<string, { label: string; prefKey: keyof InvestmentPre
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Cash & Stablecoins': '#3B82F6',
+  'Real Estate, Equity & Misc.': '#8B5CF6',
   'Cryptocurrency': '#F7931A',
   'Stocks, Bonds & ETFs': '#22C55E',
   'Commodities': '#EAB308',
