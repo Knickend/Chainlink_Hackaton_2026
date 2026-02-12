@@ -657,6 +657,7 @@ export type Database = {
           emergency_fund_target: number
           id: string
           last_rebalance_check: string | null
+          realestate_allocation: number
           rebalance_frequency: string
           rebalance_threshold: number
           stocks_allocation: number
@@ -671,6 +672,7 @@ export type Database = {
           emergency_fund_target?: number
           id?: string
           last_rebalance_check?: string | null
+          realestate_allocation?: number
           rebalance_frequency?: string
           rebalance_threshold?: number
           stocks_allocation?: number
@@ -685,6 +687,7 @@ export type Database = {
           emergency_fund_target?: number
           id?: string
           last_rebalance_check?: string | null
+          realestate_allocation?: number
           rebalance_frequency?: string
           rebalance_threshold?: number
           stocks_allocation?: number

@@ -11,6 +11,7 @@ export interface InvestmentPreferences {
   stocks_allocation: number;
   crypto_allocation: number;
   commodities_allocation: number;
+  realestate_allocation: number;
   emergency_fund_target: number;
   debt_allocation: number;
   rebalance_threshold: number;
@@ -73,6 +74,7 @@ export function useInvestmentPreferences(
     stocks_allocation: number;
     crypto_allocation: number;
     commodities_allocation: number;
+    realestate_allocation: number;
     emergency_fund_target: number;
     debt_allocation: number;
     rebalance_threshold?: number;
@@ -84,6 +86,7 @@ export function useInvestmentPreferences(
     const total = newPreferences.stocks_allocation + 
                   newPreferences.crypto_allocation + 
                   newPreferences.commodities_allocation + 
+                  newPreferences.realestate_allocation +
                   newPreferences.emergency_fund_target +
                   newPreferences.debt_allocation;
     
