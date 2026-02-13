@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const CDP_API_BASE = 'https://api.cdp.coinbase.com/platform/v2';
+const CDP_API_BASE = 'https://api.cdp.coinbase.com';
 
 // --- CDP JWT Authentication (Ed25519) ---
 
@@ -87,7 +87,8 @@ async function generateCdpJwt(
     nonce,
   };
 
-  const uri = `${requestMethod.toUpperCase()} api.cdp.coinbase.com${requestPath}`;
+  // CDP expects just the path, not "METHOD host/path"
+  const uri = requestPath;
 
   const payload = {
     sub: apiKeyId,
@@ -99,7 +100,7 @@ async function generateCdpJwt(
     uri,
   };
 
-  console.log(`[CDP JWT] kid=${apiKeyId}, uri=${uri}, nbf=${now}, exp=${now + 120}`);
+  console.log(`[CDP JWT] Full payload:`, JSON.stringify(payload));
 
   const headerB64 = base64UrlEncodeString(JSON.stringify(header));
   const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
@@ -138,14 +139,16 @@ async function cdpRequest(
   const apiKeySecret = Deno.env.get('CDP_API_KEY_SECRET');
   if (!apiKeyId || !apiKeySecret) throw new Error('CDP API keys not configured');
 
-  const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, `/platform/v2${path}`);
+  // Build a single consistent path for both JWT and HTTP request
+  const fullPath = `/v2/platform${path}`;
+  const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
   };
 
-  const url = `${CDP_API_BASE}${path}`;
+  const url = `${CDP_API_BASE}${fullPath}`;
   console.log(`[CDP] ${method} ${url}`);
 
   const resp = await fetch(url, {
