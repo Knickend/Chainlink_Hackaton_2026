@@ -139,8 +139,8 @@ async function cdpRequest(
   const apiKeySecret = Deno.env.get('CDP_API_KEY_SECRET');
   if (!apiKeyId || !apiKeySecret) throw new Error('CDP API keys not configured');
 
-  // Build a single consistent path for both JWT and HTTP request
-  const fullPath = `/v2/platform${path}`;
+  // path is already a full v2 path like "/v2/wallets/evm/accounts"
+  const fullPath = path;
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
 
   const headers: Record<string, string> = {
@@ -241,13 +241,13 @@ serve(async (req) => {
 
         try {
           // Try to get existing account by name
-          const existing = await cdpRequest('GET', `/evm/accounts/${accountName}`) as { address?: string };
+          const existing = await cdpRequest('GET', `/v2/wallets/evm/accounts/${accountName}`) as { address?: string };
           account = existing;
           console.log(`[AgentWallet] Found existing CDP account: ${existing.address}`);
         } catch {
           // Account doesn't exist, create a new one
           console.log(`[AgentWallet] Creating new CDP account: ${accountName}`);
-          const created = await cdpRequest('POST', '/evm/accounts', { name: accountName }) as { address?: string };
+          const created = await cdpRequest('POST', '/v2/wallets/evm/accounts', { name: accountName }) as { address?: string };
           account = created;
           console.log(`[AgentWallet] Created CDP account: ${created.address}`);
         }
@@ -307,7 +307,7 @@ serve(async (req) => {
             // Fetch USDC balance from CDP
             const balanceResp = await cdpRequest(
               'GET',
-              `/evm/token-balances/${wallet.wallet_address}?network=base&tokens=${USDC_BASE}`
+              `/v2/wallets/evm/accounts/${wallet.wallet_address}/balances?network=base&tokens=${USDC_BASE}`
             ) as { balances?: Array<{ amount?: string; decimals?: number }> };
 
             if (balanceResp?.balances?.length) {
@@ -426,7 +426,7 @@ serve(async (req) => {
           // Send transaction via CDP Wallet API v2
           const txResult = await cdpRequest(
             'POST',
-            `/evm/accounts/${wallet.wallet_address}/send/transaction`,
+            `/v2/wallets/evm/accounts/${wallet.wallet_address}/send-transaction`,
             {
               network: 'base',
               transaction: {
@@ -516,7 +516,7 @@ serve(async (req) => {
           const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
           // Create a swap quote via CDP Trade API
-          const swapResult = await cdpRequest('POST', '/evm/swaps', {
+          const swapResult = await cdpRequest('POST', '/v2/trade/evm/swaps', {
             network: 'base',
             fromToken: fromAddress,
             toToken: toAddress,
@@ -527,9 +527,9 @@ serve(async (req) => {
           // If the swap returns a transaction to sign, send it
           let txHash: string | null = null;
           if (swapResult?.transaction) {
-            const txResult = await cdpRequest(
+             const txResult = await cdpRequest(
               'POST',
-              `/evm/accounts/${wallet.wallet_address}/send/transaction`,
+              `/v2/wallets/evm/accounts/${wallet.wallet_address}/send-transaction`,
               {
                 network: 'base',
                 transaction: swapResult.transaction,
@@ -595,7 +595,7 @@ serve(async (req) => {
         try {
           // Generate Coinbase Onramp URL for the user
           // The CDP Onramp API provides a redirect URL for users to fund their wallets
-          const onrampResult = await cdpRequest('POST', '/onramp/sessions', {
+          const onrampResult = await cdpRequest('POST', '/v2/onramp/sessions', {
             purchaseAmount: { value: amount.toString(), currency: 'USD' },
             paymentMethod: 'CARD',
             destinationAddress: wallet.wallet_address,
