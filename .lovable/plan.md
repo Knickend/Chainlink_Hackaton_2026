@@ -1,31 +1,37 @@
 
 
-## Fix CDP API 401 by Correcting JWT URI Format
+## Fix CDP API 404 by Updating Endpoint Paths
 
-The 401 persists because the JWT `uri` field includes the HTTP method and hostname (`GET api.cdp.coinbase.com/platform/v2/...`), but CDP expects just the path (`/v2/platform/...`). The base URL and path construction are also inconsistent.
+The 404 occurs because the current code prefixes all paths with `/v2/platform`, but the real CDP v2 API uses different prefixes per product area. The fix updates `cdpRequest` and all call sites to use the correct documented paths.
 
 ### Changes (single file: `supabase/functions/agent-wallet/index.ts`)
 
-**1. Update `CDP_API_BASE`**
-```typescript
-// Before
-const CDP_API_BASE = 'https://api.cdp.coinbase.com/platform/v2';
+**1. Update `cdpRequest` to pass paths through directly**
 
-// After
-const CDP_API_BASE = 'https://api.cdp.coinbase.com';
+Remove the hard-coded `/v2/platform` prefix. Each call site will now provide the full v2 path:
+
+```typescript
+async function cdpRequest(method: string, path: string, body?: unknown) {
+  // path is already a full v2 path like "/v2/wallets/evm/accounts"
+  const fullPath = path;
+  const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
+  const url = `${CDP_API_BASE}${fullPath}`;
+  ...
+}
 ```
 
-**2. Rewrite `cdpRequest` to build a single consistent path**
-- Construct `fullPath = /v2/platform${path}` once
-- Pass `fullPath` to both `generateCdpJwt` and `fetch`
-- URL becomes `CDP_API_BASE + fullPath`
+**2. Update all call sites to use correct v2 paths**
 
-**3. Simplify `generateCdpJwt` URI construction**
-- Remove the `"METHOD host/path"` format
-- Set `uri` to just the `requestPath` string (e.g. `/v2/platform/evm/accounts`)
-- Keep both `uri` (string) and `uris` (array) in the payload
+| Action | Old Path | New Path |
+|--------|----------|----------|
+| Create account | `/evm/accounts` | `/v2/wallets/evm/accounts` |
+| Get account | `/evm/accounts/${name}` | `/v2/wallets/evm/accounts/${name}` |
+| Token balances | `/evm/token-balances/${addr}?...` | `/v2/wallets/evm/accounts/${addr}/balances?...` |
+| Send transaction | `/evm/accounts/${addr}/send/transaction` | `/v2/wallets/evm/accounts/${addr}/send-transaction` |
+| Swap | `/evm/swaps` | `/v2/trade/evm/swaps` |
+| Onramp | `/onramp/sessions` | `/v2/onramp/sessions` |
 
-**4. Add a temporary full-payload log** for sanity-checking `aud`, `nbf`, `exp`, and `uri` alignment.
+**3. JWT `uri` stays aligned** -- since `fullPath = path` and we already set `uri = requestPath`, the JWT will automatically match the HTTP URL path.
 
-No changes to call sites, database, or frontend.
+No database or frontend changes needed.
 
