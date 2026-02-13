@@ -227,10 +227,10 @@ async function generateWalletAuthJwt(
 
   const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
 
+  // Match official CDP reference exactly: iat, nbf, jti, uris — NO exp claim
   const payload: Record<string, unknown> = {
     iat: now,
     nbf: now,
-    exp: now + 60, // Wallet tokens valid for 1 minute per CDP docs
     jti,
     uris: [uri],
   };
@@ -243,30 +243,28 @@ async function generateWalletAuthJwt(
     payload.reqHash = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  console.log(`[WalletAuth] Secret prefix: ${walletSecret.slice(0, 8)}...`);
   console.log(`[WalletAuth] Secret input length: ${walletSecret.length} chars`);
   console.log(`[WalletAuth] JWT payload:`, JSON.stringify(payload));
 
-  // Import the ECDSA P-256 key using crypto.subtle then sign with jose
-  const pkcs8Bytes = decodeEcdsaPrivateKey(walletSecret);
-  console.log(`[WalletAuth] Decoded ECDSA key length: ${pkcs8Bytes.byteLength} bytes`);
+  // Use jose.importPKCS8 with PEM wrapping — matches official CDP reference
+  const cleaned = walletSecret
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
+    .replace(/\s/g, '');
+  const pem = `-----BEGIN PRIVATE KEY-----\n${cleaned}\n-----END PRIVATE KEY-----`;
 
   let cryptoKey: CryptoKey;
   try {
-    cryptoKey = await crypto.subtle.importKey(
-      'pkcs8',
-      pkcs8Bytes,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true, // extractable must be true for jose to use it
-      ['sign'],
-    );
-    console.log(`[WalletAuth] importKey SUCCESS — algo: ${JSON.stringify(cryptoKey.algorithm)}`);
+    cryptoKey = await importPKCS8(pem, 'ES256');
+    console.log(`[WalletAuth] importPKCS8 SUCCESS`);
   } catch (importErr) {
-    console.error(`[WalletAuth] importKey FAILED:`, importErr);
-    throw new Error(`Failed to import Wallet Secret as ECDSA P-256: ${importErr}`);
+    console.error(`[WalletAuth] importPKCS8 FAILED:`, importErr);
+    throw new Error(`Failed to import Wallet Secret via importPKCS8: ${importErr}`);
   }
 
   // Use jose SignJWT — matches CDP's official reference implementation
-  const jwt = await new SignJWT(payload as Record<string, unknown>)
+  const jwt = await new SignJWT(payload)
     .setProtectedHeader({ alg: 'ES256', typ: 'JWT' })
     .sign(cryptoKey);
 
