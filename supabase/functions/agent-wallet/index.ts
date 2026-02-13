@@ -141,18 +141,20 @@ async function cdpRequest(
 ): Promise<unknown> {
   const apiKeyId = Deno.env.get('CDP_API_KEY_ID');
   const apiKeySecret = Deno.env.get('CDP_API_KEY_SECRET');
+  const walletSecret = Deno.env.get('CDP_WALLET_SECRET');
   if (!apiKeyId || !apiKeySecret) throw new Error('CDP API keys not configured');
+  if (!walletSecret) throw new Error('CDP_WALLET_SECRET not configured');
 
   console.log(`[CDP Request] API Key ID prefix: ${apiKeyId.slice(0, 8)}...`);
-  console.log(`[CDP Request] API Key Secret length: ${apiKeySecret.length} chars`);
 
   const fullPath = path;
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
-  console.log(`[CDP Request] Generated JWT length: ${jwt.length}`);
+  const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, body);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
+    'X-Wallet-Auth': walletAuthJwt,
   };
 
   const url = `${CDP_API_BASE}${fullPath}`;
@@ -175,6 +177,83 @@ async function cdpRequest(
   } catch {
     return text;
   }
+}
+
+// --- Wallet Auth JWT (ES256 / ECDSA P-256) ---
+
+function sortObjectKeys(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(sortObjectKeys);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj as Record<string, unknown>).sort().reduce((acc, key) => {
+      acc[key] = sortObjectKeys((obj as Record<string, unknown>)[key]);
+      return acc;
+    }, {} as Record<string, unknown>);
+  }
+  return obj;
+}
+
+function decodeEcdsaPrivateKey(pemOrBase64: string): ArrayBuffer {
+  const cleaned = pemOrBase64
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
+    .replace(/\s/g, '');
+  const binaryString = atob(cleaned);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+async function generateWalletAuthJwt(
+  walletSecret: string,
+  requestMethod: string,
+  requestPath: string,
+  body?: unknown,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const jti = crypto.randomUUID().replace(/-/g, '');
+
+  const header = { alg: 'ES256', typ: 'JWT' };
+
+  const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
+
+  const payload: Record<string, unknown> = {
+    iat: now,
+    nbf: now,
+    jti,
+    uris: [uri],
+  };
+
+  if (body) {
+    const sorted = sortObjectKeys(body);
+    const bodyBytes = new TextEncoder().encode(JSON.stringify(sorted));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', bodyBytes);
+    const hashArray = new Uint8Array(hashBuffer);
+    payload.reqHash = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const headerB64 = base64UrlEncodeString(JSON.stringify(header));
+  const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  const pkcs8Key = decodeEcdsaPrivateKey(walletSecret);
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    pkcs8Key,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  );
+
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+
+  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
+  return `${signingInput}.${signatureB64}`;
 }
 
 // --- Token Addresses on Base ---
