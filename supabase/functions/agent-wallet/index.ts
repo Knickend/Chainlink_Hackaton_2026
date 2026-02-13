@@ -215,7 +215,7 @@ serve(async (req) => {
         console.log(`[AgentWallet] Creating/getting CDP account: ${accountName}`);
         const created = await cdpRequest(
           'POST',
-          '/server/v2/evm/accounts',
+          '/platform/v2/evm/accounts',
           { name: accountName, network: 'base' },
         ) as { address?: string; id?: string };
 
@@ -274,13 +274,13 @@ serve(async (req) => {
             // Data API for token balances
             const balanceResp = await cdpRequest(
               'GET',
-              `/data/v2/evm/token-balances/${wallet.wallet_address}?network=base&tokenAddresses=${USDC_BASE}`
-            ) as { balances?: Array<{ amount?: string; decimals?: number }> };
+              `/platform/v2/evm/token-balances/base/${wallet.wallet_address}`
+            ) as { balances?: Array<{ amount?: { value?: string }; token?: { decimals?: number } }> };
 
             if (balanceResp?.balances?.length) {
               const raw = balanceResp.balances[0];
-              const decimals = raw.decimals ?? 6;
-              const amt = Number(raw.amount ?? '0') / Math.pow(10, decimals);
+              const decimals = raw.token?.decimals ?? 6;
+              const amt = Number(raw.amount?.value ?? '0') / Math.pow(10, decimals);
               balance = amt.toFixed(2);
             } else {
               balance = '0.00';
@@ -390,7 +390,7 @@ serve(async (req) => {
           // Server Wallets API — uses cdp_account_id in path
           const txResult = await cdpRequest(
             'POST',
-            `/server/v2/evm/accounts/${cdpAccountId}/send-transaction`,
+            `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
             {
               network: 'base',
               transaction: {
@@ -474,7 +474,7 @@ serve(async (req) => {
           const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
           // Trade API
-          const swapResult = await cdpRequest('POST', '/trade/v2/evm/swaps', {
+          const swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', {
             network: 'base',
             fromToken: fromAddress,
             toToken: toAddress,
@@ -487,7 +487,7 @@ serve(async (req) => {
             // Server Wallets API — uses cdp_account_id
             const txResult = await cdpRequest(
               'POST',
-              `/server/v2/evm/accounts/${cdpAccountId}/send-transaction`,
+              `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
               {
                 network: 'base',
                 transaction: swapResult.transaction,
