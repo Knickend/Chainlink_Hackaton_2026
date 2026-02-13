@@ -1,61 +1,47 @@
 
 
-## Fix: Revert Key Import to Direct DER + Add JWT Decode Diagnostics
+## Fix: Only Send X-Wallet-Auth on Wallet-Specific Endpoints
 
-### Context
-We've been debugging a persistent 401 "Wallet authentication error" from CDP's Platform API. The `X-Wallet-Auth` JWT (ES256/P-256) keeps being rejected while the API key JWT (Ed25519) works fine.
+### Problem
+The `X-Wallet-Auth` header is currently attached to **every** POST/DELETE request, including `POST /platform/v2/evm/accounts` (account creation). That endpoint is a **Platform API** call authenticated only by the API key Bearer token -- it does not expect the Wallet Secret header. Sending it causes the 401 "Wallet authentication error."
 
-We've tried:
-- Manual `crypto.subtle` signing (rejected)
-- `jose.importPKCS8` with PEM wrapping + no `exp` (current state, rejected)
-- `jose.SignJWT` with `exp` claim (rejected)
+### Solution
+In the `cdpRequest` function, restrict the `X-Wallet-Auth` header to only be added when the request path targets an **existing account's operations** (e.g., `/send/transaction`). Account creation and other platform-level calls will use only the API key Bearer token.
 
-The one combination we haven't tried: **direct DER import via `crypto.subtle.importKey` + no `exp` + `jose.SignJWT`**.
+### Technical Details
 
-### Changes (supabase/functions/agent-wallet/index.ts)
+**File: `supabase/functions/agent-wallet/index.ts`**
 
-**1. Revert key import from PEM-wrapping to direct DER bytes**
+Replace the current blanket POST/DELETE check (lines 164-169):
 
-Replace lines 250-264 (the PEM wrapping + `importPKCS8` block) with:
-- Base64-decode the wallet secret directly using the existing `decodeEcdsaPrivateKey` helper
-- Import via `crypto.subtle.importKey('pkcs8', derBytes, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign'])`
-- This avoids any subtle PEM header/parsing differences that `jose.importPKCS8` might introduce
-
-**2. Keep current no-`exp` payload (lines 230-236)**
-
-No changes -- payload stays as `{ iat, nbf, jti, uris }` with conditional `reqHash`.
-
-**3. Keep `jose.SignJWT` for signing (lines 267-269)**
-
-No changes -- continue using `new SignJWT(payload).setProtectedHeader({ alg: 'ES256', typ: 'JWT' }).sign(cryptoKey)`.
-
-**4. Add JWT decode diagnostic logging after signing**
-
-After the JWT is generated (after line 271), split the JWT on `.` and base64url-decode the header and payload parts. Log both decoded objects. This lets us verify exactly what `jose` produced (whether it injected extra claims like `exp` or modified the header).
-
-```text
-// Decode and log: split JWT, base64url-decode parts 0 and 1
-const [headerB64, payloadB64] = jwt.split('.');
-const decodedHeader = JSON.parse(atob(headerB64.replace(/-/g,'+').replace(/_/g,'/')));
-const decodedPayload = JSON.parse(atob(payloadB64.replace(/-/g,'+').replace(/_/g,'/')));
-console.log('[WalletAuth] Decoded JWT header:', JSON.stringify(decodedHeader));
-console.log('[WalletAuth] Decoded JWT payload:', JSON.stringify(decodedPayload));
+```typescript
+const upperMethod = method.toUpperCase();
+if (upperMethod === 'POST' || upperMethod === 'DELETE') {
+  const walletAuthJwt = await generateWalletAuthJwt(...);
+  headers['X-Wallet-Auth'] = walletAuthJwt;
+}
 ```
 
-### If This Still Fails
+With a path-aware check:
 
-The remaining explanation is the `CDP_WALLET_SECRET` value itself. The user should:
-1. Go to CDP Portal, Server Wallets, Accounts page
-2. Regenerate the Wallet Secret
-3. Copy it immediately (cannot be viewed again)
-4. Update `CDP_WALLET_SECRET` in backend secrets
-5. Redeploy and test
+```typescript
+const upperMethod = method.toUpperCase();
+const needsWalletAuth =
+  (upperMethod === 'POST' || upperMethod === 'DELETE') &&
+  /\/platform\/v2\/evm\/accounts\/[^/]+\//.test(fullPath);
 
-We may also try changing the URI format from `"POST api.cdp.coinbase.com/platform/v2/..."` to `"POST /platform/v2/..."` (no host) as some CDP documentation examples show this format.
+if (needsWalletAuth) {
+  const walletAuthJwt = await generateWalletAuthJwt(...);
+  headers['X-Wallet-Auth'] = walletAuthJwt;
+  console.log('[CDP] X-Wallet-Auth attached (wallet-level operation)');
+} else {
+  console.log('[CDP] No X-Wallet-Auth (platform-level operation)');
+}
+```
 
-### Sequence
-1. Update `generateWalletAuthJwt` to use `crypto.subtle.importKey` instead of `importPKCS8`
-2. Add JWT decode logging
-3. Deploy edge function
-4. Test wallet connection on Settings page, then check logs
+The regex `/\/platform\/v2\/evm\/accounts\/[^/]+\//` matches paths that target a specific account's sub-resource (like `.../accounts/0xABC.../send/transaction`) but does NOT match the account creation endpoint (`/platform/v2/evm/accounts`).
+
+### Expected Outcome
+- `POST /platform/v2/evm/accounts` -- no `X-Wallet-Auth`, uses only API key Bearer -- should succeed (201)
+- `POST /platform/v2/evm/accounts/{address}/send/transaction` -- includes `X-Wallet-Auth` -- wallet-level auth as required
 
