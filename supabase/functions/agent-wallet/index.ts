@@ -148,8 +148,13 @@ async function cdpRequest(
   console.log(`[CDP Request] API Key ID prefix: ${apiKeyId.slice(0, 8)}...`);
 
   const fullPath = path;
+
+  // Pre-serialize body once so the exact same string is used for both
+  // the reqHash in X-Wallet-Auth AND the HTTP request body.
+  const serializedBody = body ? JSON.stringify(sortObjectKeys(body)) : undefined;
+
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
-  const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, body);
+  const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, serializedBody);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -163,7 +168,7 @@ async function cdpRequest(
   const resp = await fetch(url, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: serializedBody,
   });
 
   const text = await resp.text();
@@ -209,7 +214,7 @@ async function generateWalletAuthJwt(
   walletSecret: string,
   requestMethod: string,
   requestPath: string,
-  body?: unknown,
+  serializedBody?: string,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const jti = crypto.randomUUID().replace(/-/g, '');
@@ -225,32 +230,46 @@ async function generateWalletAuthJwt(
     uris: [uri],
   };
 
-  if (body) {
-    const sorted = sortObjectKeys(body);
-    const bodyBytes = new TextEncoder().encode(JSON.stringify(sorted));
+  // Body is already pre-serialized (sorted keys) by cdpRequest
+  if (serializedBody) {
+    const bodyBytes = new TextEncoder().encode(serializedBody);
     const hashBuffer = await crypto.subtle.digest('SHA-256', bodyBytes);
     const hashArray = new Uint8Array(hashBuffer);
     payload.reqHash = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
   }
+
+  console.log(`[WalletAuth] Secret input length: ${walletSecret.length} chars`);
+  console.log(`[WalletAuth] JWT payload:`, JSON.stringify(payload));
 
   const headerB64 = base64UrlEncodeString(JSON.stringify(header));
   const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const pkcs8Key = decodeEcdsaPrivateKey(walletSecret);
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    pkcs8Key,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign'],
-  );
+  console.log(`[WalletAuth] Decoded ECDSA key length: ${pkcs8Key.byteLength} bytes`);
+
+  let cryptoKey: CryptoKey;
+  try {
+    cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      pkcs8Key,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign'],
+    );
+    console.log(`[WalletAuth] importKey SUCCESS — algo: ${JSON.stringify(cryptoKey.algorithm)}`);
+  } catch (importErr) {
+    console.error(`[WalletAuth] importKey FAILED:`, importErr);
+    throw new Error(`Failed to import Wallet Secret as ECDSA P-256: ${importErr}`);
+  }
 
   const signature = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     cryptoKey,
     new TextEncoder().encode(signingInput),
   );
+
+  console.log(`[WalletAuth] Signature byte length: ${new Uint8Array(signature).length} (expect 64 for P-256)`);
 
   const signatureB64 = base64UrlEncode(new Uint8Array(signature));
   return `${signingInput}.${signatureB64}`;
