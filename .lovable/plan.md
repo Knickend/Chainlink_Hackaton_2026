@@ -1,68 +1,49 @@
 
 
-## Fix: X-Wallet-Auth Header Issue on Account Creation
+## Fix: Switch Wallet Auth Key Import to jose's `importPKCS8`
 
-### Analysis
-
-The edge function logs show:
-- Our code logs `[CDP] No X-Wallet-Auth (platform-level operation)` -- confirming the header is NOT being set
-- Yet CDP returns: `"parameter X-Wallet-Auth in header has an error: value is required but missing"`
-
-This error most likely means CDP **requires** `X-Wallet-Auth` for this endpoint but it was not sent at all. For the Server Wallet product, all POST requests to the `/platform/v2/evm/accounts` endpoint likely need wallet-level authentication.
+### Problem
+The 401 "Wallet authentication error" means the `X-Wallet-Auth` JWT signature is being rejected by CDP's TEE. The current code manually decodes the wallet secret to raw DER bytes and imports via `crypto.subtle.importKey`. This may produce a subtly different key object than what jose expects when signing, or may mishandle ASN.1 edge cases.
 
 ### Solution
-
-Change the approach: instead of restricting `X-Wallet-Auth` to only `/send/transaction`, send it on **all POST/DELETE requests** to CDP. The key fix is ensuring the JWT value is always valid and non-empty.
+Replace the manual DER import with jose's `importPKCS8`, which is specifically designed for JWT signing and matches CDP's reference implementations. Also remove the now-unused `decodeEcdsaPrivateKey` helper.
 
 ### Changes (supabase/functions/agent-wallet/index.ts)
 
-Replace the `needsWalletAuth` conditional block (lines 159-182) so that:
+**1. Delete `decodeEcdsaPrivateKey` function (lines 217-228)**
 
-1. All POST and DELETE requests generate and attach X-Wallet-Auth
-2. Add `.trim()` as an extra safety guard
-3. If generation fails or returns empty, throw an explicit error rather than silently omitting the header
+This helper is no longer needed.
 
-```text
-Simplified logic:
-  if POST or DELETE:
-    generate walletAuthJwt
-    if valid and non-empty -> attach header
-    else -> throw error (required but failed to generate)
-  else (GET):
-    no X-Wallet-Auth needed
-```
+**2. Rewrite key import in `generateWalletAuthJwt` (lines 261-278)**
 
-### Technical Detail
-
+Replace:
 ```typescript
-const upperMethod = method.toUpperCase();
-const needsWalletAuth = upperMethod === 'POST' || upperMethod === 'DELETE';
-
-const headers: Record<string, string> = {
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${jwt}`,
-};
-
-if (needsWalletAuth) {
-  const walletAuthJwt = await generateWalletAuthJwt(
-    walletSecret, upperMethod, fullPath, serializedBody
-  );
-  if (walletAuthJwt && walletAuthJwt.trim().length > 0) {
-    headers['X-Wallet-Auth'] = walletAuthJwt;
-    console.log('[CDP] X-Wallet-Auth attached');
-  } else {
-    console.error('[CDP] WARNING: walletAuthJwt generation returned empty!');
-    throw new Error('Failed to generate X-Wallet-Auth JWT');
-  }
-} else {
-  console.log('[CDP] GET request, no X-Wallet-Auth needed');
-}
+const derBytes = decodeEcdsaPrivateKey(walletSecret);
+const cryptoKey = await crypto.subtle.importKey(
+  'pkcs8', derBytes,
+  { name: 'ECDSA', namedCurve: 'P-256' },
+  true, ['sign']
+);
 ```
+
+With:
+```typescript
+const cleanedSecret = walletSecret
+  .replace(/-----BEGIN[^-]*-----/g, '')
+  .replace(/-----END[^-]*-----/g, '')
+  .replace(/\s/g, '');
+const pem = `-----BEGIN PRIVATE KEY-----\n${cleanedSecret}\n-----END PRIVATE KEY-----`;
+const cryptoKey = await importPKCS8(pem, 'ES256');
+```
+
+This uses the already-imported `importPKCS8` from jose (line 3), handling PEM parsing, ASN.1 validation, and algorithm-specific key extraction internally.
+
+**3. Deploy the updated edge function.**
 
 ### Why This Should Work
-
-The Server Wallet documentation indicates the Wallet Secret is used to authenticate wallet-level operations. Since the Server Wallet product manages keys server-side, even account creation is a wallet-level operation requiring the `X-Wallet-Auth` header. The previous approach of omitting it for account creation was incorrect for this product type.
+- jose's `importPKCS8` is battle-tested for JWT operations and handles PKCS8 structure validation internally
+- CDP's own reference implementations use PEM-wrapped keys with standard JWT libraries
+- The manual `crypto.subtle.importKey` with raw DER bytes may interpret the ASN.1 structure differently, producing a valid CryptoKey that signs differently than expected
 
 ### After Deploy
-
-Test wallet connection on Settings -> Agent tab. The `POST /platform/v2/evm/accounts` call should now include a properly signed `X-Wallet-Auth` header.
+Test wallet connection on Settings -> Agent tab. If 401 persists after this change, the issue is the `CDP_WALLET_SECRET` value itself (stale or from a different wallet product), and the next step would be contacting CDP support with the `correlationId` from the error response.
