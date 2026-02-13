@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SignJWT, importPKCS8 } from "https://deno.land/x/jose@v5.2.2/index.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -154,13 +155,18 @@ async function cdpRequest(
   const serializedBody = body ? JSON.stringify(sortObjectKeys(body)) : undefined;
 
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
-  const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, serializedBody);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
-    'X-Wallet-Auth': walletAuthJwt,
   };
+
+  // Per CDP docs: X-Wallet-Auth is only required for POST and DELETE requests
+  const upperMethod = method.toUpperCase();
+  if (upperMethod === 'POST' || upperMethod === 'DELETE') {
+    const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, serializedBody);
+    headers['X-Wallet-Auth'] = walletAuthJwt;
+  }
 
   const url = `${CDP_API_BASE}${fullPath}`;
   console.log(`[CDP CALL] ${method} ${url}`);
@@ -219,13 +225,12 @@ async function generateWalletAuthJwt(
   const now = Math.floor(Date.now() / 1000);
   const jti = crypto.randomUUID().replace(/-/g, '');
 
-  const header = { alg: 'ES256', typ: 'JWT' };
-
   const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
 
   const payload: Record<string, unknown> = {
     iat: now,
     nbf: now,
+    exp: now + 60, // Wallet tokens valid for 1 minute per CDP docs
     jti,
     uris: [uri],
   };
@@ -241,20 +246,17 @@ async function generateWalletAuthJwt(
   console.log(`[WalletAuth] Secret input length: ${walletSecret.length} chars`);
   console.log(`[WalletAuth] JWT payload:`, JSON.stringify(payload));
 
-  const headerB64 = base64UrlEncodeString(JSON.stringify(header));
-  const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const pkcs8Key = decodeEcdsaPrivateKey(walletSecret);
-  console.log(`[WalletAuth] Decoded ECDSA key length: ${pkcs8Key.byteLength} bytes`);
+  // Import the ECDSA P-256 key using crypto.subtle then sign with jose
+  const pkcs8Bytes = decodeEcdsaPrivateKey(walletSecret);
+  console.log(`[WalletAuth] Decoded ECDSA key length: ${pkcs8Bytes.byteLength} bytes`);
 
   let cryptoKey: CryptoKey;
   try {
     cryptoKey = await crypto.subtle.importKey(
       'pkcs8',
-      pkcs8Key,
+      pkcs8Bytes,
       { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
+      true, // extractable must be true for jose to use it
       ['sign'],
     );
     console.log(`[WalletAuth] importKey SUCCESS — algo: ${JSON.stringify(cryptoKey.algorithm)}`);
@@ -263,16 +265,13 @@ async function generateWalletAuthJwt(
     throw new Error(`Failed to import Wallet Secret as ECDSA P-256: ${importErr}`);
   }
 
-  const signature = await crypto.subtle.sign(
-    { name: 'ECDSA', hash: 'SHA-256' },
-    cryptoKey,
-    new TextEncoder().encode(signingInput),
-  );
+  // Use jose SignJWT — matches CDP's official reference implementation
+  const jwt = await new SignJWT(payload as Record<string, unknown>)
+    .setProtectedHeader({ alg: 'ES256', typ: 'JWT' })
+    .sign(cryptoKey);
 
-  console.log(`[WalletAuth] Signature byte length: ${new Uint8Array(signature).length} (expect 64 for P-256)`);
-
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-  return `${signingInput}.${signatureB64}`;
+  console.log(`[WalletAuth] jose JWT generated, length: ${jwt.length}`);
+  return jwt;
 }
 
 // --- Token Addresses on Base ---
