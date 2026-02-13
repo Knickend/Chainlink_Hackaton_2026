@@ -90,7 +90,7 @@ async function generateCdpJwt(
     nonce,
   };
 
-  const uri = requestPath;
+  const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
 
   const payload = {
     sub: apiKeyId,
