@@ -225,7 +225,7 @@ async function generateWalletAuthJwt(
   const now = Math.floor(Date.now() / 1000);
   const jti = crypto.randomUUID().replace(/-/g, '');
 
-  const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
+  const uri = `${requestMethod} ${requestPath}`;
 
   // Match official CDP reference exactly: iat, nbf, jti, uris — NO exp claim
   const payload: Record<string, unknown> = {
