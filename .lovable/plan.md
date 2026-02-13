@@ -1,55 +1,31 @@
 
 
-## Fix CDP API 401 Unauthorized Error
+## Fix CDP API 401 by Correcting JWT URI Format
 
-The agent-wallet edge function successfully generates and signs a JWT, but the Coinbase CDP API rejects it with a 401. Two fixes are needed:
+The 401 persists because the JWT `uri` field includes the HTTP method and hostname (`GET api.cdp.coinbase.com/platform/v2/...`), but CDP expects just the path (`/v2/platform/...`). The base URL and path construction are also inconsistent.
 
-### 1. Fix JWT Payload Format
+### Changes (single file: `supabase/functions/agent-wallet/index.ts`)
 
-The current code uses `uris: [uri]` (array). The official CDP SDK examples and REST API docs show the `generateJwt` function uses both formats depending on version, but the C++ and PHP reference implementations consistently use `uri` as a singular string. We will update the payload to include **both** `uri` (string) and `uris` (array) for maximum compatibility, matching patterns seen in the official SDK source.
-
-**File**: `supabase/functions/agent-wallet/index.ts`
-
-Change the JWT payload from:
+**1. Update `CDP_API_BASE`**
 ```typescript
-const payload = {
-  sub: apiKeyId,
-  iss: 'cdp',
-  aud: ['cdp_service'],
-  nbf: now,
-  exp: now + 120,
-  uris: [uri],
-};
-```
-To:
-```typescript
-const payload = {
-  sub: apiKeyId,
-  iss: 'cdp',
-  aud: ['cdp_service'],
-  nbf: now,
-  exp: now + 120,
-  uris: [uri],
-  uri,
-};
+// Before
+const CDP_API_BASE = 'https://api.cdp.coinbase.com/platform/v2';
+
+// After
+const CDP_API_BASE = 'https://api.cdp.coinbase.com';
 ```
 
-### 2. Add Debug Logging for JWT Diagnostics
+**2. Rewrite `cdpRequest` to build a single consistent path**
+- Construct `fullPath = /v2/platform${path}` once
+- Pass `fullPath` to both `generateCdpJwt` and `fetch`
+- URL becomes `CDP_API_BASE + fullPath`
 
-Add a log statement that prints the generated JWT header and URI (not the signature) so we can verify the format is correct if the 401 persists.
+**3. Simplify `generateCdpJwt` URI construction**
+- Remove the `"METHOD host/path"` format
+- Set `uri` to just the `requestPath` string (e.g. `/v2/platform/evm/accounts`)
+- Keep both `uri` (string) and `uris` (array) in the payload
 
-### 3. Verify CDP API Credentials
+**4. Add a temporary full-payload log** for sanity-checking `aud`, `nbf`, `exp`, and `uri` alignment.
 
-If the fix above does not resolve the 401, the stored `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` values need to be re-entered. The credentials may have been:
-- Copied with extra whitespace or newlines
-- Generated with the wrong algorithm (ECDSA instead of Ed25519)
-- Expired or revoked on the Coinbase CDP portal
-
-We will prompt for re-entry only if the URI fix does not resolve the issue.
-
-### Technical Details
-
-- Only `supabase/functions/agent-wallet/index.ts` is modified
-- The edge function will be redeployed automatically
-- No database or frontend changes are needed
+No changes to call sites, database, or frontend.
 
