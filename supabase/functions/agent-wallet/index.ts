@@ -161,11 +161,19 @@ async function cdpRequest(
     'Authorization': `Bearer ${jwt}`,
   };
 
-  // Per CDP docs: X-Wallet-Auth is only required for POST and DELETE requests
+  // X-Wallet-Auth is only needed for wallet-level operations (actions on an existing account),
+  // NOT for platform-level calls like account creation (POST /platform/v2/evm/accounts).
   const upperMethod = method.toUpperCase();
-  if (upperMethod === 'POST' || upperMethod === 'DELETE') {
+  const needsWalletAuth =
+    (upperMethod === 'POST' || upperMethod === 'DELETE') &&
+    /\/platform\/v2\/evm\/accounts\/[^/]+\//.test(fullPath);
+
+  if (needsWalletAuth) {
     const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, serializedBody);
     headers['X-Wallet-Auth'] = walletAuthJwt;
+    console.log('[CDP] X-Wallet-Auth attached (wallet-level operation)');
+  } else {
+    console.log('[CDP] No X-Wallet-Auth (platform-level operation)');
   }
 
   const url = `${CDP_API_BASE}${fullPath}`;
