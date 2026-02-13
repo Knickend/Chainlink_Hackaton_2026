@@ -156,29 +156,27 @@ async function cdpRequest(
 
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
 
-  // Build base headers WITHOUT X-Wallet-Auth
   const upperMethod = method.toUpperCase();
-  const needsWalletAuth =
-    (upperMethod === 'POST' || upperMethod === 'DELETE') &&
-    /\/platform\/v2\/evm\/accounts\/[^/]+\/send\/transaction$/.test(fullPath);
-
-  let walletAuthJwt: string | undefined;
-  if (needsWalletAuth) {
-    walletAuthJwt = await generateWalletAuthJwt(walletSecret, upperMethod, fullPath, serializedBody);
-    console.log('[CDP] X-Wallet-Auth generated:', !!walletAuthJwt);
-  }
+  const needsWalletAuth = upperMethod === 'POST' || upperMethod === 'DELETE';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
   };
 
-  // Only attach if we have a real non-empty token
-  if (walletAuthJwt && walletAuthJwt.length > 0) {
-    headers['X-Wallet-Auth'] = walletAuthJwt;
-    console.log('[CDP] X-Wallet-Auth attached (wallet-level operation)');
+  if (needsWalletAuth) {
+    const walletAuthJwt = await generateWalletAuthJwt(
+      walletSecret, upperMethod, fullPath, serializedBody
+    );
+    if (walletAuthJwt && walletAuthJwt.trim().length > 0) {
+      headers['X-Wallet-Auth'] = walletAuthJwt;
+      console.log('[CDP] X-Wallet-Auth attached');
+    } else {
+      console.error('[CDP] WARNING: walletAuthJwt generation returned empty!');
+      throw new Error('Failed to generate X-Wallet-Auth JWT');
+    }
   } else {
-    console.log('[CDP] No X-Wallet-Auth (platform-level operation)');
+    console.log('[CDP] GET request, no X-Wallet-Auth needed');
   }
 
   const url = `${CDP_API_BASE}${fullPath}`;
