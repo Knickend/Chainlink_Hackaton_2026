@@ -247,20 +247,23 @@ async function generateWalletAuthJwt(
   console.log(`[WalletAuth] Secret input length: ${walletSecret.length} chars`);
   console.log(`[WalletAuth] JWT payload:`, JSON.stringify(payload));
 
-  // Use jose.importPKCS8 with PEM wrapping — matches official CDP reference
-  const cleaned = walletSecret
-    .replace(/-----BEGIN[^-]*-----/g, '')
-    .replace(/-----END[^-]*-----/g, '')
-    .replace(/\s/g, '');
-  const pem = `-----BEGIN PRIVATE KEY-----\n${cleaned}\n-----END PRIVATE KEY-----`;
+  // Direct DER import via crypto.subtle.importKey — avoids any PEM parsing issues
+  const derBytes = decodeEcdsaPrivateKey(walletSecret);
+  console.log(`[WalletAuth] DER bytes length: ${derBytes.byteLength}`);
 
   let cryptoKey: CryptoKey;
   try {
-    cryptoKey = await importPKCS8(pem, 'ES256');
-    console.log(`[WalletAuth] importPKCS8 SUCCESS`);
+    cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      derBytes,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign'],
+    );
+    console.log(`[WalletAuth] crypto.subtle.importKey SUCCESS`);
   } catch (importErr) {
-    console.error(`[WalletAuth] importPKCS8 FAILED:`, importErr);
-    throw new Error(`Failed to import Wallet Secret via importPKCS8: ${importErr}`);
+    console.error(`[WalletAuth] crypto.subtle.importKey FAILED:`, importErr);
+    throw new Error(`Failed to import Wallet Secret via crypto.subtle: ${importErr}`);
   }
 
   // Use jose SignJWT — matches CDP's official reference implementation
@@ -269,6 +272,14 @@ async function generateWalletAuthJwt(
     .sign(cryptoKey);
 
   console.log(`[WalletAuth] jose JWT generated, length: ${jwt.length}`);
+
+  // Decode and log JWT parts for diagnostics
+  const [headerB64, payloadB64] = jwt.split('.');
+  const decodedHeader = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
+  const decodedPayload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+  console.log('[WalletAuth] Decoded JWT header:', JSON.stringify(decodedHeader));
+  console.log('[WalletAuth] Decoded JWT payload:', JSON.stringify(decodedPayload));
+
   return jwt;
 }
 
