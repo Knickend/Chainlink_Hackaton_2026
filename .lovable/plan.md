@@ -1,54 +1,47 @@
 
 
-## Fix: Add X-Wallet-Auth Header for CDP v2 API
+## Fix: Debug and Fix Wallet Auth JWT Rejection
 
-### Root Cause
-The CDP v2 EVM endpoints (create account, sign transaction, etc.) require **two** authentication JWTs:
-1. `Authorization: Bearer <JWT>` -- signed with your Secret API Key (Ed25519). Already working.
-2. `X-Wallet-Auth: <JWT>` -- signed with a **Wallet Secret** (ECDSA P-256/ES256). **Currently missing.**
+### Problem
+The `X-Wallet-Auth` header is now present but CDP returns "Wallet authentication error" (401). The JWT is being generated but rejected by CDP's verification.
 
-This is why every call returns: `"parameter \"X-Wallet-Auth\" in header has an error: value is required but missing"`
+### Likely Root Causes (in order of probability)
 
-### What You Need To Do First
-1. Go to the [CDP Portal - Server Wallets](https://portal.cdp.coinbase.com/products/server-wallets)
-2. In the **Wallet Secret** section, click **Generate**
-3. Save the secret -- it's a base64-encoded ECDSA P-256 private key (you won't see it again)
-4. I'll ask you to paste it as a new secret called `CDP_WALLET_SECRET`
+1. **Body hash mismatch**: The `reqHash` is computed from `JSON.stringify(sortedBody)`, but the actual HTTP body sent is `JSON.stringify(body)` (unsorted). If CDP hashes the exact body bytes received and compares to `reqHash`, they won't match when key order differs.
 
-### Code Changes (supabase/functions/agent-wallet/index.ts)
+2. **Signature format issue**: Need to verify the ECDSA signature length and format are correct (should be exactly 64 bytes in IEEE P1363 format for P-256).
 
-**1. Add a new `generateWalletAuthJwt` function**
-- Uses ECDSA P-256 (ES256 algorithm) instead of Ed25519
-- JWT payload includes: `iat`, `nbf`, `jti` (random), `uris` (array with method + host + path)
-- For requests with a body, includes `reqHash` -- a SHA-256 hash of the sorted JSON body
-- Reads `CDP_WALLET_SECRET` from environment variables
+3. **Wallet Secret decoding issue**: Need to verify the decoded key size is correct for ECDSA P-256 PKCS8 (typically ~138 bytes, not 32/64 like Ed25519).
 
-**2. Update `cdpRequest` to include the `X-Wallet-Auth` header**
-- Generate the wallet auth JWT alongside the existing bearer JWT
-- Add it as `X-Wallet-Auth` header on every CDP API call
+### Changes (supabase/functions/agent-wallet/index.ts)
 
-### Technical Details
+**1. Fix body serialization consistency**
+- In `cdpRequest`, stringify the **sorted** body for the HTTP request so it matches exactly what was hashed for `reqHash`
+- Change: `body: body ? JSON.stringify(body) : undefined` to `body: body ? JSON.stringify(sortObjectKeys(body)) : undefined`
+- Alternatively, compute the hash from the exact same string used in the request body
 
-The Wallet Token JWT structure (per CDP docs):
+**2. Add debug logging to `generateWalletAuthJwt`**
+- Log the decoded ECDSA key length (should be ~138 bytes for PKCS8 P-256, not 32/64)
+- Log whether `crypto.subtle.importKey` succeeds for the ECDSA key
+- Log the wallet JWT payload (iat, nbf, jti, uris, reqHash)
+- Log the signature byte length (should be 64 for P-256)
+- Log the wallet secret input length (characters)
 
-```text
-Header: { alg: "ES256", typ: "JWT" }
-Payload: {
-  iat: <now>,
-  nbf: <now>,
-  jti: <random hex>,
-  uris: ["POST api.cdp.coinbase.com/platform/v2/evm/accounts"],
-  reqHash: <sha256 of sorted JSON body>  // only if body present
-}
-Signed with: ECDSA P-256 (the Wallet Secret)
-```
+**3. Ensure consistent body hashing**
+- Move the body sorting + hashing logic so the exact same serialized string is used both for the `reqHash` and the HTTP request body
+- This guarantees byte-for-byte match between what's hashed and what's sent
 
-The key import will use `crypto.subtle.importKey` with algorithm `{ name: "ECDSA", namedCurve: "P-256" }` and sign with `{ name: "ECDSA", hash: "SHA-256" }`.
+### Technical Detail
+Per CDP docs: "The request body matches exactly what was signed." The safest approach is to:
+1. Sort the body keys
+2. Stringify once
+3. Use that exact string for both the HTTP body AND the SHA-256 hash in reqHash
+
+This eliminates any possibility of serialization differences causing a hash mismatch.
 
 ### Sequence
-
-1. Store the new `CDP_WALLET_SECRET` as a backend secret
-2. Implement `generateWalletAuthJwt` function
-3. Update `cdpRequest` to send both headers
-4. Deploy and test wallet connection
+1. Update `cdpRequest` to use sorted, pre-serialized body
+2. Add debug logging to `generateWalletAuthJwt`
+3. Deploy and test
+4. Review logs to identify if the issue is key-related or body-related
 
