@@ -49,6 +49,7 @@ export type Database = {
       }
       agent_wallets: {
         Row: {
+          cdp_account_id: string | null
           created_at: string
           daily_reset_at: string
           daily_spent: number
@@ -63,6 +64,7 @@ export type Database = {
           wallet_email: string | null
         }
         Insert: {
+          cdp_account_id?: string | null
           created_at?: string
           daily_reset_at?: string
           daily_spent?: number
@@ -77,6 +79,7 @@ export type Database = {
           wallet_email?: string | null
         }
         Update: {
+          cdp_account_id?: string | null
           created_at?: string
           daily_reset_at?: string
           daily_spent?: number
