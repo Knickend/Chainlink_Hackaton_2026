@@ -33,20 +33,30 @@ function decodeEd25519PrivateKey(pemOrBase64: string): ArrayBuffer {
     .replace(/-----END[^-]*-----/g, '')
     .replace(/\s/g, '');
 
+  console.log(`[CDP Key] Cleaned base64 length: ${cleaned.length}`);
+
   const binaryString = atob(cleaned);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
 
-  if (bytes.length === 48) return bytes.buffer;
+  console.log(`[CDP Key] Decoded byte array length: ${bytes.length}`);
+  console.log(`[CDP Key] First 4 bytes: ${Array.from(bytes.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}`);
+
+  if (bytes.length === 48) {
+    console.log(`[CDP Key] Path: 48-byte PKCS8 (direct use)`);
+    return bytes.buffer;
+  }
   if (bytes.length === 32) {
+    console.log(`[CDP Key] Path: 32-byte raw seed (wrapping in PKCS8)`);
     const pkcs8 = new Uint8Array(48);
     pkcs8.set(ED25519_PKCS8_PREFIX, 0);
     pkcs8.set(bytes, 16);
     return pkcs8.buffer;
   }
   if (bytes.length > 32) {
+    console.log(`[CDP Key] Path: ${bytes.length}-byte key (extracting last 32 bytes as seed)`);
     const seed = bytes.slice(bytes.length - 32);
     const pkcs8 = new Uint8Array(48);
     pkcs8.set(ED25519_PKCS8_PREFIX, 0);
@@ -91,13 +101,20 @@ async function generateCdpJwt(
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const pkcs8Key = decodeEd25519PrivateKey(apiKeySecret);
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    pkcs8Key,
-    { name: 'Ed25519' },
-    false,
-    ['sign'],
-  );
+  let cryptoKey: CryptoKey;
+  try {
+    cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      pkcs8Key,
+      { name: 'Ed25519' },
+      false,
+      ['sign'],
+    );
+    console.log(`[CDP Key] importKey SUCCESS — algorithm: ${JSON.stringify(cryptoKey.algorithm)}, type: ${cryptoKey.type}`);
+  } catch (importErr) {
+    console.error(`[CDP Key] importKey FAILED:`, importErr);
+    throw importErr;
+  }
 
   const signature = await crypto.subtle.sign(
     'Ed25519',
@@ -118,8 +135,12 @@ async function cdpRequest(
   const apiKeySecret = Deno.env.get('CDP_API_KEY_SECRET');
   if (!apiKeyId || !apiKeySecret) throw new Error('CDP API keys not configured');
 
+  console.log(`[CDP Request] API Key ID prefix: ${apiKeyId.slice(0, 8)}...`);
+  console.log(`[CDP Request] API Key Secret length: ${apiKeySecret.length} chars`);
+
   const fullPath = path;
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
+  console.log(`[CDP Request] Generated JWT length: ${jwt.length}`);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
