@@ -55,9 +55,17 @@ function decodeEd25519PrivateKey(pemOrBase64: string): ArrayBuffer {
     pkcs8.set(bytes, 16);
     return pkcs8.buffer;
   }
+  if (bytes.length === 64) {
+    console.log(`[CDP Key] Path: 64-byte keypair (first 32 = private seed, last 32 = public key)`);
+    const seed = bytes.slice(0, 32);
+    const pkcs8 = new Uint8Array(48);
+    pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+    pkcs8.set(seed, 16);
+    return pkcs8.buffer;
+  }
   if (bytes.length > 32) {
-    console.log(`[CDP Key] Path: ${bytes.length}-byte key (extracting last 32 bytes as seed)`);
-    const seed = bytes.slice(bytes.length - 32);
+    console.log(`[CDP Key] Path: ${bytes.length}-byte key (extracting first 32 bytes as seed)`);
+    const seed = bytes.slice(0, 32);
     const pkcs8 = new Uint8Array(48);
     pkcs8.set(ED25519_PKCS8_PREFIX, 0);
     pkcs8.set(seed, 16);
