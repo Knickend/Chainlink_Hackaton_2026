@@ -1,25 +1,54 @@
 
 
-## Add Debug Logging to CDP Key Decoding
+## Fix: Add X-Wallet-Auth Header for CDP v2 API
 
-Add detailed logging to the `decodeEd25519PrivateKey` function and the `generateCdpJwt` function to trace exactly what's happening with the private key material. This will help identify if the key is being parsed incorrectly (wrong length, wrong format, truncated PEM, etc.).
+### Root Cause
+The CDP v2 EVM endpoints (create account, sign transaction, etc.) require **two** authentication JWTs:
+1. `Authorization: Bearer <JWT>` -- signed with your Secret API Key (Ed25519). Already working.
+2. `X-Wallet-Auth: <JWT>` -- signed with a **Wallet Secret** (ECDSA P-256/ES256). **Currently missing.**
 
-### Changes (single file: `supabase/functions/agent-wallet/index.ts`)
+This is why every call returns: `"parameter \"X-Wallet-Auth\" in header has an error: value is required but missing"`
 
-**1. In `decodeEd25519PrivateKey` (around lines 30-55)**
-- Log the cleaned input length (after stripping PEM headers/whitespace)
-- Log the decoded byte array length
-- Log which code path is taken (48-byte PKCS8, 32-byte raw seed, or other)
-- Log the final PKCS8 buffer length before returning
+### What You Need To Do First
+1. Go to the [CDP Portal - Server Wallets](https://portal.cdp.coinbase.com/products/server-wallets)
+2. In the **Wallet Secret** section, click **Generate**
+3. Save the secret -- it's a base64-encoded ECDSA P-256 private key (you won't see it again)
+4. I'll ask you to paste it as a new secret called `CDP_WALLET_SECRET`
 
-**2. In `generateCdpJwt` (around lines 57-95)**
-- After importing the key via `crypto.subtle.importKey`, log success confirmation
-- Log the key algorithm details from the imported CryptoKey
-- If `importKey` throws, catch and log the specific error
+### Code Changes (supabase/functions/agent-wallet/index.ts)
 
-**3. In `cdpRequest` (around lines 97-120)**
-- Log the first 8 characters of the API Key ID being used (to confirm the right key is loaded)
-- Log the JWT length after generation
+**1. Add a new `generateWalletAuthJwt` function**
+- Uses ECDSA P-256 (ES256 algorithm) instead of Ed25519
+- JWT payload includes: `iat`, `nbf`, `jti` (random), `uris` (array with method + host + path)
+- For requests with a body, includes `reqHash` -- a SHA-256 hash of the sorted JSON body
+- Reads `CDP_WALLET_SECRET` from environment variables
 
-These are all `console.log` additions -- no logic changes, no path changes. After redeploying, trigger the wallet connection once and the logs will show exactly whether the key is 32, 48, or some unexpected number of bytes, and whether `crypto.subtle.importKey` succeeds or fails silently.
+**2. Update `cdpRequest` to include the `X-Wallet-Auth` header**
+- Generate the wallet auth JWT alongside the existing bearer JWT
+- Add it as `X-Wallet-Auth` header on every CDP API call
+
+### Technical Details
+
+The Wallet Token JWT structure (per CDP docs):
+
+```text
+Header: { alg: "ES256", typ: "JWT" }
+Payload: {
+  iat: <now>,
+  nbf: <now>,
+  jti: <random hex>,
+  uris: ["POST api.cdp.coinbase.com/platform/v2/evm/accounts"],
+  reqHash: <sha256 of sorted JSON body>  // only if body present
+}
+Signed with: ECDSA P-256 (the Wallet Secret)
+```
+
+The key import will use `crypto.subtle.importKey` with algorithm `{ name: "ECDSA", namedCurve: "P-256" }` and sign with `{ name: "ECDSA", hash: "SHA-256" }`.
+
+### Sequence
+
+1. Store the new `CDP_WALLET_SECRET` as a backend secret
+2. Implement `generateWalletAuthJwt` function
+3. Update `cdpRequest` to send both headers
+4. Deploy and test wallet connection
 
