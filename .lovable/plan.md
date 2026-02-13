@@ -1,47 +1,49 @@
 
 
-## Fix: Debug and Fix Wallet Auth JWT Rejection
+## Fix: Use Official `jose` Library for Wallet Auth JWT
 
-### Problem
-The `X-Wallet-Auth` header is now present but CDP returns "Wallet authentication error" (401). The JWT is being generated but rejected by CDP's verification.
+### Root Cause Analysis
+The "Wallet authentication error" (401) persists despite correct key import (138 bytes PKCS8, P-256) and signature size (64 bytes). Our manual JWT construction might differ subtly from what CDP's TEE verifies against. The official CDP docs use the `jose` library for Wallet Token generation, which handles JWT encoding, signing, and formatting precisely.
 
-### Likely Root Causes (in order of probability)
+### Changes
 
-1. **Body hash mismatch**: The `reqHash` is computed from `JSON.stringify(sortedBody)`, but the actual HTTP body sent is `JSON.stringify(body)` (unsorted). If CDP hashes the exact body bytes received and compares to `reqHash`, they won't match when key order differs.
+**1. Switch to `jose` library in edge function (supabase/functions/agent-wallet/index.ts)**
 
-2. **Signature format issue**: Need to verify the ECDSA signature length and format are correct (should be exactly 64 bytes in IEEE P1363 format for P-256).
+Replace our manual `generateWalletAuthJwt` with one that uses the `jose` library (available in Deno via `npm:jose` or `esm.sh`), matching the official CDP reference implementation exactly:
 
-3. **Wallet Secret decoding issue**: Need to verify the decoded key size is correct for ECDSA P-256 PKCS8 (typically ~138 bytes, not 32/64 like Ed25519).
+```text
+import * as jose from "https://deno.land/x/jose@v5.2.2/index.ts";
+```
 
-### Changes (supabase/functions/agent-wallet/index.ts)
+The new implementation will:
+- Import the ECDSA P-256 key using `jose.importPKCS8` or `crypto.subtle.importKey` (same as now)
+- Use `new jose.SignJWT(payload).setProtectedHeader({ alg: 'ES256', typ: 'JWT' }).sign(key)` exactly like the official example
+- Keep the same payload structure: `iat`, `nbf`, `jti`, `uris`, `reqHash`
 
-**1. Fix body serialization consistency**
-- In `cdpRequest`, stringify the **sorted** body for the HTTP request so it matches exactly what was hashed for `reqHash`
-- Change: `body: body ? JSON.stringify(body) : undefined` to `body: body ? JSON.stringify(sortObjectKeys(body)) : undefined`
-- Alternatively, compute the hash from the exact same string used in the request body
+**2. Add `exp` claim (1 minute validity)**
 
-**2. Add debug logging to `generateWalletAuthJwt`**
-- Log the decoded ECDSA key length (should be ~138 bytes for PKCS8 P-256, not 32/64)
-- Log whether `crypto.subtle.importKey` succeeds for the ECDSA key
-- Log the wallet JWT payload (iat, nbf, jti, uris, reqHash)
-- Log the signature byte length (should be 64 for P-256)
-- Log the wallet secret input length (characters)
+Per CDP docs: "Wallet Tokens are valid for 1 minute." Adding explicit `exp: now + 60` to the payload.
 
-**3. Ensure consistent body hashing**
-- Move the body sorting + hashing logic so the exact same serialized string is used both for the `reqHash` and the HTTP request body
-- This guarantees byte-for-byte match between what's hashed and what's sent
+**3. Only send X-Wallet-Auth for POST/DELETE requests**
 
-### Technical Detail
-Per CDP docs: "The request body matches exactly what was signed." The safest approach is to:
-1. Sort the body keys
-2. Stringify once
-3. Use that exact string for both the HTTP body AND the SHA-256 hash in reqHash
+Per CDP docs, Wallet Auth is required for "POST and DELETE requests" only. Skip it for GET requests (like token balance checks) to avoid unnecessary auth failures.
 
-This eliminates any possibility of serialization differences causing a hash mismatch.
+**4. Use `jose`-compatible key import**
+
+The official Node.js example does:
+```
+crypto.createPrivateKey({ key: walletSecret, format: "der", type: "pkcs8", encoding: "base64" })
+```
+
+For Deno, we'll base64-decode the wallet secret and import it via `crypto.subtle.importKey('pkcs8', decodedBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'])` -- then pass the CryptoKey to `jose.SignJWT.sign()`.
+
+### Why This Should Work
+
+The `jose` library is the same library used in CDP's official documentation and examples. It handles all the JWT encoding, base64url formatting, and signature serialization exactly as CDP's verification layer expects. This eliminates any possible discrepancy in our manual JWT construction (header encoding, payload encoding, signature format).
 
 ### Sequence
-1. Update `cdpRequest` to use sorted, pre-serialized body
-2. Add debug logging to `generateWalletAuthJwt`
-3. Deploy and test
-4. Review logs to identify if the issue is key-related or body-related
+1. Update edge function to import `jose`
+2. Rewrite `generateWalletAuthJwt` using `jose.SignJWT`
+3. Conditionally include `X-Wallet-Auth` only for POST/DELETE
+4. Deploy and test
 
