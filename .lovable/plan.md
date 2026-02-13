@@ -1,50 +1,52 @@
 
 
-## Fix CDP API 404 by Using Correct Product-Specific Path Prefixes
+## Unify All CDP Paths to `/platform/v2`
 
-The 404s occur because CDP v2 uses different path prefixes per product area, not a universal `/v2/wallets/...`. Each product has its own prefix.
+Six call sites in `supabase/functions/agent-wallet/index.ts` still use wrong prefixes (`/server/v2`, `/data/v2`, `/trade/v2`). All must move to `/platform/v2`. Additionally, the balance response shape and the send-transaction path segment need fixing.
 
-### 1. Add `account_id` column to `agent_wallets` table
+### Changes (single file only)
 
-CDP Server Wallets uses the account ID (not EVM address) in URL paths like `/server/v2/evm/accounts/{account_id}/send-transaction`. We need to persist the account ID returned at creation time.
+**1. Account creation (line 218)**
+- From: `POST /server/v2/evm/accounts`
+- To: `POST /platform/v2/evm/accounts`
 
-**Migration:**
-```sql
-ALTER TABLE agent_wallets ADD COLUMN cdp_account_id text;
-```
+**2. Token balances (lines 275-284)**
+- From: `GET /data/v2/evm/token-balances/${addr}?network=base&tokenAddresses=...`
+- To: `GET /platform/v2/evm/token-balances/base/${addr}`
+- Update response parsing: use `balances[].amount.value` and `balances[].token.decimals` instead of `balances[].amount` and `balances[].decimals`
 
-### 2. Update all CDP API paths in `supabase/functions/agent-wallet/index.ts`
+**3. Send transaction in `send` action (lines 391-402)**
+- From: `POST /server/v2/evm/accounts/${cdpAccountId}/send-transaction`
+- To: `POST /platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`
+- Uses wallet address (not account ID) and slash-separated `send/transaction`
 
-The `cdpRequest` function and `generateCdpJwt` stay as-is. Only the call-site paths change:
+**4. Swap in `trade` action (line 477)**
+- From: `POST /trade/v2/evm/swaps`
+- To: `POST /platform/v2/evm/swaps`
 
-| Action | Current (wrong) | Correct |
-|--------|-----------------|---------|
-| Create account | `POST /v2/wallets/evm/accounts` | `POST /server/v2/evm/accounts` |
-| Get account | `GET /v2/wallets/evm/accounts/{name}` | Remove -- CDP doesn't support get-by-name; always create and store the ID |
-| Token balances | `GET /v2/wallets/evm/accounts/{addr}/balances?...` | `GET /data/v2/evm/token-balances/{addr}?network=base&tokenAddresses=...` |
-| Send tx (send) | `POST /v2/wallets/evm/accounts/{addr}/send-transaction` | `POST /server/v2/evm/accounts/{cdp_account_id}/send-transaction` |
-| Send tx (trade) | `POST /v2/wallets/evm/accounts/{addr}/send-transaction` | `POST /server/v2/evm/accounts/{cdp_account_id}/send-transaction` |
-| Swap | `POST /v2/trade/evm/swaps` | `POST /trade/v2/evm/swaps` |
-| Onramp | `POST /v2/onramp/sessions` | `POST /platform/v2/onramp/sessions` |
+**5. Send transaction in `trade` action (lines 489-494)**
+- From: `POST /server/v2/evm/accounts/${cdpAccountId}/send-transaction`
+- To: `POST /platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`
 
-### 3. Update `auth-start` flow
+**6. Onramp (already correct at `/platform/v2/onramp/sessions`)**
+- No change needed.
 
-- Remove the try/catch GET-by-name pattern (CDP doesn't support it)
-- Always POST to create the account with `{ name, network: 'base' }`
-- Store both `address` and `id` (as `cdp_account_id`) from the response
-- The `name` field acts as an idempotency key -- CDP will return the existing account if one with that name already exists
+### Summary of prefix mapping
 
-### 4. Update `send` and `trade` actions
+All endpoints use `/platform/v2`:
 
-- Read `cdp_account_id` from the `agent_wallets` record
-- Use it in the send-transaction path instead of `wallet_address`
+| Operation | Correct Path |
+|-----------|-------------|
+| Create account | `POST /platform/v2/evm/accounts` |
+| Token balances | `GET /platform/v2/evm/token-balances/base/{address}` |
+| Send transaction | `POST /platform/v2/evm/accounts/{address}/send/transaction` |
+| Swap | `POST /platform/v2/evm/swaps` |
+| Onramp | `POST /platform/v2/onramp/sessions` |
 
-### 5. Update balance query parameter
+### No other changes
 
-- Change `tokens=` to `tokenAddresses=` to match the data API docs
+- `cdpRequest` and `generateCdpJwt` stay as-is
+- No database changes
+- No frontend changes
+- Function will be redeployed automatically after editing
 
-### Technical Details
-
-- **Files changed**: `supabase/functions/agent-wallet/index.ts`
-- **Database migration**: Add `cdp_account_id` text column to `agent_wallets`
-- **No frontend changes needed** -- the response shape stays identical
