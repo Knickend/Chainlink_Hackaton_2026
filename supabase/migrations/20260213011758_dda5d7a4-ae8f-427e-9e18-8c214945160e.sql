@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_wallets ADD COLUMN cdp_account_id text;
