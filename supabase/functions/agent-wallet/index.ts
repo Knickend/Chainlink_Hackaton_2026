@@ -214,18 +214,7 @@ function sortObjectKeys(obj: unknown): unknown {
   return obj;
 }
 
-function decodeEcdsaPrivateKey(pemOrBase64: string): ArrayBuffer {
-  const cleaned = pemOrBase64
-    .replace(/-----BEGIN[^-]*-----/g, '')
-    .replace(/-----END[^-]*-----/g, '')
-    .replace(/\s/g, '');
-  const binaryString = atob(cleaned);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
+// decodeEcdsaPrivateKey removed — using jose's importPKCS8 instead
 
 async function generateWalletAuthJwt(
   walletSecret: string,
@@ -258,23 +247,20 @@ async function generateWalletAuthJwt(
   console.log(`[WalletAuth] Secret input length: ${walletSecret.length} chars`);
   console.log(`[WalletAuth] JWT payload:`, JSON.stringify(payload));
 
-  // Direct DER import via crypto.subtle.importKey — avoids any PEM parsing issues
-  const derBytes = decodeEcdsaPrivateKey(walletSecret);
-  console.log(`[WalletAuth] DER bytes length: ${derBytes.byteLength}`);
+  // Use jose's importPKCS8 for reliable PEM-to-CryptoKey conversion
+  const cleanedSecret = walletSecret
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
+    .replace(/\s/g, '');
+  const pem = `-----BEGIN PRIVATE KEY-----\n${cleanedSecret}\n-----END PRIVATE KEY-----`;
 
   let cryptoKey: CryptoKey;
   try {
-    cryptoKey = await crypto.subtle.importKey(
-      'pkcs8',
-      derBytes,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true,
-      ['sign'],
-    );
-    console.log(`[WalletAuth] crypto.subtle.importKey SUCCESS`);
+    cryptoKey = await importPKCS8(pem, 'ES256');
+    console.log(`[WalletAuth] importPKCS8 SUCCESS`);
   } catch (importErr) {
-    console.error(`[WalletAuth] crypto.subtle.importKey FAILED:`, importErr);
-    throw new Error(`Failed to import Wallet Secret via crypto.subtle: ${importErr}`);
+    console.error(`[WalletAuth] importPKCS8 FAILED:`, importErr);
+    throw new Error(`Failed to import Wallet Secret via importPKCS8: ${importErr}`);
   }
 
   // Use jose SignJWT — matches CDP's official reference implementation
