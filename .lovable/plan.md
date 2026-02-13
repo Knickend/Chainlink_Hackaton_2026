@@ -1,53 +1,61 @@
 
 
-## Fix: Align Wallet Auth JWT with Official CDP Reference
+## Fix: Revert Key Import to Direct DER + Add JWT Decode Diagnostics
 
-### Problem
-The "Wallet authentication error" (401) persists. Comparing our implementation line-by-line with the official CDP JavaScript reference reveals two discrepancies and one key import approach that could cause subtle differences.
+### Context
+We've been debugging a persistent 401 "Wallet authentication error" from CDP's Platform API. The `X-Wallet-Auth` JWT (ES256/P-256) keeps being rejected while the API key JWT (Ed25519) works fine.
 
-### Root Causes Found
+We've tried:
+- Manual `crypto.subtle` signing (rejected)
+- `jose.importPKCS8` with PEM wrapping + no `exp` (current state, rejected)
+- `jose.SignJWT` with `exp` claim (rejected)
 
-**1. Extra `exp` claim (likely culprit)**
-Our code adds `exp: now + 60` to the wallet JWT payload. The official CDP reference code does NOT include an `exp` claim:
-```text
-// Official CDP reference (no exp):
-const payload = { iat: now, nbf: now, jti: ..., uris: [uri] };
-
-// Our code (has exp):
-const payload = { iat: now, nbf: now, exp: now + 60, jti: ..., uris: [uri] };
-```
-CDP's TEE may reject tokens with unexpected claims.
-
-**2. Key import method mismatch**
-We imported `importPKCS8` from jose but never use it. Instead we use `crypto.subtle.importKey` manually. The official code uses Node's `crypto.createPrivateKey`. For Deno + jose, the cleanest equivalent is to wrap the base64 DER in PEM headers and use `jose.importPKCS8`:
-```text
-const pem = "-----BEGIN PRIVATE KEY-----\n" + walletSecret + "\n-----END PRIVATE KEY-----";
-const key = await importPKCS8(pem, 'ES256');
-```
+The one combination we haven't tried: **direct DER import via `crypto.subtle.importKey` + no `exp` + `jose.SignJWT`**.
 
 ### Changes (supabase/functions/agent-wallet/index.ts)
 
-**1. Remove `exp` claim from wallet JWT payload**
-Remove the `exp: now + 60` line to match the official reference exactly.
+**1. Revert key import from PEM-wrapping to direct DER bytes**
 
-**2. Use `jose.importPKCS8` for key import**
-Replace the manual `decodeEcdsaPrivateKey` + `crypto.subtle.importKey` with:
-- Wrap the base64 wallet secret in PEM `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` headers
-- Call `importPKCS8(pem, 'ES256')` from jose
-- This matches the official approach more closely and eliminates any subtle key format issues
+Replace lines 250-264 (the PEM wrapping + `importPKCS8` block) with:
+- Base64-decode the wallet secret directly using the existing `decodeEcdsaPrivateKey` helper
+- Import via `crypto.subtle.importKey('pkcs8', derBytes, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign'])`
+- This avoids any subtle PEM header/parsing differences that `jose.importPKCS8` might introduce
 
-**3. Keep everything else the same**
-- URI format is correct: `"POST api.cdp.coinbase.com/platform/v2/evm/accounts"`
-- Body hash (reqHash) approach is correct
-- Conditional X-Wallet-Auth for POST/DELETE only is correct
-- jose SignJWT usage is correct
+**2. Keep current no-`exp` payload (lines 230-236)**
 
-### Additional Recommendation
-If the fix still fails, the `CDP_WALLET_SECRET` value itself may be wrong. I'll add a log showing the first 8 characters of the secret (safe for debugging) so we can verify it's not empty or garbled. The user should also consider regenerating the Wallet Secret in the CDP Portal and re-pasting it.
+No changes -- payload stays as `{ iat, nbf, jti, uris }` with conditional `reqHash`.
+
+**3. Keep `jose.SignJWT` for signing (lines 267-269)**
+
+No changes -- continue using `new SignJWT(payload).setProtectedHeader({ alg: 'ES256', typ: 'JWT' }).sign(cryptoKey)`.
+
+**4. Add JWT decode diagnostic logging after signing**
+
+After the JWT is generated (after line 271), split the JWT on `.` and base64url-decode the header and payload parts. Log both decoded objects. This lets us verify exactly what `jose` produced (whether it injected extra claims like `exp` or modified the header).
+
+```text
+// Decode and log: split JWT, base64url-decode parts 0 and 1
+const [headerB64, payloadB64] = jwt.split('.');
+const decodedHeader = JSON.parse(atob(headerB64.replace(/-/g,'+').replace(/_/g,'/')));
+const decodedPayload = JSON.parse(atob(payloadB64.replace(/-/g,'+').replace(/_/g,'/')));
+console.log('[WalletAuth] Decoded JWT header:', JSON.stringify(decodedHeader));
+console.log('[WalletAuth] Decoded JWT payload:', JSON.stringify(decodedPayload));
+```
+
+### If This Still Fails
+
+The remaining explanation is the `CDP_WALLET_SECRET` value itself. The user should:
+1. Go to CDP Portal, Server Wallets, Accounts page
+2. Regenerate the Wallet Secret
+3. Copy it immediately (cannot be viewed again)
+4. Update `CDP_WALLET_SECRET` in backend secrets
+5. Redeploy and test
+
+We may also try changing the URI format from `"POST api.cdp.coinbase.com/platform/v2/..."` to `"POST /platform/v2/..."` (no host) as some CDP documentation examples show this format.
 
 ### Sequence
-1. Update `generateWalletAuthJwt` to remove `exp` and use `importPKCS8`
-2. Deploy the edge function
-3. Test wallet connection
-4. If still failing, regenerate CDP_WALLET_SECRET
+1. Update `generateWalletAuthJwt` to use `crypto.subtle.importKey` instead of `importPKCS8`
+2. Add JWT decode logging
+3. Deploy edge function
+4. Test wallet connection on Settings page, then check logs
 
