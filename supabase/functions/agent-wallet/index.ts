@@ -156,20 +156,25 @@ async function cdpRequest(
 
   const jwt = await generateCdpJwt(apiKeyId, apiKeySecret, method, fullPath);
 
+  // Build base headers WITHOUT X-Wallet-Auth
+  const upperMethod = method.toUpperCase();
+  const needsWalletAuth =
+    (upperMethod === 'POST' || upperMethod === 'DELETE') &&
+    /\/platform\/v2\/evm\/accounts\/[^/]+\/send\/transaction$/.test(fullPath);
+
+  let walletAuthJwt: string | undefined;
+  if (needsWalletAuth) {
+    walletAuthJwt = await generateWalletAuthJwt(walletSecret, upperMethod, fullPath, serializedBody);
+    console.log('[CDP] X-Wallet-Auth generated:', !!walletAuthJwt);
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
   };
 
-  // X-Wallet-Auth is only needed for wallet-level operations (actions on an existing account),
-  // NOT for platform-level calls like account creation (POST /platform/v2/evm/accounts).
-  const upperMethod = method.toUpperCase();
-  const needsWalletAuth =
-    (upperMethod === 'POST' || upperMethod === 'DELETE') &&
-    /\/platform\/v2\/evm\/accounts\/[^/]+\//.test(fullPath);
-
-  if (needsWalletAuth) {
-    const walletAuthJwt = await generateWalletAuthJwt(walletSecret, method, fullPath, serializedBody);
+  // Only attach if we have a real non-empty token
+  if (walletAuthJwt && walletAuthJwt.length > 0) {
     headers['X-Wallet-Auth'] = walletAuthJwt;
     console.log('[CDP] X-Wallet-Auth attached (wallet-level operation)');
   } else {
