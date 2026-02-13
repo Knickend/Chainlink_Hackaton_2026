@@ -1,37 +1,40 @@
 
 
-## Fix: Only Send X-Wallet-Auth on Wallet-Specific Endpoints
+## Fix: Prevent Empty X-Wallet-Auth Header
 
 ### Problem
-The `X-Wallet-Auth` header is currently attached to **every** POST/DELETE request, including `POST /platform/v2/evm/accounts` (account creation). That endpoint is a **Platform API** call authenticated only by the API key Bearer token -- it does not expect the Wallet Secret header. Sending it causes the 401 "Wallet authentication error."
+CDP returns 400 saying `X-Wallet-Auth` header is present but has no value. Even though our conditional logic should skip adding the header for account creation, the header key may still end up in the request with an empty/undefined value. This is a defensive coding issue.
 
 ### Solution
-In the `cdpRequest` function, restrict the `X-Wallet-Auth` header to only be added when the request path targets an **existing account's operations** (e.g., `/send/transaction`). Account creation and other platform-level calls will use only the API key Bearer token.
+Restructure `cdpRequest` so that:
+1. The `walletAuthJwt` variable is declared outside the conditional
+2. The header is **only added** if the JWT string is non-empty (explicit length check)
+3. Also tighten the regex to specifically match `/send/transaction` endpoints
 
-### Technical Details
+### Changes (supabase/functions/agent-wallet/index.ts)
 
-**File: `supabase/functions/agent-wallet/index.ts`**
-
-Replace the current blanket POST/DELETE check (lines 164-169):
-
-```typescript
-const upperMethod = method.toUpperCase();
-if (upperMethod === 'POST' || upperMethod === 'DELETE') {
-  const walletAuthJwt = await generateWalletAuthJwt(...);
-  headers['X-Wallet-Auth'] = walletAuthJwt;
-}
-```
-
-With a path-aware check:
+**Replace lines 159-177** (the headers construction + wallet auth conditional block):
 
 ```typescript
+// Build base headers WITHOUT X-Wallet-Auth
 const upperMethod = method.toUpperCase();
 const needsWalletAuth =
   (upperMethod === 'POST' || upperMethod === 'DELETE') &&
-  /\/platform\/v2\/evm\/accounts\/[^/]+\//.test(fullPath);
+  /\/platform\/v2\/evm\/accounts\/[^/]+\/send\/transaction$/.test(fullPath);
 
+let walletAuthJwt: string | undefined;
 if (needsWalletAuth) {
-  const walletAuthJwt = await generateWalletAuthJwt(...);
+  walletAuthJwt = await generateWalletAuthJwt(walletSecret, upperMethod, fullPath, serializedBody);
+  console.log('[CDP] X-Wallet-Auth generated:', !!walletAuthJwt);
+}
+
+const headers: Record<string, string> = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${jwt}`,
+};
+
+// Only attach if we have a real non-empty token
+if (walletAuthJwt && walletAuthJwt.length > 0) {
   headers['X-Wallet-Auth'] = walletAuthJwt;
   console.log('[CDP] X-Wallet-Auth attached (wallet-level operation)');
 } else {
@@ -39,9 +42,11 @@ if (needsWalletAuth) {
 }
 ```
 
-The regex `/\/platform\/v2\/evm\/accounts\/[^/]+\//` matches paths that target a specific account's sub-resource (like `.../accounts/0xABC.../send/transaction`) but does NOT match the account creation endpoint (`/platform/v2/evm/accounts`).
+Key differences from current code:
+- Headers object is built **after** the wallet auth decision, not before
+- Explicit `walletAuthJwt.length > 0` guard prevents an empty string from being set
+- Regex tightened to only match `/send/transaction` paths (not any sub-resource)
+- Uses `upperMethod` consistently in the `generateWalletAuthJwt` call
 
-### Expected Outcome
-- `POST /platform/v2/evm/accounts` -- no `X-Wallet-Auth`, uses only API key Bearer -- should succeed (201)
-- `POST /platform/v2/evm/accounts/{address}/send/transaction` -- includes `X-Wallet-Auth` -- wallet-level auth as required
-
+### After Deploy
+Test wallet connection on Settings -> Agent tab. The `POST /platform/v2/evm/accounts` call should now have zero trace of `X-Wallet-Auth` in the request.
