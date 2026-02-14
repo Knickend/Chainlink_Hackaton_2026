@@ -202,6 +202,31 @@ async function cdpRequest(
   }
 }
 
+// --- Auto-heal: resolve cdp_account_id if missing ---
+async function resolveCdpAccountId(
+  wallet: Record<string, any>,
+  userId: string,
+  serviceClient: any,
+): Promise<string> {
+  if (wallet.cdp_account_id) return wallet.cdp_account_id;
+  if (!wallet.wallet_address) throw new Error('No wallet address found. Please reconnect your wallet.');
+
+  console.log(`[AgentWallet] Auto-healing cdp_account_id for ${wallet.wallet_address}`);
+  const listResp = await cdpRequest('GET', '/platform/v2/evm/accounts') as { accounts?: Array<{ id?: string; address?: string }> };
+  const match = listResp?.accounts?.find(
+    (a: any) => a.address?.toLowerCase() === wallet.wallet_address?.toLowerCase()
+  );
+  if (!match?.id) {
+    console.error('[AgentWallet] Could not find CDP account for address:', wallet.wallet_address);
+    throw new Error('CDP account ID not found. Please reconnect your wallet.');
+  }
+
+  await serviceClient.from('agent_wallets').update({ cdp_account_id: match.id }).eq('user_id', userId);
+  wallet.cdp_account_id = match.id;
+  console.log(`[AgentWallet] Auto-healed cdp_account_id: ${match.id}`);
+  return match.id;
+}
+
 // --- Wallet Auth JWT (ES256 / ECDSA P-256) ---
 
 function sortObjectKeys(obj: unknown): unknown {
@@ -407,19 +432,7 @@ serve(async (req) => {
         // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
         if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
           try {
-            // Use GET to list accounts and find by address (POST returns 409 if name exists)
-            console.log(`[AgentWallet] Backfilling cdp_account_id for address ${wallet.wallet_address}`);
-            const listResp = await cdpRequest('GET', '/platform/v2/evm/accounts') as { accounts?: Array<{ id?: string; address?: string; name?: string }> };
-            const match = listResp?.accounts?.find(
-              (a: any) => a.address?.toLowerCase() === wallet.wallet_address?.toLowerCase()
-            );
-            if (match?.id) {
-              await serviceClient.from('agent_wallets').update({ cdp_account_id: match.id }).eq('user_id', user.id);
-              (wallet as any).cdp_account_id = match.id;
-              console.log(`[AgentWallet] Backfilled cdp_account_id: ${match.id}`);
-            } else {
-              console.log('[AgentWallet] Could not find matching CDP account in list:', JSON.stringify(listResp).slice(0, 500));
-            }
+            await resolveCdpAccountId(wallet as any, user.id, serviceClient);
           } catch (e) {
             console.error('[AgentWallet] Failed to backfill cdp_account_id:', e);
           }
@@ -543,9 +556,8 @@ serve(async (req) => {
         if (!wallet.enabled_skills?.includes('send-usdc')) throw new Error('Send USDC skill is disabled');
         if (amount > wallet.spending_limit_per_tx) throw new Error(`Amount exceeds per-transaction limit of $${wallet.spending_limit_per_tx}`);
 
-        // The CDP account id is required for send-transaction
-        const cdpAccountId = (wallet as any).cdp_account_id;
-        if (!cdpAccountId) throw new Error('CDP account ID not found. Please reconnect your wallet.');
+        // Auto-heal CDP account ID if missing
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
         const now = new Date();
         let dailySpent = wallet.daily_spent || 0;
@@ -635,8 +647,7 @@ serve(async (req) => {
         if (!wallet.enabled_skills?.includes('trade')) throw new Error('Trade skill is disabled');
         if (amount > wallet.spending_limit_per_tx) throw new Error(`Amount exceeds per-transaction limit of $${wallet.spending_limit_per_tx}`);
 
-        const cdpAccountId = (wallet as any).cdp_account_id;
-        if (!cdpAccountId) throw new Error('CDP account ID not found. Please reconnect your wallet.');
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
         const fromAddress = TOKEN_MAP[from_token] || TOKEN_MAP[from_token.toUpperCase()];
         const toAddress = TOKEN_MAP[to_token] || TOKEN_MAP[to_token.toUpperCase()];
