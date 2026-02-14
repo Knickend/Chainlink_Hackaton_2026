@@ -1,27 +1,17 @@
 
 
-## Fix: Pre-fill Amount on Coinbase Onramp Page
+## Fix: Format paymentAmount as decimal string
 
-### Root Cause
-The CDP Onramp Sessions API accepts `paymentAmount` in the request body to generate a quote, but the resulting onramp URL does **not** automatically pre-fill the amount on the payment page. According to Coinbase's documentation, pre-filling requires appending query parameters directly to the onramp URL:
-- `presetFiatAmount` -- the dollar amount (e.g., `5`)
-- `fiatCurrency` -- the currency code (e.g., `USD`)
+### Change
+In `supabase/functions/agent-wallet/index.ts`, change `String(amount)` to `amount.toFixed(2)` so the CDP API receives `"5.00"` instead of `"5"`.
 
-### Fix
-In `supabase/functions/agent-wallet/index.ts`, after extracting the `onrampUrl` from the CDP response, append the pre-fill query parameters before returning it to the frontend:
+### Technical Detail
+- **File**: `supabase/functions/agent-wallet/index.ts`, line ~691
+- **Before**: `paymentAmount: String(amount),`
+- **After**: `paymentAmount: amount.toFixed(2),`
 
-```typescript
-// After extracting onrampUrl from CDP response:
-if (onrampUrl) {
-  const separator = onrampUrl.includes('?') ? '&' : '?';
-  const prefillUrl = `${onrampUrl}${separator}presetFiatAmount=${amount}&fiatCurrency=USD`;
-  // Use prefillUrl instead of onrampUrl in the response
-}
-```
-
-### Files Modified
-- `supabase/functions/agent-wallet/index.ts` -- append `presetFiatAmount` and `fiatCurrency` query params to the onramp URL before returning it
+Note: `amount` is already cast to `Number()` earlier in the fund case, so `.toFixed(2)` will work correctly.
 
 ### Testing
-Trigger "Fund my wallet with $5" again. The Coinbase Onramp page should now open with $5.00 (or local equivalent) pre-filled instead of $0.
+Trigger "Fund my wallet with $5" and verify the Coinbase Onramp page shows $5.00 pre-filled.
 
