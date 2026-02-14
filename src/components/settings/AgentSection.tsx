@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut } from 'lucide-react';
+import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ export function AgentSection() {
   } = useAgentWallet();
 
   const [email, setEmail] = useState('');
+  const [copied, setCopied] = useState(false);
   const [perTxLimit, setPerTxLimit] = useState(String(status.spending_limit_per_tx));
   const [dailyLimit, setDailyLimit] = useState(String(status.spending_limit_daily));
 
@@ -94,7 +95,21 @@ export function AgentSection() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Address</span>
-                    <span className="text-sm font-mono truncate max-w-[200px]">{status.wallet_address}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-mono break-all">{status.wallet_address}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(status.wallet_address || '');
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                   {status.balance !== null && (
                     <div className="flex items-center justify-between">
