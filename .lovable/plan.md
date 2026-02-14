@@ -1,75 +1,66 @@
 
 
-## Fix: Wallet Auth JWT URI Format — Add Host to URI
+## Fix: Align Both JWTs and Request Body with CDP Support's Reference
 
-### Root Cause (confirmed by CDP Support)
-CDP's official Node.js example shows the `uris` claim must include the host:
-
-```
-"POST api.cdp.coinbase.com/platform/v2/evm/accounts"
-```
-
-Our current code (line 228) builds it as:
-
-```
-"POST /platform/v2/evm/accounts"
-```
-
-This is why the 401 persists — the TEE compares our URI against the actual request URL and they don't match because the host is missing.
+CDP support provided a complete working reference that reveals three mismatches in the current code.
 
 ### Changes (supabase/functions/agent-wallet/index.ts)
 
-**1. Fix URI format in `generateWalletAuthJwt` (line 228)**
+**1. API Key JWT payload: remove `uris` array, keep only singular `uri` (line 102)**
 
-Replace:
+CDP support says the API Key JWT uses `uri` (singular string), NOT `uris` (array). Currently we send both. Remove the `uris` line.
+
+Before:
 ```typescript
-const uri = `${requestMethod} ${requestPath}`;
+uris: [uri],
+uri,
 ```
 
-With:
+After:
 ```typescript
-const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
+uri,
 ```
 
-This produces `"POST api.cdp.coinbase.com/platform/v2/evm/accounts"` — matching CDP's reference implementation exactly.
+**2. API Key JWT nonce: use 16-char hex instead of full UUID (line 85)**
 
-**2. Add `exp` claim (CDP support recommendation)**
+CDP's reference uses `randomHex16().substring(0, 16)` (16 chars). We currently use a full UUID.
 
-Add an expiration to the payload as suggested by CDP support:
-
+Before:
 ```typescript
-const payload: Record<string, unknown> = {
-  iat: now,
-  nbf: now,
-  exp: now + 120,
-  jti,
-  uris: [uri],
-};
+const nonce = crypto.randomUUID();
 ```
 
-**3. Use hex `jti` instead of UUID (CDP support recommendation)**
-
-Replace:
+After:
 ```typescript
-const jti = crypto.randomUUID().replace(/-/g, '');
-```
-
-With:
-```typescript
-const jti = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
   .map(b => b.toString(16).padStart(2, '0'))
   .join('');
 ```
 
-This matches the Node.js example which uses `crypto.randomBytes(16).toString('hex')`.
+This produces a 16-character hex string matching the reference.
+
+**3. Remove `network` from account creation request body (line 353)**
+
+CDP support's reference only sends `{ name: "..." }` with no `network` field. The extra field may cause a `reqHash` mismatch or be rejected.
+
+Before:
+```typescript
+{ name: accountName, network: 'base' }
+```
+
+After:
+```typescript
+{ name: accountName }
+```
 
 **4. Deploy the updated edge function.**
 
-### Why This Should Work
+### Why These Matter
 
-The URI mismatch is the most likely cause of the 401. CDP's TEE validates the `uris` claim against the actual HTTP request, and without the host prefix our URI doesn't match. The `exp` and hex `jti` changes align with CDP's reference code for additional compatibility.
+- The `uris` vs `uri` difference means CDP's API Key validation may be rejecting the extra claim or misinterpreting it.
+- The nonce length may matter for header validation.
+- The `network` field in the body changes the `reqHash` and may not be a valid parameter for the `/platform/v2/evm/accounts` endpoint, causing a body validation failure on CDP's side.
 
 ### After Deploy
 
-Test wallet connection on Settings -> Agent tab. The `POST /platform/v2/evm/accounts` call should now succeed with the corrected URI format in the wallet JWT.
-
+Test wallet connection on Settings -> Agent tab. These three fixes align the implementation exactly with CDP support's verified working reference.
