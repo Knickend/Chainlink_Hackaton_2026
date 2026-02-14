@@ -694,14 +694,15 @@ serve(async (req) => {
 
           console.log('[AgentWallet] Onramp raw response:', JSON.stringify(onrampResult));
 
-          // Try multiple possible field names from CDP response
-          const onrampUrl = (onrampResult as any)?.sessionUrl
+          // CDP returns { session: { onrampUrl, ... } }
+          const session = (onrampResult as any)?.session;
+          const onrampUrl = session?.onrampUrl
+            || (onrampResult as any)?.sessionUrl
             || (onrampResult as any)?.redirect_url
-            || (onrampResult as any)?.url
             || (typeof onrampResult === 'string' ? onrampResult : null);
 
-          const sessionId = (onrampResult as any)?.sessionId
-            || (onrampResult as any)?.session_id
+          const sessionId = session?.id
+            || (onrampResult as any)?.sessionId
             || (onrampResult as any)?.id;
 
           await serviceClient
