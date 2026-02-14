@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      address_book: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          label: string | null
+          name: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+          wallet_address: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          label?: string | null
+          name: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+          wallet_address?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          label?: string | null
+          name?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
       agent_actions_log: {
         Row: {
           action_type: string
