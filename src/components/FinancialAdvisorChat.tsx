@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff, Brain } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff, Brain, ArrowUpRight, Repeat, Wallet, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -14,6 +14,8 @@ import { useGoals } from '@/hooks/useGoals';
 import { useToast } from '@/hooks/use-toast';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useChatMemories } from '@/hooks/useChatMemories';
+import { useAgentWallet } from '@/hooks/useAgentWallet';
+import { useAddressBook } from '@/hooks/useAddressBook';
 
 import { Asset, Income, Expense, Debt, Goal, getCurrencySymbol } from '@/lib/types';
 
@@ -181,6 +183,52 @@ const SUGGESTED_QUESTIONS = [
   "How do I diversify my portfolio?",
 ];
 
+const DEFI_CHIPS = [
+  { label: 'Send USDC', icon: ArrowUpRight, template: 'Send USDC to ' },
+  { label: 'Swap tokens', icon: Repeat, template: 'Swap to ' },
+  { label: 'Fund wallet', icon: Wallet, template: 'Fund my wallet with $' },
+];
+
+function isDeFiAction(action: string): boolean {
+  return ['SEND_USDC', 'TRADE_TOKENS', 'FUND_WALLET'].includes(action);
+}
+
+function getDeFiActionDetails(action: string, data: Record<string, any>) {
+  switch (action) {
+    case 'SEND_USDC':
+      return {
+        icon: ArrowUpRight,
+        title: 'Send USDC',
+        details: [
+          { label: 'Amount', value: `${data.amount} USDC` },
+          { label: 'To', value: data.recipient_name ? `${data.recipient_name} (${data.recipient?.slice(0, 6)}…${data.recipient?.slice(-4)})` : data.recipient },
+          { label: 'Network', value: 'Base' },
+        ],
+      };
+    case 'TRADE_TOKENS':
+      return {
+        icon: Repeat,
+        title: 'Trade Tokens',
+        details: [
+          { label: 'From', value: `${data.amount} ${data.from_token || 'USDC'}` },
+          { label: 'To', value: data.to_token || 'ETH' },
+          { label: 'Network', value: 'Base' },
+        ],
+      };
+    case 'FUND_WALLET':
+      return {
+        icon: Wallet,
+        title: 'Fund Wallet',
+        details: [
+          { label: 'Amount', value: `$${data.amount}` },
+          { label: 'Via', value: 'Coinbase Onramp' },
+        ],
+      };
+    default:
+      return null;
+  }
+}
+
 export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: FinancialAdvisorChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -193,6 +241,11 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
   const { toast } = useToast();
   const { isPro } = useSubscription();
   const { recallMemories, storeConversationTurn } = useChatMemories(isPro);
+
+  // Agent wallet & address book
+  const { status: walletStatus, sendUsdc, tradeTokens, fundWallet } = useAgentWallet();
+  const { contacts } = useAddressBook();
+  const walletConnected = walletStatus.connected;
 
   // Voice chat hook with fallback callback
   const {
@@ -253,7 +306,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
   const deleteGoal = goalsData?.deleteGoal ?? internalGoals.deleteGoal;
 
   // Voice actions hook
-  const { executeAction, confirmDelete } = useVoiceActions({
+  const { executeAction, confirmDelete, confirmAction } = useVoiceActions({
     assets,
     income,
     expenses,
@@ -274,6 +327,9 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     addGoal,
     updateGoal,
     deleteGoal,
+    sendUsdc: walletConnected ? sendUsdc : undefined,
+    tradeTokens: walletConnected ? tradeTokens : undefined,
+    fundWallet: walletConnected ? fundWallet : undefined,
   });
 
   // Auto-scroll to bottom
@@ -299,6 +355,11 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     }
     if (portfolioContext) {
       body.portfolioContext = portfolioContext;
+    }
+    // Include wallet context if connected
+    if (walletConnected) {
+      const skills = walletStatus.enabled_skills?.join(', ') || 'none';
+      body.walletContext = `Connected: Yes\nAddress: ${walletStatus.wallet_address}\nBalance: ${walletStatus.balance != null ? `$${walletStatus.balance}` : 'unknown'}\nEnabled skills: ${skills}\nSpending limit per tx: $${walletStatus.spending_limit_per_tx}\nDaily limit: $${walletStatus.spending_limit_daily} (spent today: $${walletStatus.daily_spent})`;
     }
 
     const resp = await fetch(CHAT_URL, {
@@ -418,7 +479,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
 
     try {
       // Parse the command
-      const parsed = await parseVoiceCommand(transcribedText);
+      const parsed = await parseVoiceCommand(transcribedText, contacts);
       
       // If it's a question, route to normal chat
       if (parsed.action === 'QUESTION') {
@@ -468,7 +529,11 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     
     setIsLoading(true);
     try {
-      const result = await confirmDelete(pendingAction.action, pendingAction.data);
+      // Route DeFi actions to confirmAction, deletions to confirmDelete
+      const result = isDeFiAction(pendingAction.action)
+        ? await confirmAction(pendingAction.action, pendingAction.data)
+        : await confirmDelete(pendingAction.action, pendingAction.data);
+        
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: result.message,
@@ -488,7 +553,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       setPendingAction(null);
       setIsLoading(false);
     }
-  }, [pendingAction, confirmDelete, voiceMode, playResponse, toast]);
+  }, [pendingAction, confirmDelete, confirmAction, voiceMode, playResponse, toast]);
 
   const handleCancelAction = useCallback(() => {
     setPendingAction(null);
@@ -733,6 +798,24 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                   </div>
                   {!voiceMode && (
                     <div className="space-y-2">
+                      {/* DeFi quick-action chips when wallet connected */}
+                      {walletConnected && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {DEFI_CHIPS.map((chip) => (
+                            <button
+                              key={chip.label}
+                              onClick={() => {
+                                setInput(chip.template);
+                                inputRef.current?.focus();
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <chip.icon className="w-3 h-3" />
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {SUGGESTED_QUESTIONS.map((question, i) => (
                         <button
                           key={i}
@@ -807,37 +890,83 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                   ))}
                   
                   {/* Pending Action Confirmation */}
-                  {pendingAction && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                      <div className="flex items-start gap-2 mb-3">
-                        <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-medium">Confirm Action</p>
-                          <p className="text-sm text-muted-foreground">
-                            This action cannot be undone.
-                          </p>
+                  {pendingAction && (() => {
+                    const defiDetails = isDeFiAction(pendingAction.action) ? getDeFiActionDetails(pendingAction.action, pendingAction.data) : null;
+                    
+                    if (defiDetails) {
+                      const Icon = defiDetails.icon;
+                      return (
+                        <div className="border border-primary/20 bg-primary/5 rounded-lg p-4">
+                          <div className="flex items-start gap-2 mb-3">
+                            <Icon className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-medium">{defiDetails.title}</p>
+                              <div className="mt-2 space-y-1">
+                                {defiDetails.details.map((d, idx) => (
+                                  <div key={idx} className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">{d.label}</span>
+                                    <span className="font-mono">{d.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              onClick={handleConfirmAction}
+                              disabled={isLoading}
+                              className="bg-primary hover:bg-primary/90"
+                            >
+                              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                                <><CheckCircle2 className="w-4 h-4 mr-1" /> Approve</>
+                              )}
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={handleCancelAction}
+                              disabled={isLoading}
+                            >
+                              <XCircle className="w-4 h-4 mr-1" /> Reject
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                        <div className="flex items-start gap-2 mb-3">
+                          <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-medium">Confirm Action</p>
+                            <p className="text-sm text-muted-foreground">
+                              This action cannot be undone.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={handleConfirmAction}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, delete'}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={handleCancelAction}
+                            disabled={isLoading}
+                          >
+                            Cancel
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          onClick={handleConfirmAction}
-                          disabled={isLoading}
-                        >
-                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, delete'}
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={handleCancelAction}
-                          disabled={isLoading}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   
                   {isLoading && messages[messages.length - 1]?.role === 'user' && !pendingAction && (
                     <div className="flex gap-3">
