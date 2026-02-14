@@ -658,8 +658,8 @@ serve(async (req) => {
       }
 
       case 'fund': {
-        const { amount } = params;
-        if (!amount) throw new Error('Amount is required');
+        const amount = Number(params.amount);
+        if (!amount || isNaN(amount)) throw new Error('Valid amount is required');
 
         const { data: wallet } = await userClient
           .from('agent_wallets')
@@ -683,11 +683,13 @@ serve(async (req) => {
 
         try {
           // Platform API for onramp
+          const paymentAmountStr = amount.toFixed(2);
+          console.log('[AgentWallet] Fund amount:', params.amount, '-> paymentAmount:', paymentAmountStr);
           const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', {
             purchaseCurrency: 'USDC',
             destinationNetwork: 'base',
             destinationAddress: wallet.wallet_address,
-            paymentAmount: amount.toFixed(2),
+            paymentAmount: paymentAmountStr,
             paymentCurrency: 'USD',
             paymentMethod: 'CARD',
           });
