@@ -698,10 +698,16 @@ serve(async (req) => {
 
           // CDP returns { session: { onrampUrl, ... } }
           const session = (onrampResult as any)?.session;
-          const onrampUrl = session?.onrampUrl
+          let onrampUrl = session?.onrampUrl
             || (onrampResult as any)?.sessionUrl
             || (onrampResult as any)?.redirect_url
             || (typeof onrampResult === 'string' ? onrampResult : null);
+
+          // Append pre-fill query params so Coinbase shows the requested amount
+          if (onrampUrl) {
+            const sep = onrampUrl.includes('?') ? '&' : '?';
+            onrampUrl = `${onrampUrl}${sep}presetFiatAmount=${amount}&fiatCurrency=USD`;
+          }
 
           const sessionId = session?.id
             || (onrampResult as any)?.sessionId
