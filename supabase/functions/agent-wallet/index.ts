@@ -407,13 +407,18 @@ serve(async (req) => {
         // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
         if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
           try {
-            const accountName = `incontrol-${user.id.slice(0, 8)}`;
-            console.log(`[AgentWallet] Backfilling cdp_account_id for ${accountName}`);
-            const acct = await cdpRequest('POST', '/platform/v2/evm/accounts', { name: accountName }) as { id?: string };
-            if (acct?.id) {
-              await serviceClient.from('agent_wallets').update({ cdp_account_id: acct.id }).eq('user_id', user.id);
-              (wallet as any).cdp_account_id = acct.id;
-              console.log(`[AgentWallet] Backfilled cdp_account_id: ${acct.id}`);
+            // Use GET to list accounts and find by address (POST returns 409 if name exists)
+            console.log(`[AgentWallet] Backfilling cdp_account_id for address ${wallet.wallet_address}`);
+            const listResp = await cdpRequest('GET', '/platform/v2/evm/accounts') as { accounts?: Array<{ id?: string; address?: string; name?: string }> };
+            const match = listResp?.accounts?.find(
+              (a: any) => a.address?.toLowerCase() === wallet.wallet_address?.toLowerCase()
+            );
+            if (match?.id) {
+              await serviceClient.from('agent_wallets').update({ cdp_account_id: match.id }).eq('user_id', user.id);
+              (wallet as any).cdp_account_id = match.id;
+              console.log(`[AgentWallet] Backfilled cdp_account_id: ${match.id}`);
+            } else {
+              console.log('[AgentWallet] Could not find matching CDP account in list:', JSON.stringify(listResp).slice(0, 500));
             }
           } catch (e) {
             console.error('[AgentWallet] Failed to backfill cdp_account_id:', e);
