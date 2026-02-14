@@ -82,7 +82,9 @@ async function generateCdpJwt(
   requestPath: string,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const nonce = crypto.randomUUID();
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 
   const header = {
     alg: 'EdDSA',
@@ -99,7 +101,6 @@ async function generateCdpJwt(
     aud: ['cdp_service'],
     nbf: now,
     exp: now + 120,
-    uris: [uri],
     uri,
   };
 
@@ -350,7 +351,7 @@ serve(async (req) => {
         const created = await cdpRequest(
           'POST',
           '/platform/v2/evm/accounts',
-          { name: accountName, network: 'base' },
+          { name: accountName },
         ) as { address?: string; id?: string };
 
         if (!created?.address) throw new Error('Failed to create CDP wallet account');
