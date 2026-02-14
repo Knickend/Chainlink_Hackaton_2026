@@ -684,11 +684,12 @@ serve(async (req) => {
         try {
           // Platform API for onramp
           const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', {
-            purchaseAmount: { value: amount.toString(), currency: 'USD' },
-            paymentMethod: 'CARD',
-            destinationAddress: wallet.wallet_address,
+            purchaseCurrency: 'USDC',
             destinationNetwork: 'base',
-            destinationAsset: 'USDC',
+            destinationAddress: wallet.wallet_address,
+            paymentAmount: amount.toFixed(2),
+            paymentCurrency: 'USD',
+            paymentMethod: 'CARD',
           }) as { sessionUrl?: string; sessionId?: string };
 
           await serviceClient
