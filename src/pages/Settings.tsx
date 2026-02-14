@@ -10,6 +10,7 @@ import { SubscriptionSection } from '@/components/settings/SubscriptionSection';
 import { SecuritySection } from '@/components/settings/SecuritySection';
 import { AgentSection } from '@/components/settings/AgentSection';
 import { AgentTeaser } from '@/components/settings/AgentTeaser';
+import { AddressBookSection } from '@/components/settings/AddressBookSection';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useSubscription } from '@/hooks/useSubscription';
 import { SubscriptionDialog } from '@/components/SubscriptionDialog';
@@ -82,10 +83,11 @@ const Settings = () => {
           transition={{ delay: 0.1 }}
         >
           <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="subscription">Subscription</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="contacts">Contacts</TabsTrigger>
               <TabsTrigger value="agent">Agent</TabsTrigger>
             </TabsList>
 
@@ -99,6 +101,10 @@ const Settings = () => {
 
             <TabsContent value="security" className="space-y-6">
               <SecuritySection />
+            </TabsContent>
+
+            <TabsContent value="contacts" className="space-y-6">
+              <AddressBookSection />
             </TabsContent>
 
             <TabsContent value="agent" className="space-y-6">
