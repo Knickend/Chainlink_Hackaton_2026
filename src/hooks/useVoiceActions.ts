@@ -392,7 +392,13 @@ export function useVoiceActions(handlers: ActionHandlers) {
         case 'FUND_WALLET': {
           if (!handlers.fundWallet) return { success: false, message: 'Agent wallet not connected.' };
           const result = await handlers.fundWallet(data.amount);
-          return { success: true, message: result?.message || `Funding initiated for $${data.amount}.` };
+          if (result?.onramp_url) {
+            window.open(result.onramp_url, '_blank', 'noopener,noreferrer');
+          }
+          const msg = result?.onramp_url
+            ? `Onramp session created for $${data.amount}. A payment window has been opened. [Click here if it didn't open](${result.onramp_url})`
+            : result?.message || `Funding initiated for $${data.amount}.`;
+          return { success: true, message: msg };
         }
         default:
           return { success: false, message: "Unknown DeFi action." };
