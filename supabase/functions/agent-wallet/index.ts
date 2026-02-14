@@ -404,6 +404,22 @@ serve(async (req) => {
 
         let balance: string | null = null;
 
+        // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
+        if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
+          try {
+            const accountName = `incontrol-${user.id.slice(0, 8)}`;
+            console.log(`[AgentWallet] Backfilling cdp_account_id for ${accountName}`);
+            const acct = await cdpRequest('POST', '/platform/v2/evm/accounts', { name: accountName }) as { id?: string };
+            if (acct?.id) {
+              await serviceClient.from('agent_wallets').update({ cdp_account_id: acct.id }).eq('user_id', user.id);
+              (wallet as any).cdp_account_id = acct.id;
+              console.log(`[AgentWallet] Backfilled cdp_account_id: ${acct.id}`);
+            }
+          } catch (e) {
+            console.error('[AgentWallet] Failed to backfill cdp_account_id:', e);
+          }
+        }
+
         if (wallet?.wallet_address && wallet?.is_authenticated) {
           try {
             const balanceResp = await cdpRequest(
