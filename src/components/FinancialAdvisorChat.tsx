@@ -440,23 +440,41 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     setIsLoading(true);
 
     try {
-      // Pro users: recall relevant memories for context
-      const memories = isPro ? await recallMemories() : undefined;
-
-      // Build portfolio context from current dashboard data
-      const portfolioContext = buildPortfolioSummary(assets, income, expenses, debts, goals);
-
-      const assistantContent = await streamChat(text, newMessages, memories, portfolioContext);
-      
-      // Pro users: store conversation turn for future recall
-      if (isPro && assistantContent) {
-        storeConversationTurn(text, assistantContent);
+      // Try to parse as an actionable command first
+      let routed = false;
+      try {
+        const parsed = await parseVoiceCommand(text, contacts);
+        if (parsed.action && parsed.action !== 'QUESTION' && parsed.action !== 'CLARIFY') {
+          // It's an actionable command — route through executeAction
+          const result = await executeAction(parsed);
+          if (result.needsConfirmation) {
+            setPendingAction({ action: parsed.action, data: parsed.data });
+            setMessages(prev => [...prev, { role: 'assistant', content: result.message, isAction: true }]);
+          } else {
+            setMessages(prev => [...prev, { role: 'assistant', content: result.message, isAction: result.success }]);
+          }
+          if (voiceMode && !skipVoicePlayback && result.message) {
+            await playResponse(result.message);
+          }
+          routed = true;
+        }
+      } catch (parseError) {
+        console.log('[sendMessage] Parse failed, falling back to chat:', parseError);
       }
 
-      // Auto-play response in voice mode
-      if (voiceMode && !skipVoicePlayback && assistantContent) {
-        const plainText = assistantContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
-        await playResponse(plainText, messages.length);
+      // Fall back to conversational AI if not routed
+      if (!routed) {
+        const memories = isPro ? await recallMemories() : undefined;
+        const portfolioContext = buildPortfolioSummary(assets, income, expenses, debts, goals);
+        const assistantContent = await streamChat(text, newMessages, memories, portfolioContext);
+
+        if (isPro && assistantContent) {
+          storeConversationTurn(text, assistantContent);
+        }
+        if (voiceMode && !skipVoicePlayback && assistantContent) {
+          const plainText = assistantContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
+          await playResponse(plainText, messages.length);
+        }
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -470,7 +488,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, streamChat, voiceMode, playResponse, isPro, recallMemories, storeConversationTurn]);
+  }, [input, isLoading, messages, streamChat, voiceMode, playResponse, isPro, recallMemories, storeConversationTurn, parseVoiceCommand, contacts, executeAction]);
 
   const handleVoiceCommand = useCallback(async (transcribedText: string) => {
     // Add user message to chat
