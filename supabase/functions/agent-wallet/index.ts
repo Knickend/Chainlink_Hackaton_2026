@@ -683,13 +683,12 @@ serve(async (req) => {
 
         try {
           // Platform API for onramp
-          const paymentAmountStr = amount.toFixed(2);
-          console.log('[AgentWallet] Fund amount:', params.amount, '-> paymentAmount:', paymentAmountStr);
+          console.log('[AgentWallet] Fund amount:', params.amount, '-> paymentAmount (as number):', amount);
           const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', {
             purchaseCurrency: 'USDC',
             destinationNetwork: 'base',
             destinationAddress: wallet.wallet_address,
-            paymentAmount: paymentAmountStr,
+            paymentAmount: amount,
             paymentCurrency: 'USD',
             paymentMethod: 'CARD',
           });
@@ -698,16 +697,10 @@ serve(async (req) => {
 
           // CDP returns { session: { onrampUrl, ... } }
           const session = (onrampResult as any)?.session;
-          let onrampUrl = session?.onrampUrl
+          const onrampUrl = session?.onrampUrl
             || (onrampResult as any)?.sessionUrl
             || (onrampResult as any)?.redirect_url
             || (typeof onrampResult === 'string' ? onrampResult : null);
-
-          // Append pre-fill query params so Coinbase shows the requested amount
-          if (onrampUrl) {
-            const sep = onrampUrl.includes('?') ? '&' : '?';
-            onrampUrl = `${onrampUrl}${sep}presetFiatAmount=${amount}&fiatCurrency=USD`;
-          }
 
           const sessionId = session?.id
             || (onrampResult as any)?.sessionId
