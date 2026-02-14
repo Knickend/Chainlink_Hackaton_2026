@@ -1,43 +1,38 @@
 
 
-## Fix: Onramp URL Not Appearing After Fund Approval
+## Fix: Onramp Opens with $0 Instead of Requested Amount
 
 ### Root Cause
-There are two issues preventing the onramp URL from appearing:
+The `amount` parameter arrives from JSON body parsing and may be a string (e.g., `"5"` instead of `5`). When calling `.toFixed(2)` on a string, JavaScript returns `undefined` or throws, causing `paymentAmount` to be empty/invalid. Additionally, based on the CDP Onramp Session docs, the `purchaseAmount` field (crypto amount) might be more reliable than `paymentAmount` for pre-filling amounts.
 
-1. **Unknown CDP response field name**: The backend casts the CDP response as `{ sessionUrl?: string }` but the actual CDP Onramp Sessions API likely returns the URL under a different field name (e.g., `session_url`, `url`, or `redirect_url`). Since `onrampResult?.sessionUrl` is `undefined`, `onramp_url` is sent as `null` to the frontend.
+### Fix
+In `supabase/functions/agent-wallet/index.ts`, line 690:
 
-2. **No debug logging**: There are no logs showing the actual CDP onramp response, making it impossible to know the correct field name.
-
-### Fix (Two Parts)
-
-**Part 1: Add logging to the backend to capture the actual CDP response**
-
-In `supabase/functions/agent-wallet/index.ts`, add a `console.log` of the raw CDP onramp response right after the API call (around line 693):
+1. Explicitly cast `amount` to a number before calling `.toFixed(2)`
+2. Log the exact `paymentAmount` value being sent to confirm it's correct
 
 ```typescript
-const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', { ... });
-console.log('[AgentWallet] Onramp raw response:', JSON.stringify(onrampResult));
+case 'fund': {
+  const amount = Number(params.amount);
+  if (!amount || isNaN(amount)) throw new Error('Valid amount is required');
+  
+  // ... wallet lookup stays the same ...
+
+  const paymentAmountStr = amount.toFixed(2);
+  console.log('[AgentWallet] Fund amount:', params.amount, '-> paymentAmount:', paymentAmountStr);
+  
+  const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', {
+    purchaseCurrency: 'USDC',
+    destinationNetwork: 'base',
+    destinationAddress: wallet.wallet_address,
+    paymentAmount: paymentAmountStr,
+    paymentCurrency: 'USD',
+    paymentMethod: 'CARD',
+  });
 ```
-
-Then update the response to extract the URL from the correct field. Based on CDP documentation, the field is likely `redirect_url` or the response itself may be the URL string. We will dynamically extract it:
-
-```typescript
-// Try multiple possible field names from CDP response
-const onrampUrl = onrampResult?.sessionUrl 
-  || onrampResult?.redirect_url 
-  || onrampResult?.url
-  || (typeof onrampResult === 'string' ? onrampResult : null);
-```
-
-And use `onrampUrl` instead of `onrampResult?.sessionUrl`.
-
-**Part 2: Ensure the frontend handles popup blockers gracefully**
-
-The `window.open()` call in `useVoiceActions.ts` happens asynchronously (after an API call), so browsers will block it. Instead of relying on `window.open()`, we should always show the clickable link in the chat message and only attempt `window.open()` as a bonus. The current code already does this, so no change needed here -- the link will appear once `onramp_url` is no longer `null`.
 
 ### Files Modified
-- `supabase/functions/agent-wallet/index.ts` -- add logging of raw CDP response and handle multiple possible URL field names
+- `supabase/functions/agent-wallet/index.ts` -- ensure `amount` is cast to `Number()`, add logging of the exact `paymentAmount` string being sent
 
 ### Testing
-After deploying, trigger "Fund my wallet with $5" again and check the backend function logs to see the actual CDP response shape. This will confirm the correct field name and the onramp URL should then propagate to the chat.
+After deploying, trigger "Fund my wallet with $5" again. Check the backend logs for the new `[AgentWallet] Fund amount:` line to confirm the value is `"5.00"`. If the onramp page still shows $0, we'll know the CDP Sessions API doesn't respect `paymentAmount` and will need to append it as a URL query parameter instead.
