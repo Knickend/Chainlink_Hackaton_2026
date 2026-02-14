@@ -1,40 +1,43 @@
 
 
-## Fix: Display and Open Coinbase Onramp URL After Fund Action
+## Fix: Onramp URL Not Appearing After Fund Approval
 
-### Problem
-The backend successfully returns `onramp_url` in the fund response, but the frontend discards it. After the user approves "Fund wallet", they see "Onramp session created for $5" but have no way to actually complete the payment.
+### Root Cause
+There are two issues preventing the onramp URL from appearing:
 
-### Solution
-Propagate the `onramp_url` from the backend response through the hook chain and open it for the user. Two parts:
+1. **Unknown CDP response field name**: The backend casts the CDP response as `{ sessionUrl?: string }` but the actual CDP Onramp Sessions API likely returns the URL under a different field name (e.g., `session_url`, `url`, or `redirect_url`). Since `onrampResult?.sessionUrl` is `undefined`, `onramp_url` is sent as `null` to the frontend.
 
-1. **Open the onramp URL automatically** when the fund action completes successfully
-2. **Show a clickable link** in the chat message so the user can re-open it if needed
+2. **No debug logging**: There are no logs showing the actual CDP onramp response, making it impossible to know the correct field name.
 
-### Changes
+### Fix (Two Parts)
 
-**`src/hooks/useAgentWallet.ts`** -- `fundWallet` already returns `result` which contains `onramp_url`. No changes needed here since the result is passed through.
+**Part 1: Add logging to the backend to capture the actual CDP response**
 
-**`src/hooks/useVoiceActions.ts`** -- Update the `FUND_WALLET` case in `confirmAction` (line ~392-396):
-- After calling `handlers.fundWallet(data.amount)`, check if the result contains `onramp_url`
-- If yes, open it with `window.open(result.onramp_url, '_blank')`
-- Include a clickable link in the success message
+In `supabase/functions/agent-wallet/index.ts`, add a `console.log` of the raw CDP onramp response right after the API call (around line 693):
 
 ```typescript
-case 'FUND_WALLET': {
-  if (!handlers.fundWallet) return { success: false, message: 'Agent wallet not connected.' };
-  const result = await handlers.fundWallet(data.amount);
-  if (result?.onramp_url) {
-    window.open(result.onramp_url, '_blank', 'noopener,noreferrer');
-  }
-  const msg = result?.onramp_url
-    ? `Onramp session created for $${data.amount}. A payment window has been opened. [Click here if it didn't open](${result.onramp_url})`
-    : result?.message || `Funding initiated for $${data.amount}.`;
-  return { success: true, message: msg };
-}
+const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', { ... });
+console.log('[AgentWallet] Onramp raw response:', JSON.stringify(onrampResult));
 ```
 
-**`src/components/FinancialAdvisorChat.tsx`** -- No structural changes needed. The chat already renders markdown via `ReactMarkdown`, so the clickable link in the message will render automatically.
+Then update the response to extract the URL from the correct field. Based on CDP documentation, the field is likely `redirect_url` or the response itself may be the URL string. We will dynamically extract it:
+
+```typescript
+// Try multiple possible field names from CDP response
+const onrampUrl = onrampResult?.sessionUrl 
+  || onrampResult?.redirect_url 
+  || onrampResult?.url
+  || (typeof onrampResult === 'string' ? onrampResult : null);
+```
+
+And use `onrampUrl` instead of `onrampResult?.sessionUrl`.
+
+**Part 2: Ensure the frontend handles popup blockers gracefully**
+
+The `window.open()` call in `useVoiceActions.ts` happens asynchronously (after an API call), so browsers will block it. Instead of relying on `window.open()`, we should always show the clickable link in the chat message and only attempt `window.open()` as a bonus. The current code already does this, so no change needed here -- the link will appear once `onramp_url` is no longer `null`.
 
 ### Files Modified
-- `src/hooks/useVoiceActions.ts` -- update `FUND_WALLET` case in `confirmAction` to open `onramp_url`
+- `supabase/functions/agent-wallet/index.ts` -- add logging of raw CDP response and handle multiple possible URL field names
+
+### Testing
+After deploying, trigger "Fund my wallet with $5" again and check the backend function logs to see the actual CDP response shape. This will confirm the correct field name and the onramp URL should then propagate to the chat.
