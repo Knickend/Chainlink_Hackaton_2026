@@ -688,7 +688,7 @@ serve(async (req) => {
             purchaseCurrency: 'USDC',
             destinationNetwork: 'base',
             destinationAddress: wallet.wallet_address,
-            paymentAmount: String(amount),
+            paymentAmount: amount.toFixed(2),
             paymentCurrency: 'USD',
             paymentMethod: 'CARD',
           });
