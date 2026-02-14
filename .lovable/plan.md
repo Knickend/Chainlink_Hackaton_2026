@@ -1,53 +1,95 @@
 
 
-## Address Book Feature
+## Agentic Wallet Transaction Execution + Dashboard Quick Action Button
 
 ### Overview
-Add a new "Contacts" tab in Settings where users can store contact information (name, email, wallet address) for people and companies. This makes it easy to reference saved contacts when sending transactions via the agent wallet.
+This plan combines two things:
+1. Wire up the DeFi confirmation flow so "Approve" in the chat actually executes transactions (Send USDC, Trade tokens, Fund wallet)
+2. Add a quick-action button on the dashboard to instruct the agent directly (e.g., "Send 50 USDC to Alice") without opening the full advisor chat first
 
-### Database
+---
 
-Create an `address_book` table:
-- `id` (uuid, primary key)
-- `user_id` (uuid, not null)
-- `name` (text, not null) -- person or company name
-- `email` (text, nullable)
-- `wallet_address` (text, nullable)
-- `label` (text, nullable) -- optional tag like "friend", "company", "exchange"
-- `notes` (text, nullable)
-- `created_at` (timestamptz, default now())
-- `updated_at` (timestamptz, default now())
+### 1. Dashboard Quick Action Button
 
-RLS policies: users can only CRUD their own contacts (auth.uid() = user_id).
+Add a small "Agent" floating button near the existing chat FAB (bottom-right area) that opens a lightweight command input. When the user types a DeFi instruction, it opens the Financial Advisor chat pre-filled with that command.
 
-### Frontend Components
+**Implementation in `src/pages/Index.tsx`:**
+- Add a new floating action button (Bot icon) positioned above the chat FAB, visible only for Pro users with a connected agent wallet
+- Clicking it opens a small popover/input where the user can type a quick command like "Send 20 USDC to Alice"
+- On submit, it opens the Financial Advisor chat and sends the command automatically
 
-**1. New Settings tab: "Contacts"**
-- Add a 5th tab in `Settings.tsx` between Security and Agent
-- Update the grid from `grid-cols-4` to `grid-cols-5`
+**Alternative (simpler) approach -- chosen:**
+- Add a prop to `FinancialAdvisorChat` like `initialMessage` that auto-sends a message when set
+- Add a second small FAB button with a Bot/Zap icon above the chat button
+- Clicking it opens the chat with a set of quick DeFi action chips (Send USDC, Trade, Fund) that pre-fill commands
+- This avoids a separate popover and keeps everything within the existing chat panel
 
-**2. `src/components/settings/AddressBookSection.tsx`**
-- Card with a list of saved contacts showing name, email, and wallet address
-- "Add Contact" button opens a dialog
-- Each contact row has Edit and Delete actions
-- Search/filter input at the top for quick lookup
-- Empty state with a friendly message
+**Changes to `src/components/FinancialAdvisorChat.tsx`:**
+- Add DeFi quick-action chips at the top of the chat (alongside existing suggested questions) when the agent wallet is connected
+- Chips: "Send USDC", "Trade tokens", "Fund wallet"
+- Clicking a chip pre-fills the input with a template like "Send [amount] USDC to [recipient]" and focuses the input
+- Import and use `useAgentWallet` to check connection status
+- Import and use `useAddressBook` to pass contacts for recipient resolution
 
-**3. `src/components/settings/AddContactDialog.tsx`**
-- Form with fields: Name (required), Email (optional), Wallet Address (optional), Label (optional dropdown: personal, company, exchange, other), Notes (optional)
-- Zod validation for email format and wallet address format (0x... hex)
-- Used for both Add and Edit flows
+### 2. Wire Up DeFi Confirmations
 
-**4. `src/hooks/useAddressBook.ts`**
-- React Query hook for CRUD operations on the `address_book` table
-- `useQuery` to fetch all contacts for the current user
-- `useMutation` for add, update, and delete with optimistic updates and toast notifications
+**Changes to `src/hooks/useVoiceActions.ts`:**
+- Expand `ActionHandlers` interface to include optional `sendUsdc`, `tradeTokens`, `fundWallet` functions
+- Add a new `confirmAction` method (alongside `confirmDelete`) that handles SEND_USDC, TRADE_TOKENS, and FUND_WALLET by calling the wallet functions
+- Return `{ executeAction, confirmDelete, confirmAction }` instead of just `{ executeAction, confirmDelete }`
+
+**Changes to `src/components/FinancialAdvisorChat.tsx`:**
+- Import `useAgentWallet` and `useAddressBook`
+- Pass wallet functions (`sendUsdc`, `tradeTokens`, `fundWallet`) into `useVoiceActions`
+- Update `handleConfirmAction` to detect DeFi actions and call `confirmAction` instead of `confirmDelete`
+- Enhance the pending action confirmation card for DeFi actions to show structured details (amount, recipient/token pair, network badge) instead of the generic "Yes, delete" button
+- Show a success card with transaction result after execution
+
+**Changes to `supabase/functions/parse-voice-command/index.ts`:**
+- Accept optional `addressBook` array in the request body
+- Inject address book entries into the system prompt so the AI can resolve contact names to wallet addresses
+- Add a `recipient_name` field to SEND_USDC output when resolved from contacts
+
+**Changes to `supabase/functions/financial-advisor/index.ts`:**
+- Accept optional `walletContext` in the request body
+- Inject agent wallet status (connected, balance, enabled skills) into the system prompt so the advisor can suggest DeFi actions contextually
 
 ### Technical Details
 
-- Follows existing patterns from other settings sections (same Card/glass-card styling, motion animations)
-- Uses existing UI components: Dialog, Input, Label, Button, Select
-- Wallet address validation: optional but if provided must start with `0x` and be 42 characters
-- Email validation: optional but if provided must be valid format via zod
-- The contact list will be useful later for the "Send USDC" agent skill to suggest recipients
+**DeFi confirmation card structure:**
+```text
++----------------------------------+
+| [Send icon]  Send USDC           |
+|  Amount: 50 USDC                 |
+|  To: Alice (0x1234...abcd)       |
+|  Network: Base                   |
+|                                  |
+|  [Approve]  [Reject]             |
++----------------------------------+
+```
+
+**Quick action chips in chat (when wallet connected):**
+- "Send USDC" -> pre-fills: "Send USDC to "
+- "Swap tokens" -> pre-fills: "Swap to "
+- "Fund wallet" -> pre-fills: "Fund my wallet with $"
+
+**Address book resolution in parser:**
+- The user's contacts are serialized as `Name: wallet_address` pairs and added to the system prompt
+- When the parser sees "Send 50 USDC to Alice", it looks up Alice in the contact list and returns the resolved address plus `recipient_name: "Alice"` for display
+
+**Execution flow:**
+1. User clicks "Send USDC" chip or types "Send 50 USDC to Alice"
+2. Command is parsed via `parse-voice-command` with address book context
+3. `executeAction` returns `needsConfirmation: true` with structured DeFi data
+4. Confirmation card renders with amount, recipient, and network
+5. User clicks "Approve"
+6. `confirmAction` calls `wallet.sendUsdc(amount, recipient)`
+7. Success: show green result card with tx hash
+8. Failure: show error message in chat
+
+**Files modified:**
+- `src/components/FinancialAdvisorChat.tsx` -- add wallet hook, address book, DeFi chips, enhanced confirmation cards
+- `src/hooks/useVoiceActions.ts` -- add `confirmAction` for DeFi, expand handler interface
+- `supabase/functions/parse-voice-command/index.ts` -- accept and use address book context
+- `supabase/functions/financial-advisor/index.ts` -- accept and use wallet context in system prompt
 
