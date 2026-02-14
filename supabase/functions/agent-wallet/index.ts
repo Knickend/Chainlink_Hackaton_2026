@@ -690,18 +690,30 @@ serve(async (req) => {
             paymentAmount: amount.toFixed(2),
             paymentCurrency: 'USD',
             paymentMethod: 'CARD',
-          }) as { sessionUrl?: string; sessionId?: string };
+          });
+
+          console.log('[AgentWallet] Onramp raw response:', JSON.stringify(onrampResult));
+
+          // Try multiple possible field names from CDP response
+          const onrampUrl = (onrampResult as any)?.sessionUrl
+            || (onrampResult as any)?.redirect_url
+            || (onrampResult as any)?.url
+            || (typeof onrampResult === 'string' ? onrampResult : null);
+
+          const sessionId = (onrampResult as any)?.sessionId
+            || (onrampResult as any)?.session_id
+            || (onrampResult as any)?.id;
 
           await serviceClient
             .from('agent_actions_log')
-            .update({ status: 'executed', result: { sessionId: onrampResult?.sessionId } })
+            .update({ status: 'executed', result: { sessionId, onramp_url: onrampUrl } })
             .eq('id', logEntry?.id);
 
           return new Response(
             JSON.stringify({
               success: true,
               message: `Onramp session created for $${amount}`,
-              onramp_url: onrampResult?.sessionUrl ?? null,
+              onramp_url: onrampUrl ?? null,
               log_id: logEntry?.id,
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
