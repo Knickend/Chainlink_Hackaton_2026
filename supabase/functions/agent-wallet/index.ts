@@ -406,18 +406,48 @@ serve(async (req) => {
 
         if (wallet?.wallet_address && wallet?.is_authenticated) {
           try {
-            // Data API for token balances
             const balanceResp = await cdpRequest(
               'GET',
               `/platform/v2/evm/token-balances/base/${wallet.wallet_address}`
-            ) as { balances?: Array<{ amount?: { value?: string }; token?: { decimals?: number } }> };
+            ) as Record<string, unknown>;
 
-            if (balanceResp?.balances?.length) {
-              const raw = balanceResp.balances[0];
-              const decimals = raw.token?.decimals ?? 6;
-              const amt = Number(raw.amount?.value ?? '0') / Math.pow(10, decimals);
+            console.log('[AgentWallet] Raw balance response:', JSON.stringify(balanceResp).slice(0, 2000));
+
+            // CDP may return { token_balances: [...] } or { balances: [...] }
+            const tokenList = (balanceResp?.token_balances ?? balanceResp?.balances ?? []) as Array<Record<string, any>>;
+            console.log(`[AgentWallet] Token list length: ${tokenList.length}`);
+
+            // Find USDC specifically
+            const usdcEntry = tokenList.find((t: any) => {
+              const symbol = t?.token?.symbol || t?.symbol || '';
+              const contractAddr = t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '';
+              console.log(`[AgentWallet] Token entry: symbol=${symbol}, contract=${contractAddr}, amount=`, JSON.stringify(t?.amount));
+              return symbol.toUpperCase() === 'USDC' || contractAddr.toLowerCase() === USDC_BASE.toLowerCase();
+            });
+
+            if (usdcEntry) {
+              // Handle different amount formats: { value, decimals }, string, or nested
+              const amountObj = usdcEntry.amount;
+              const tokenObj = usdcEntry.token;
+              let amt = 0;
+
+              if (typeof amountObj === 'string') {
+                amt = parseFloat(amountObj);
+              } else if (typeof amountObj === 'number') {
+                amt = amountObj;
+              } else if (amountObj?.amount !== undefined) {
+                // CDP returns { amount: { amount: "500000", decimals: 6 } }
+                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? 6;
+                amt = Number(amountObj.amount) / Math.pow(10, decimals);
+              } else if (amountObj?.value !== undefined) {
+                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? 6;
+                amt = Number(amountObj.value) / Math.pow(10, decimals);
+              }
+
+              console.log(`[AgentWallet] Parsed USDC balance: ${amt}`);
               balance = amt.toFixed(2);
             } else {
+              console.log('[AgentWallet] No USDC token found in response');
               balance = '0.00';
             }
           } catch (err) {
