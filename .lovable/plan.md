@@ -1,49 +1,75 @@
 
 
-## Fix: Switch Wallet Auth Key Import to jose's `importPKCS8`
+## Fix: Wallet Auth JWT URI Format — Add Host to URI
 
-### Problem
-The 401 "Wallet authentication error" means the `X-Wallet-Auth` JWT signature is being rejected by CDP's TEE. The current code manually decodes the wallet secret to raw DER bytes and imports via `crypto.subtle.importKey`. This may produce a subtly different key object than what jose expects when signing, or may mishandle ASN.1 edge cases.
+### Root Cause (confirmed by CDP Support)
+CDP's official Node.js example shows the `uris` claim must include the host:
 
-### Solution
-Replace the manual DER import with jose's `importPKCS8`, which is specifically designed for JWT signing and matches CDP's reference implementations. Also remove the now-unused `decodeEcdsaPrivateKey` helper.
+```
+"POST api.cdp.coinbase.com/platform/v2/evm/accounts"
+```
+
+Our current code (line 228) builds it as:
+
+```
+"POST /platform/v2/evm/accounts"
+```
+
+This is why the 401 persists — the TEE compares our URI against the actual request URL and they don't match because the host is missing.
 
 ### Changes (supabase/functions/agent-wallet/index.ts)
 
-**1. Delete `decodeEcdsaPrivateKey` function (lines 217-228)**
-
-This helper is no longer needed.
-
-**2. Rewrite key import in `generateWalletAuthJwt` (lines 261-278)**
+**1. Fix URI format in `generateWalletAuthJwt` (line 228)**
 
 Replace:
 ```typescript
-const derBytes = decodeEcdsaPrivateKey(walletSecret);
-const cryptoKey = await crypto.subtle.importKey(
-  'pkcs8', derBytes,
-  { name: 'ECDSA', namedCurve: 'P-256' },
-  true, ['sign']
-);
+const uri = `${requestMethod} ${requestPath}`;
 ```
 
 With:
 ```typescript
-const cleanedSecret = walletSecret
-  .replace(/-----BEGIN[^-]*-----/g, '')
-  .replace(/-----END[^-]*-----/g, '')
-  .replace(/\s/g, '');
-const pem = `-----BEGIN PRIVATE KEY-----\n${cleanedSecret}\n-----END PRIVATE KEY-----`;
-const cryptoKey = await importPKCS8(pem, 'ES256');
+const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
 ```
 
-This uses the already-imported `importPKCS8` from jose (line 3), handling PEM parsing, ASN.1 validation, and algorithm-specific key extraction internally.
+This produces `"POST api.cdp.coinbase.com/platform/v2/evm/accounts"` — matching CDP's reference implementation exactly.
 
-**3. Deploy the updated edge function.**
+**2. Add `exp` claim (CDP support recommendation)**
+
+Add an expiration to the payload as suggested by CDP support:
+
+```typescript
+const payload: Record<string, unknown> = {
+  iat: now,
+  nbf: now,
+  exp: now + 120,
+  jti,
+  uris: [uri],
+};
+```
+
+**3. Use hex `jti` instead of UUID (CDP support recommendation)**
+
+Replace:
+```typescript
+const jti = crypto.randomUUID().replace(/-/g, '');
+```
+
+With:
+```typescript
+const jti = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+```
+
+This matches the Node.js example which uses `crypto.randomBytes(16).toString('hex')`.
+
+**4. Deploy the updated edge function.**
 
 ### Why This Should Work
-- jose's `importPKCS8` is battle-tested for JWT operations and handles PKCS8 structure validation internally
-- CDP's own reference implementations use PEM-wrapped keys with standard JWT libraries
-- The manual `crypto.subtle.importKey` with raw DER bytes may interpret the ASN.1 structure differently, producing a valid CryptoKey that signs differently than expected
+
+The URI mismatch is the most likely cause of the 401. CDP's TEE validates the `uris` claim against the actual HTTP request, and without the host prefix our URI doesn't match. The `exp` and hex `jti` changes align with CDP's reference code for additional compatibility.
 
 ### After Deploy
-Test wallet connection on Settings -> Agent tab. If 401 persists after this change, the issue is the `CDP_WALLET_SECRET` value itself (stale or from a different wallet product), and the next step would be contacting CDP support with the `correlationId` from the error response.
+
+Test wallet connection on Settings -> Agent tab. The `POST /platform/v2/evm/accounts` call should now succeed with the corrected URI format in the wallet JWT.
+
