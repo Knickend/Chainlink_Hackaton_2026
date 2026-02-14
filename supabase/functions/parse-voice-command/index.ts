@@ -61,13 +61,25 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    const { text } = await req.json();
+    const { text, addressBook } = await req.json();
 
     if (!text || typeof text !== 'string') {
       throw new Error('Text is required');
     }
 
     console.log(`[Parser] Parsing command: "${text}"`);
+
+    // Build address book context for recipient resolution
+    let systemPromptWithContext = SYSTEM_PROMPT;
+    if (addressBook && Array.isArray(addressBook) && addressBook.length > 0) {
+      const contactLines = addressBook
+        .filter((c: any) => c.wallet_address)
+        .map((c: any) => `  ${c.name}: ${c.wallet_address}`)
+        .join('\n');
+      if (contactLines) {
+        systemPromptWithContext += `\n\nUser's Address Book (resolve names to wallet addresses):\n${contactLines}\n\nWhen the user references a contact by name (e.g., "Send 50 USDC to Alice"), resolve the name to their wallet address and include "recipient_name" in the SEND_USDC data.`;
+      }
+    }
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -78,7 +90,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPromptWithContext },
           { role: 'user', content: text },
         ],
         response_format: { type: 'json_object' },

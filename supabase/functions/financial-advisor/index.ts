@@ -127,7 +127,7 @@ serve(async (req) => {
       );
     }
 
-    const { messages, memories, portfolioContext } = await req.json();
+    const { messages, memories, portfolioContext, walletContext } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -145,8 +145,13 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = buildSystemPrompt(portfolioContext, memories);
-    console.log("Starting financial advisor chat with", messages.length, "messages", portfolioContext ? "+ portfolio context" : "(no portfolio)", memories?.length ? `+ ${memories.length} memories` : "(no memories)", `(${rateLimitKey})`);
+    let systemPrompt = buildSystemPrompt(portfolioContext, memories);
+    
+    if (walletContext) {
+      systemPrompt += `\n\n## Agent Wallet Status\nThe user has an agentic crypto wallet on Base network.\n${walletContext}\n\nWhen relevant, suggest DeFi actions the user can take. They can say things like "Send 50 USDC to Alice" or "Swap 100 USDC for ETH". The chat will parse and execute these commands with user confirmation.`;
+    }
+    
+    console.log("Starting financial advisor chat with", messages.length, "messages", portfolioContext ? "+ portfolio context" : "(no portfolio)", memories?.length ? `+ ${memories.length} memories` : "(no memories)", walletContext ? "+ wallet context" : "", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

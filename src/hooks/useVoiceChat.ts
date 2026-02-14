@@ -342,10 +342,14 @@ export function useVoiceChat(options: UseVoiceChatOptions = {}) {
     setPlayingMessageId(null);
   }, []);
 
-  const parseVoiceCommand = useCallback(async (text: string): Promise<{
+  const parseVoiceCommand = useCallback(async (text: string, addressBook?: Array<{ name: string; wallet_address?: string | null }>): Promise<{
     action: string;
     data: Record<string, any>;
   }> => {
+    const body: Record<string, any> = { text };
+    if (addressBook && addressBook.length > 0) {
+      body.addressBook = addressBook;
+    }
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-voice-command`,
       {
@@ -355,7 +359,7 @@ export function useVoiceChat(options: UseVoiceChatOptions = {}) {
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(body),
       }
     );
 

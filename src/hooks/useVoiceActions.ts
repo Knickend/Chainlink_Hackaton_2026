@@ -44,6 +44,11 @@ interface ActionHandlers {
   addGoal: (data: GoalInput) => Promise<void>;
   updateGoal: (id: string, data: any) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
+
+  // Agent wallet (optional)
+  sendUsdc?: (amount: number, recipient: string) => Promise<any>;
+  tradeTokens?: (amount: number, fromToken: string, toToken: string) => Promise<any>;
+  fundWallet?: (amount: number) => Promise<any>;
 }
 
 // Helper to find items by name (case-insensitive, partial match)
@@ -368,7 +373,40 @@ export function useVoiceActions(handlers: ActionHandlers) {
     }
   }, [handlers]);
 
-  return { executeAction, confirmDelete };
+  const confirmAction = useCallback(async (
+    action: string,
+    data: Record<string, any>
+  ): Promise<ActionResult> => {
+    try {
+      switch (action) {
+        case 'SEND_USDC': {
+          if (!handlers.sendUsdc) return { success: false, message: 'Agent wallet not connected.' };
+          const result = await handlers.sendUsdc(data.amount, data.recipient);
+          return { success: true, message: result?.message || `Sent ${data.amount} USDC to ${data.recipient_name || data.recipient}.` };
+        }
+        case 'TRADE_TOKENS': {
+          if (!handlers.tradeTokens) return { success: false, message: 'Agent wallet not connected.' };
+          const result = await handlers.tradeTokens(data.amount, data.from_token || 'USDC', data.to_token || 'ETH');
+          return { success: true, message: result?.message || `Swapped ${data.amount} ${data.from_token} for ${data.to_token}.` };
+        }
+        case 'FUND_WALLET': {
+          if (!handlers.fundWallet) return { success: false, message: 'Agent wallet not connected.' };
+          const result = await handlers.fundWallet(data.amount);
+          return { success: true, message: result?.message || `Funding initiated for $${data.amount}.` };
+        }
+        default:
+          return { success: false, message: "Unknown DeFi action." };
+      }
+    } catch (error) {
+      console.error('[VoiceActions] DeFi action error:', error);
+      return {
+        success: false,
+        message: `Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }, [handlers]);
+
+  return { executeAction, confirmDelete, confirmAction };
 }
 
 function formatCurrency(amount: number, currency: string = 'USD'): string {
