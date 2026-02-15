@@ -737,6 +737,54 @@ serve(async (req) => {
         }
       }
 
+      case 'trade-quote': {
+        const { amount, from_token, to_token } = params;
+        if (!amount || !from_token || !to_token) throw new Error('Amount, from_token and to_token are required');
+
+        const { data: wallet } = await userClient
+          .from('agent_wallets')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
+
+        const fromAddress = SWAP_TOKEN_MAP[from_token] || SWAP_TOKEN_MAP[from_token.toUpperCase()];
+        const toAddress = SWAP_TOKEN_MAP[to_token] || SWAP_TOKEN_MAP[to_token.toUpperCase()];
+        if (!fromAddress || !toAddress) throw new Error(`Unsupported token pair`);
+
+        const decimals = from_token.toUpperCase() === 'USDC' ? 6 : 18;
+        const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
+
+        const queryParams = new URLSearchParams({
+          network: 'base',
+          fromToken: fromAddress,
+          toToken: toAddress,
+          fromAmount: rawAmount.toString(),
+          taker: wallet.wallet_address!,
+          slippageBps: '100',
+        });
+
+        console.log(`[AgentWallet] Price quote params:`, queryParams.toString());
+        const quoteResult = await cdpRequest('GET', `/platform/v2/evm/swaps/quote?${queryParams.toString()}`) as Record<string, any>;
+
+        const toDecimals = to_token.toUpperCase() === 'USDC' ? 6 : 18;
+        const toAmountRaw = quoteResult?.toAmount || '0';
+        const toAmountNum = Number(BigInt(toAmountRaw)) / Math.pow(10, toDecimals);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            from_amount: amount,
+            from_token,
+            to_amount: toAmountNum,
+            to_token,
+            gas: quoteResult?.gas,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'trade': {
         const { amount, from_token, to_token } = params;
         if (!amount || !from_token || !to_token) throw new Error('Amount, from_token and to_token are required');
@@ -781,6 +829,7 @@ serve(async (req) => {
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
             taker: wallet.wallet_address,
+            slippageBps: 100,
           };
           console.log(`[AgentWallet] Swap request body:`, JSON.stringify(swapBody));
           const swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as { transaction?: { to?: string; data?: string; value?: string }; swapId?: string; permit?: any };

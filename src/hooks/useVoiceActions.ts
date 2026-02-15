@@ -48,6 +48,7 @@ interface ActionHandlers {
   // Agent wallet (optional)
   sendUsdc?: (amount: number, recipient: string) => Promise<any>;
   tradeTokens?: (amount: number, fromToken: string, toToken: string) => Promise<any>;
+  getTradeQuote?: (amount: number, fromToken: string, toToken: string) => Promise<any>;
   fundWallet?: (amount: number) => Promise<any>;
 }
 
@@ -281,10 +282,21 @@ export function useVoiceActions(handlers: ActionHandlers) {
         }
 
         case 'TRADE_TOKENS': {
+          // Fetch quote to show estimated output
+          let quoteMsg = `Swap ${data.amount} ${data.from_token || 'USDC'} for ${data.to_token || 'ETH'} on Base`;
+          if (handlers.getTradeQuote) {
+            try {
+              const quote = await handlers.getTradeQuote(data.amount, data.from_token || 'USDC', data.to_token || 'ETH');
+              if (quote?.to_amount) {
+                quoteMsg = `Swap ${data.amount} ${data.from_token || 'USDC'} for ~${Number(quote.to_amount).toFixed(8)} ${data.to_token || 'ETH'} on Base`;
+                data._quote_amount = quote.to_amount;
+              }
+            } catch { /* proceed without quote */ }
+          }
           return {
             success: false,
             needsConfirmation: true,
-            message: `Swap ${data.amount} ${data.from_token || 'USDC'} for ${data.to_token || 'ETH'} on Base — approve or reject?`,
+            message: `${quoteMsg} — approve or reject?`,
           };
         }
 
