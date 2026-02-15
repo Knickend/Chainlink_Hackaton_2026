@@ -502,6 +502,7 @@ serve(async (req) => {
           .maybeSingle();
 
         let balance: string | null = null;
+        let ethBalance: string | null = null;
 
         // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
         if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
@@ -521,46 +522,44 @@ serve(async (req) => {
 
             console.log('[AgentWallet] Raw balance response:', JSON.stringify(balanceResp).slice(0, 2000));
 
-            // CDP may return { token_balances: [...] } or { balances: [...] }
             const tokenList = (balanceResp?.token_balances ?? balanceResp?.balances ?? []) as Array<Record<string, any>>;
-            console.log(`[AgentWallet] Token list length: ${tokenList.length}`);
 
-            // Find USDC specifically
-            const usdcEntry = tokenList.find((t: any) => {
-              const symbol = t?.token?.symbol || t?.symbol || '';
-              const contractAddr = t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '';
-              console.log(`[AgentWallet] Token entry: symbol=${symbol}, contract=${contractAddr}, amount=`, JSON.stringify(t?.amount));
-              return symbol.toUpperCase() === 'USDC' || contractAddr.toLowerCase() === USDC_BASE.toLowerCase();
-            });
-
-            if (usdcEntry) {
-              // Handle different amount formats: { value, decimals }, string, or nested
-              const amountObj = usdcEntry.amount;
-              const tokenObj = usdcEntry.token;
-              let amt = 0;
-
-              if (typeof amountObj === 'string') {
-                amt = parseFloat(amountObj);
-              } else if (typeof amountObj === 'number') {
-                amt = amountObj;
-              } else if (amountObj?.amount !== undefined) {
-                // CDP returns { amount: { amount: "500000", decimals: 6 } }
-                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? 6;
-                amt = Number(amountObj.amount) / Math.pow(10, decimals);
-              } else if (amountObj?.value !== undefined) {
-                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? 6;
-                amt = Number(amountObj.value) / Math.pow(10, decimals);
+            // Helper to parse a token amount from CDP response
+            const parseTokenAmount = (entry: Record<string, any>, defaultDecimals: number): number => {
+              const amountObj = entry.amount;
+              const tokenObj = entry.token;
+              if (typeof amountObj === 'string') return parseFloat(amountObj);
+              if (typeof amountObj === 'number') return amountObj;
+              if (amountObj?.amount !== undefined) {
+                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? defaultDecimals;
+                return Number(amountObj.amount) / Math.pow(10, decimals);
               }
+              if (amountObj?.value !== undefined) {
+                const decimals = amountObj?.decimals ?? tokenObj?.decimals ?? defaultDecimals;
+                return Number(amountObj.value) / Math.pow(10, decimals);
+              }
+              return 0;
+            };
 
-              console.log(`[AgentWallet] Parsed USDC balance: ${amt}`);
-              balance = amt.toFixed(2);
-            } else {
-              console.log('[AgentWallet] No USDC token found in response');
-              balance = '0.00';
-            }
+            // Find USDC
+            const usdcEntry = tokenList.find((t: any) => {
+              const symbol = (t?.token?.symbol || t?.symbol || '').toUpperCase();
+              const addr = (t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '').toLowerCase();
+              return symbol === 'USDC' || addr === USDC_BASE.toLowerCase();
+            });
+            balance = usdcEntry ? parseTokenAmount(usdcEntry, 6).toFixed(2) : '0.00';
+
+            // Find ETH (native token — symbol ETH, or no contract address)
+            const ethEntry = tokenList.find((t: any) => {
+              const symbol = (t?.token?.symbol || t?.symbol || '').toUpperCase();
+              const addr = (t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '').toLowerCase();
+              return symbol === 'ETH' || addr === ETH_BASE.toLowerCase() || addr === '';
+            });
+            ethBalance = ethEntry ? parseTokenAmount(ethEntry, 18).toFixed(6) : '0.000000';
+
+            console.log(`[AgentWallet] Parsed balances — USDC: ${balance}, ETH: ${ethBalance}`);
           } catch (err) {
             console.error('[AgentWallet] Balance fetch error:', err);
-            balance = null;
           }
         }
 
@@ -574,6 +573,7 @@ serve(async (req) => {
             spending_limit_daily: wallet?.spending_limit_daily ?? 200,
             daily_spent: wallet?.daily_spent ?? 0,
             balance,
+            eth_balance: ethBalance,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

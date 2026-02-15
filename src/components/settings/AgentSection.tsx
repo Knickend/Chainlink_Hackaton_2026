@@ -111,10 +111,20 @@ export function AgentSection() {
                       </Button>
                     </div>
                   </div>
-                  {status.balance !== null && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Balance</span>
-                      <span className="text-sm font-semibold">${status.balance} USDC</span>
+                  {(status.balance !== null || status.eth_balance !== null) && (
+                    <div className="space-y-1">
+                      {status.balance !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">USDC</span>
+                          <span className="text-sm font-semibold">${status.balance}</span>
+                        </div>
+                      )}
+                      {status.eth_balance !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">ETH</span>
+                          <span className="text-sm font-semibold">{status.eth_balance} ETH</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
