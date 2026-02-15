@@ -212,19 +212,28 @@ async function resolveCdpAccountId(
   if (!wallet.wallet_address) throw new Error('No wallet address found. Please reconnect your wallet.');
 
   console.log(`[AgentWallet] Auto-healing cdp_account_id for ${wallet.wallet_address}`);
-  const listResp = await cdpRequest('GET', '/platform/v2/evm/accounts') as { accounts?: Array<{ id?: string; address?: string }> };
-  const match = listResp?.accounts?.find(
+  const listResp = await cdpRequest('GET', '/platform/v2/evm/accounts') as { accounts?: Array<Record<string, any>> };
+  const accounts = listResp?.accounts || [];
+  console.log(`[AgentWallet] CDP accounts list (${accounts.length}):`, JSON.stringify(accounts[0] || {}, null, 0));
+
+  // CDP v2 uses "name" as the account identifier, not "id"
+  let match = accounts.find(
     (a: any) => a.address?.toLowerCase() === wallet.wallet_address?.toLowerCase()
   );
-  if (!match?.id) {
-    console.error('[AgentWallet] Could not find CDP account for address:', wallet.wallet_address);
+  if (!match) {
+    const expectedName = `incontrol-${userId}`;
+    match = accounts.find((a: any) => a.name === expectedName);
+  }
+  const accountId = match?.name || match?.id;
+  if (!accountId) {
+    console.error('[AgentWallet] Could not find CDP account. Wallet address:', wallet.wallet_address);
     throw new Error('CDP account ID not found. Please reconnect your wallet.');
   }
 
-  await serviceClient.from('agent_wallets').update({ cdp_account_id: match.id }).eq('user_id', userId);
-  wallet.cdp_account_id = match.id;
-  console.log(`[AgentWallet] Auto-healed cdp_account_id: ${match.id}`);
-  return match.id;
+  await serviceClient.from('agent_wallets').update({ cdp_account_id: accountId }).eq('user_id', userId);
+  wallet.cdp_account_id = accountId;
+  console.log(`[AgentWallet] Auto-healed cdp_account_id: ${accountId}`);
+  return accountId;
 }
 
 // --- Wallet Auth JWT (ES256 / ECDSA P-256) ---
