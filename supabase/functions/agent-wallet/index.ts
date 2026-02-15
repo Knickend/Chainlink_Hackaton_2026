@@ -749,7 +749,7 @@ serve(async (req) => {
             fromToken: fromAddress,
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
-            takerAddress: wallet.wallet_address,
+            taker: wallet.wallet_address,
           }) as { transaction?: { to?: string; data?: string; value?: string }; swapId?: string };
 
           let txHash: string | null = null;
