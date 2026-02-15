@@ -822,17 +822,34 @@ serve(async (req) => {
           const decimals = from_token.toUpperCase() === 'USDC' ? 6 : 18;
           const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
-          // Trade API
+          // Trade API — slippageBps must be string per CDP docs
           const swapBody = {
-            network: 'base',
             fromToken: fromAddress,
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
             taker: wallet.wallet_address,
-            slippageBps: 100,
+            slippageBps: '100',
+            network: 'base',
           };
-          console.log(`[AgentWallet] Swap request body:`, JSON.stringify(swapBody));
-          const swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as { transaction?: { to?: string; data?: string; value?: string }; swapId?: string; permit?: any };
+          console.log(`[AgentWallet] === SWAP REQUEST ===`);
+          console.log(`[AgentWallet] POST /platform/v2/evm/swaps`);
+          console.log(`[AgentWallet] Body:`, JSON.stringify(swapBody, null, 2));
+          console.log(`[AgentWallet] fromToken: ${fromAddress} (${from_token})`);
+          console.log(`[AgentWallet] toToken: ${toAddress} (${to_token})`);
+          console.log(`[AgentWallet] fromAmount: ${rawAmount.toString()} (raw), ${amount} (human)`);
+          console.log(`[AgentWallet] taker: ${wallet.wallet_address}`);
+          
+          const swapStartTime = Date.now();
+          let swapResult: { transaction?: { to?: string; data?: string; value?: string }; swapId?: string; permit?: any };
+          try {
+            swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as any;
+            console.log(`[AgentWallet] === SWAP RESPONSE (${Date.now() - swapStartTime}ms) ===`);
+            console.log(`[AgentWallet] Response:`, JSON.stringify(swapResult).slice(0, 500));
+          } catch (swapErr) {
+            console.error(`[AgentWallet] === SWAP FAILED (${Date.now() - swapStartTime}ms) ===`);
+            console.error(`[AgentWallet] Error:`, swapErr instanceof Error ? swapErr.message : swapErr);
+            throw swapErr;
+          }
 
           let txHash: string | null = null;
           if (swapResult?.transaction) {
