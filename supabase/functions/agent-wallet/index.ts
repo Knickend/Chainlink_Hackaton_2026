@@ -248,16 +248,37 @@ async function cdpRequest(
   const url = `${CDP_API_BASE}${fullPath}`;
   console.log(`[CDP CALL] ${method} ${url}`);
 
-  const resp = await fetch(url, {
-    method,
-    headers,
-    body: serializedBody,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method,
+      headers,
+      body: serializedBody,
+      signal: controller.signal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(timeout);
+    if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+      throw new Error(`CDP API timeout after 30s: ${method} ${path}`);
+    }
+    throw fetchErr;
+  }
+  clearTimeout(timeout);
+
+  const contentType = resp.headers.get('content-type') || '';
   const text = await resp.text();
+
+  if (!contentType.includes('application/json') && (text.trim().startsWith('<!') || text.includes('<html'))) {
+    console.error(`[CDP] HTML response (status ${resp.status}) for ${method} ${path}`);
+    throw new Error(`CDP API returned HTML instead of JSON (status ${resp.status}). This usually indicates a server error or rate limiting.`);
+  }
+
   if (!resp.ok) {
-    console.error(`[CDP] Error ${resp.status}: ${text}`);
-    throw new Error(`CDP API error ${resp.status}: ${text}`);
+    console.error(`[CDP] Error ${resp.status}: ${text.substring(0, 500)}`);
+    throw new Error(`CDP API error ${resp.status}: ${text.substring(0, 500)}`);
   }
 
   try {
@@ -394,6 +415,16 @@ const TOKEN_MAP: Record<string, string> = {
   'weth': WETH_BASE,
   'ETH': ETH_BASE,
   'eth': ETH_BASE,
+};
+
+// For swaps, CDP requires WETH address instead of native ETH placeholder
+const SWAP_TOKEN_MAP: Record<string, string> = {
+  'USDC': USDC_BASE,
+  'usdc': USDC_BASE,
+  'WETH': WETH_BASE,
+  'weth': WETH_BASE,
+  'ETH': WETH_BASE,  // Swap API needs WETH, not native ETH address
+  'eth': WETH_BASE,
 };
 
 // --- Main Handler ---
@@ -722,8 +753,8 @@ serve(async (req) => {
 
         const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
-        const fromAddress = TOKEN_MAP[from_token] || TOKEN_MAP[from_token.toUpperCase()];
-        const toAddress = TOKEN_MAP[to_token] || TOKEN_MAP[to_token.toUpperCase()];
+        const fromAddress = SWAP_TOKEN_MAP[from_token] || SWAP_TOKEN_MAP[from_token.toUpperCase()];
+        const toAddress = SWAP_TOKEN_MAP[to_token] || SWAP_TOKEN_MAP[to_token.toUpperCase()];
 
         if (!fromAddress) throw new Error(`Unsupported token: ${from_token}. Supported: USDC, ETH, WETH`);
         if (!toAddress) throw new Error(`Unsupported token: ${to_token}. Supported: USDC, ETH, WETH`);
@@ -744,13 +775,15 @@ serve(async (req) => {
           const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
           // Trade API
-          const swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', {
+          const swapBody = {
             network: 'base',
             fromToken: fromAddress,
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
             taker: wallet.wallet_address,
-          }) as { transaction?: { to?: string; data?: string; value?: string }; swapId?: string };
+          };
+          console.log(`[AgentWallet] Swap request body:`, JSON.stringify(swapBody));
+          const swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as { transaction?: { to?: string; data?: string; value?: string }; swapId?: string; permit?: any };
 
           let txHash: string | null = null;
           if (swapResult?.transaction) {
