@@ -9,6 +9,71 @@ const corsHeaders = {
 
 const CDP_API_BASE = 'https://api.cdp.coinbase.com';
 
+// --- Minimal RLP encoder for EIP-1559 transactions ---
+function rlpEncodeLength(len: number, offset: number): Uint8Array {
+  if (len < 56) return new Uint8Array([len + offset]);
+  const hexLen = len.toString(16);
+  const lenBytes = hexToBytes(hexLen.length % 2 ? '0' + hexLen : hexLen);
+  return new Uint8Array([offset + 55 + lenBytes.length, ...lenBytes]);
+}
+
+function rlpEncode(input: Uint8Array | Uint8Array[]): Uint8Array {
+  if (input instanceof Uint8Array) {
+    if (input.length === 1 && input[0] < 0x80) return input;
+    return concat(rlpEncodeLength(input.length, 0x80), input);
+  }
+  const encoded = input.map(rlpEncode);
+  const body = concat(...encoded);
+  return concat(rlpEncodeLength(body.length, 0xc0), body);
+}
+
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((s, a) => s + a.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) { result.set(a, offset); offset += a.length; }
+  return result;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const h = hex.startsWith('0x') ? hex.slice(2) : hex;
+  const padded = h.length % 2 ? '0' + h : h;
+  const bytes = new Uint8Array(padded.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(padded.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Encode an unsigned EIP-1559 tx as 0x02 || RLP([chainId, nonce, maxPriorityFeePerGas, maxFeePerGas, gasLimit, to, value, data, accessList]).
+ *  CDP fills in nonce, gas fields — we pass them as empty so CDP estimates. */
+function encodeEip1559Tx(opts: { chainId: number; to: string; value: string; data: string }): string {
+  const chainIdBytes = opts.chainId === 0 ? new Uint8Array([]) : hexToBytes(opts.chainId.toString(16));
+  const toBytes = hexToBytes(opts.to);
+  const valueBytes = opts.value === '0' || opts.value === '0x0' || opts.value === '0x' || !opts.value
+    ? new Uint8Array([])
+    : hexToBytes(opts.value.startsWith('0x') ? opts.value.slice(2) : opts.value);
+  const dataBytes = !opts.data || opts.data === '0x' ? new Uint8Array([]) : hexToBytes(opts.data);
+  const empty = new Uint8Array([]);
+
+  // [chainId, nonce, maxPriorityFeePerGas, maxFeePerGas, gasLimit, to, value, data, accessList]
+  // CDP fills nonce + gas, so we pass empty for those. accessList = empty array → rlpEncode([])
+  const fields: Uint8Array[] = [chainIdBytes, empty, empty, empty, empty, toBytes, valueBytes, dataBytes];
+
+  // Encode fields, then append encoded empty accessList
+  const encodedFields = fields.map(rlpEncode);
+  const emptyAccessList = rlpEncode([]); // 0xc0
+  const allEncoded = [...encodedFields, emptyAccessList];
+  const body = concat(...allEncoded);
+  const listEncoded = concat(rlpEncodeLength(body.length, 0xc0), body);
+
+  // Prepend 0x02 type byte
+  const typed = new Uint8Array([0x02, ...listEncoded]);
+  return bytesToHex(typed);
+}
+
 // --- CDP JWT Authentication (Ed25519) ---
 
 function base64UrlEncode(data: Uint8Array): string {
@@ -594,17 +659,16 @@ serve(async (req) => {
           const amountHex = usdcAmount.toString(16).padStart(64, '0');
           const calldata = `0xa9059cbb${recipientPadded}${amountHex}`;
 
-          // Server Wallets API — uses cdp_account_id in path
+          // Encode as EIP-1559 RLP string — Base chainId = 8453
+          const rlpTx = encodeEip1559Tx({ chainId: 8453, to: USDC_BASE, value: '0', data: calldata });
+          console.log('[AgentWallet] Send TX RLP (first 80 chars):', rlpTx.slice(0, 80));
+
           const txResult = await cdpRequest(
             'POST',
             `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
             {
               network: 'base',
-              transaction: {
-                to: USDC_BASE,
-                value: '0x0',
-                data: calldata,
-              },
+              transaction: rlpTx,
             }
           ) as { transactionHash?: string };
 
@@ -690,13 +754,19 @@ serve(async (req) => {
 
           let txHash: string | null = null;
           if (swapResult?.transaction) {
-            // Server Wallets API — uses cdp_account_id
+            const swapTx = swapResult.transaction;
+            const rlpTx = encodeEip1559Tx({
+              chainId: 8453,
+              to: swapTx.to || '',
+              value: swapTx.value || '0',
+              data: swapTx.data || '0x',
+            });
             const txResult = await cdpRequest(
               'POST',
               `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
               {
                 network: 'base',
-                transaction: swapResult.transaction,
+                transaction: rlpTx,
               }
             ) as { transactionHash?: string };
             txHash = txResult?.transactionHash ?? null;
