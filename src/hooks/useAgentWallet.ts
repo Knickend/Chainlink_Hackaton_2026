@@ -12,6 +12,7 @@ export interface AgentWalletStatus {
   spending_limit_daily: number;
   daily_spent: number;
   balance: number | null;
+  eth_balance: number | null;
 }
 
 export interface AgentActionLog {
@@ -33,6 +34,7 @@ const DEFAULT_STATUS: AgentWalletStatus = {
   spending_limit_daily: 200,
   daily_spent: 0,
   balance: null,
+  eth_balance: null,
 };
 
 export function useAgentWallet() {
