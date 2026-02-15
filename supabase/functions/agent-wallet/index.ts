@@ -762,7 +762,7 @@ serve(async (req) => {
           toToken: toAddress,
           fromAmount: rawAmount.toString(),
           taker: wallet.wallet_address!,
-          slippageBps: '100',
+          slippageBps: '100',  // query param — string is fine for GET
         });
 
         console.log(`[AgentWallet] Price quote params:`, queryParams.toString());
@@ -828,7 +828,7 @@ serve(async (req) => {
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
             taker: wallet.wallet_address,
-            slippageBps: '100',
+            slippageBps: 100,
             network: 'base',
           };
           console.log(`[AgentWallet] === SWAP REQUEST ===`);
