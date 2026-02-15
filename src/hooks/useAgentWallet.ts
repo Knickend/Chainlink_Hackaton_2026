@@ -159,6 +159,16 @@ export function useAgentWallet() {
     }
   }, [invoke, toast, fetchLogs]);
 
+  const getTradeQuote = useCallback(async (amount: number, fromToken: string, toToken: string) => {
+    try {
+      const result = await invoke('trade-quote', { amount, from_token: fromToken, to_token: toToken });
+      return result;
+    } catch (err) {
+      console.error('Failed to get trade quote:', err);
+      return null;
+    }
+  }, [invoke]);
+
   const tradeTokens = useCallback(async (amount: number, fromToken: string, toToken: string) => {
     setIsActing(true);
     try {
@@ -200,6 +210,7 @@ export function useAgentWallet() {
     updateLimits,
     sendUsdc,
     tradeTokens,
+    getTradeQuote,
     fundWallet,
     refetch: fetchStatus,
   };

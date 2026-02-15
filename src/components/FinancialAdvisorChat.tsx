@@ -211,7 +211,9 @@ function getDeFiActionDetails(action: string, data: Record<string, any>) {
         title: 'Trade Tokens',
         details: [
           { label: 'From', value: `${data.amount} ${data.from_token || 'USDC'}` },
-          { label: 'To', value: data.to_token || 'ETH' },
+          { label: 'To', value: data._quote_amount 
+            ? `~${Number(data._quote_amount).toFixed(8)} ${data.to_token || 'ETH'}`
+            : data.to_token || 'ETH' },
           { label: 'Network', value: 'Base' },
         ],
       };
@@ -243,7 +245,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
   const { recallMemories, storeConversationTurn } = useChatMemories(isPro);
 
   // Agent wallet & address book
-  const { status: walletStatus, sendUsdc, tradeTokens, fundWallet } = useAgentWallet();
+  const { status: walletStatus, sendUsdc, tradeTokens, getTradeQuote, fundWallet } = useAgentWallet();
   const { contacts } = useAddressBook();
   const walletConnected = walletStatus.connected;
 
@@ -329,6 +331,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     deleteGoal,
     sendUsdc: walletConnected ? sendUsdc : undefined,
     tradeTokens: walletConnected ? tradeTokens : undefined,
+    getTradeQuote: walletConnected ? getTradeQuote : undefined,
     fundWallet: walletConnected ? fundWallet : undefined,
   });
 
