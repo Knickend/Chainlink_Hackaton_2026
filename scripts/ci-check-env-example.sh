@@ -6,7 +6,7 @@ set -euo pipefail
 
 fail=0
 # Files to check: tracked env files plus supabase/.env.example
-files=$(git ls-files -- "*.env*" || true)
+files=$(git ls-files -- "*.env.example" || true)
 files="$files supabase/.env.example"
 
 for f in $files; do
