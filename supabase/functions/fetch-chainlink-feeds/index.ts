@@ -14,7 +14,10 @@ const CACHE_TTL_MS = 30_000; // 30 seconds
 let cachedResponse: { data: any[]; timestamp: number } | null = null;
 
 // Fallback public RPC (no API key needed)
-const FALLBACK_RPC = 'https://rpc.ankr.com/eth_sepolia';
+const FALLBACK_RPCS = [
+  'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+  'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+];
 
 const ABI = [
   'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
@@ -65,14 +68,17 @@ async function fetchFeed(
     console.warn(`Primary RPC failed for ${f.pair}:`, String(primaryErr));
   }
 
-  // Fallback RPC
-  try {
-    console.log(`Retrying ${f.pair} with fallback RPC`);
-    return await queryProvider(getProvider(FALLBACK_RPC));
-  } catch (fallbackErr) {
-    console.error(`Fallback RPC also failed for ${f.pair}:`, String(fallbackErr));
-    return { pair: f.pair, network: f.network, address: f.address, error: String(fallbackErr) };
+  // Fallback RPCs
+  for (const rpc of FALLBACK_RPCS) {
+    try {
+      console.log(`Retrying ${f.pair} with fallback ${rpc}`);
+      return await queryProvider(getProvider(rpc));
+    } catch (err) {
+      console.warn(`Fallback ${rpc} failed for ${f.pair}:`, String(err));
+    }
   }
+
+  return { pair: f.pair, network: f.network, address: f.address, error: 'All RPCs failed' };
 }
 
 serve(async (req) => {
