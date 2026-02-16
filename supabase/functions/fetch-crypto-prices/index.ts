@@ -86,13 +86,24 @@ serve(async (req) => {
       );
     }
 
-    console.log('Fetching prices for symbols:', symbols);
+    // Input validation: sanitize and cap symbols
+    const normalizedSymbols = symbols
+      .map((s: string) => String(s).trim().toUpperCase())
+      .filter((s: string) => /^[A-Z0-9]{1,10}$/.test(s))
+      .slice(0, 20);
+
+    if (normalizedSymbols.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No valid symbols provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Fetching prices for symbols:', normalizedSymbols);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const normalizedSymbols = symbols.map((s: string) => s.toUpperCase());
     
     // Check cache first
     const { data: cachedPrices, error: cacheError } = await supabase

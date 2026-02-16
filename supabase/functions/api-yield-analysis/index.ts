@@ -14,6 +14,15 @@ import {
 
 const PRICE_CENTS = 2; // $0.02
 
+// Input validation
+const FIELD_REGEX = /^[a-zA-Z0-9_-]{1,30}$/;
+
+function sanitizeField(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return FIELD_REGEX.test(trimmed) ? trimmed : null;
+}
+
 interface Filters {
   category: string | null;
   minYield: number | null;
@@ -28,7 +37,7 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   };
 
   if (req.method === "GET") {
-    filters.category = url.searchParams.get("category");
+    filters.category = sanitizeField(url.searchParams.get("category"));
     const minYieldParam = url.searchParams.get("minYield");
     if (minYieldParam) {
       filters.minYield = parseFloat(minYieldParam);
@@ -40,7 +49,7 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       const body = await req.json();
-      filters.category = body.category || null;
+      filters.category = sanitizeField(body.category || null);
       if (body.minYield !== undefined) {
         filters.minYield = parseFloat(body.minYield);
       }

@@ -9,6 +9,27 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
 };
 
+// Input validation constants
+const MAX_SYMBOLS = 20;
+const MAX_INPUT_LENGTH = 500;
+const SYMBOL_REGEX = /^[A-Z0-9\/-]{1,10}$/;
+const FIELD_REGEX = /^[a-zA-Z0-9_-]{1,30}$/;
+
+function sanitizeSymbols(raw: string): string[] {
+  return raw
+    .slice(0, MAX_INPUT_LENGTH)
+    .split(",")
+    .map(s => s.trim().toUpperCase())
+    .filter(s => SYMBOL_REGEX.test(s))
+    .slice(0, MAX_SYMBOLS);
+}
+
+function sanitizeField(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return FIELD_REGEX.test(trimmed) ? trimmed : null;
+}
+
 interface Filters {
   type: string | null;
   symbols: string[] | null;
@@ -19,9 +40,9 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   const filters: Filters = { type: null, symbols: null, limit: 50 };
 
   if (req.method === "GET") {
-    filters.type = url.searchParams.get("type");
+    filters.type = sanitizeField(url.searchParams.get("type"));
     const symbolsParam = url.searchParams.get("symbols");
-    filters.symbols = symbolsParam ? symbolsParam.split(",").map(s => s.trim().toUpperCase()) : null;
+    filters.symbols = symbolsParam ? sanitizeSymbols(symbolsParam) : null;
     const limitParam = url.searchParams.get("limit");
     if (limitParam) {
       filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 50), 100);
@@ -29,11 +50,14 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       const body = await req.json();
-      filters.type = body.type || null;
+      filters.type = sanitizeField(body.type || null);
       if (body.symbols) {
-        filters.symbols = Array.isArray(body.symbols)
-          ? body.symbols.map((s: string) => s.toUpperCase())
-          : body.symbols.split(",").map((s: string) => s.trim().toUpperCase());
+        const rawSymbols = Array.isArray(body.symbols)
+          ? body.symbols.map((s: string) => String(s).trim().toUpperCase())
+          : String(body.symbols).slice(0, MAX_INPUT_LENGTH).split(",").map((s: string) => s.trim().toUpperCase());
+        filters.symbols = rawSymbols
+          .filter((s: string) => SYMBOL_REGEX.test(s))
+          .slice(0, MAX_SYMBOLS);
       }
       if (body.limit) {
         filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 50), 100);

@@ -14,6 +14,15 @@ import {
 
 const PRICE_CENTS = 2; // $0.02
 
+// Input validation
+const FIELD_REGEX = /^[a-zA-Z0-9_-]{1,30}$/;
+
+function sanitizeField(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return FIELD_REGEX.test(trimmed) ? trimmed : null;
+}
+
 interface Filters {
   debtType: string | null;
   minInterestRate: number | null;
@@ -28,7 +37,7 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   };
 
   if (req.method === "GET") {
-    filters.debtType = url.searchParams.get("debtType") || url.searchParams.get("type");
+    filters.debtType = sanitizeField(url.searchParams.get("debtType") || url.searchParams.get("type"));
     const minRateParam = url.searchParams.get("minInterestRate") || url.searchParams.get("minRate");
     if (minRateParam) {
       filters.minInterestRate = parseFloat(minRateParam);
@@ -40,7 +49,7 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
   } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       const body = await req.json();
-      filters.debtType = body.debtType || body.type || null;
+      filters.debtType = sanitizeField(body.debtType || body.type || null);
       if (body.minInterestRate !== undefined || body.minRate !== undefined) {
         filters.minInterestRate = parseFloat(body.minInterestRate || body.minRate);
       }
