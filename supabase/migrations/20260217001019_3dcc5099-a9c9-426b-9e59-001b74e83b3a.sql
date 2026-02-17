@@ -1,0 +1,1 @@
+ALTER TABLE agent_wallets ADD COLUMN notify_transactions boolean NOT NULL DEFAULT false;

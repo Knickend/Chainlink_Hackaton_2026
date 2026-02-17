@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut, Copy, Check } from 'lucide-react';
+import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut, Copy, Check, Bell } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ export function AgentSection() {
     disconnect,
     updateSkills,
     updateLimits,
+    updateNotifications,
   } = useAgentWallet();
 
   const [email, setEmail] = useState('');
@@ -239,6 +240,40 @@ export function AgentSection() {
               </div>
 
               <Button size="sm" onClick={handleSaveLimits}>Save Limits</Button>
+            </CardContent>
+        </Card>
+        </motion.div>
+      )}
+
+      {/* Notifications */}
+      {status.connected && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5" />
+                Notifications
+              </CardTitle>
+              <CardDescription>
+                Get notified when transactions are executed from your wallet
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${status.notify_transactions ? 'bg-primary/10' : 'bg-muted/50'}`}>
+                    <Bell className={`w-4 h-4 ${status.notify_transactions ? 'text-primary' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Email notifications</p>
+                    <p className="text-xs text-muted-foreground">Receive an email when sends, trades, or funding occur</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={status.notify_transactions}
+                  onCheckedChange={(checked) => updateNotifications(checked)}
+                />
+              </div>
             </CardContent>
           </Card>
         </motion.div>

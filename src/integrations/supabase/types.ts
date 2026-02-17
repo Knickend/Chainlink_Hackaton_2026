@@ -92,6 +92,7 @@ export type Database = {
           enabled_skills: string[]
           id: string
           is_authenticated: boolean
+          notify_transactions: boolean
           spending_limit_daily: number
           spending_limit_per_tx: number
           updated_at: string
@@ -107,6 +108,7 @@ export type Database = {
           enabled_skills?: string[]
           id?: string
           is_authenticated?: boolean
+          notify_transactions?: boolean
           spending_limit_daily?: number
           spending_limit_per_tx?: number
           updated_at?: string
@@ -122,6 +124,7 @@ export type Database = {
           enabled_skills?: string[]
           id?: string
           is_authenticated?: boolean
+          notify_transactions?: boolean
           spending_limit_daily?: number
           spending_limit_per_tx?: number
           updated_at?: string

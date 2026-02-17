@@ -13,6 +13,7 @@ export interface AgentWalletStatus {
   daily_spent: number;
   balance: number | null;
   eth_balance: number | null;
+  notify_transactions: boolean;
 }
 
 export interface AgentActionLog {
@@ -35,6 +36,7 @@ const DEFAULT_STATUS: AgentWalletStatus = {
   daily_spent: 0,
   balance: null,
   eth_balance: null,
+  notify_transactions: false,
 };
 
 export function useAgentWallet() {
@@ -144,6 +146,16 @@ export function useAgentWallet() {
     }
   }, [invoke, toast]);
 
+  const updateNotifications = useCallback(async (enabled: boolean) => {
+    try {
+      await invoke('update-notifications', { notify_transactions: enabled });
+      setStatus(prev => ({ ...prev, notify_transactions: enabled }));
+      toast({ title: enabled ? 'Notifications Enabled' : 'Notifications Disabled' });
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to update notification settings', variant: 'destructive' });
+    }
+  }, [invoke, toast]);
+
   const sendUsdc = useCallback(async (amount: number, recipient: string) => {
     setIsActing(true);
     try {
@@ -223,6 +235,7 @@ export function useAgentWallet() {
     disconnect,
     updateSkills,
     updateLimits,
+    updateNotifications,
     sendUsdc,
     sendEth,
     tradeTokens,
