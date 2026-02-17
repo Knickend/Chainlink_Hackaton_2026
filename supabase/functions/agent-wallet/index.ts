@@ -972,6 +972,72 @@ serve(async (req) => {
         }
       }
 
+      // ===== SEND ETH (native transfer) =====
+      case 'send-eth': {
+        const { amount, recipient } = params;
+        if (!amount || !recipient) throw new Error('Amount and recipient are required');
+
+        const { data: wallet } = await userClient
+          .from('agent_wallets')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
+
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
+
+        const { data: logEntry } = await serviceClient
+          .from('agent_actions_log')
+          .insert({
+            user_id: user.id,
+            action_type: 'send-eth',
+            params: { amount, recipient, token: 'ETH', network: 'base' },
+            status: 'pending',
+          })
+          .select()
+          .single();
+
+        try {
+          // Convert ETH amount to wei hex
+          const weiAmount = BigInt(Math.round(amount * 1e18));
+          const valueHex = weiAmount.toString(16);
+
+          const rlpTx = encodeEip1559Tx({ chainId: 8453, to: recipient, value: valueHex, data: '0x' });
+          console.log('[AgentWallet] Send ETH TX RLP (first 80 chars):', rlpTx.slice(0, 80));
+
+          const txResult = await cdpRequest(
+            'POST',
+            `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
+            { network: 'base', transaction: rlpTx }
+          ) as { transactionHash?: string };
+
+          await serviceClient
+            .from('agent_actions_log')
+            .update({ status: 'executed', result: txResult })
+            .eq('id', logEntry?.id);
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: `Sent ${amount} ETH to ${recipient} on Base`,
+              tx_hash: txResult?.transactionHash ?? null,
+              log_id: logEntry?.id,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (err) {
+          await serviceClient
+            .from('agent_actions_log')
+            .update({
+              status: 'failed',
+              error_message: err instanceof Error ? err.message : 'Unknown error',
+            })
+            .eq('id', logEntry?.id);
+          throw err;
+        }
+      }
+
       // ===== ACTIVITY LOG =====
       case 'get-logs': {
         const { data: logs } = await userClient

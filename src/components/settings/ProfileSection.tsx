@@ -3,6 +3,7 @@ import { User, Mail, Calendar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
+import { DeleteAccountDialog } from './DeleteAccountDialog';
 
 export function ProfileSection() {
   const { user } = useAuth();
@@ -56,6 +57,14 @@ export function ProfileSection() {
               <div className="w-2 h-2 rounded-full bg-success" />
               <span className="text-sm text-muted-foreground">Account active and verified</span>
             </div>
+          </div>
+
+          {/* Delete Account */}
+          <div className="pt-4 border-t border-border">
+            <p className="text-sm text-muted-foreground mb-2">
+              Permanently delete your account and all associated data.
+            </p>
+            <DeleteAccountDialog />
           </div>
         </CardContent>
       </Card>

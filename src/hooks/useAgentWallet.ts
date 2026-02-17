@@ -159,6 +159,21 @@ export function useAgentWallet() {
     }
   }, [invoke, toast, fetchLogs]);
 
+  const sendEth = useCallback(async (amount: number, recipient: string) => {
+    setIsActing(true);
+    try {
+      const result = await invoke('send-eth', { amount, recipient });
+      await fetchLogs();
+      toast({ title: 'ETH Sent', description: result.message });
+      return result;
+    } catch (err) {
+      toast({ title: 'Send Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      throw err;
+    } finally {
+      setIsActing(false);
+    }
+  }, [invoke, toast, fetchLogs]);
+
   const getTradeQuote = useCallback(async (amount: number, fromToken: string, toToken: string) => {
     try {
       const result = await invoke('trade-quote', { amount, from_token: fromToken, to_token: toToken });
@@ -209,6 +224,7 @@ export function useAgentWallet() {
     updateSkills,
     updateLimits,
     sendUsdc,
+    sendEth,
     tradeTokens,
     getTradeQuote,
     fundWallet,
