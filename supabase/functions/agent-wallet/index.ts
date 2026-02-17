@@ -486,6 +486,13 @@ async function syncLastKnownBalances(walletAddress: string, walletId: string, se
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const WETH_BASE = '0x4200000000000000000000000000000000000006';
 const ETH_BASE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+
+// ERC-20 approve(address,uint256) calldata for max-approving Permit2
+const APPROVE_PERMIT2_CALLDATA =
+  '0x095ea7b3' +
+  '000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3' +
+  'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
 const TOKEN_MAP: Record<string, string> = {
   'USDC': USDC_BASE,
@@ -912,8 +919,7 @@ serve(async (req) => {
           const decimals = from_token.toUpperCase() === 'USDC' ? 6 : 18;
           const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
-          // Trade API — slippageBps must be string per CDP docs
-          const swapBody = {
+          const swapBody: Record<string, any> = {
             fromToken: fromAddress,
             toToken: toAddress,
             fromAmount: rawAmount.toString(),
@@ -923,48 +929,86 @@ serve(async (req) => {
             network: 'base',
           };
           console.log(`[AgentWallet] === SWAP REQUEST ===`);
-          console.log(`[AgentWallet] POST /platform/v2/evm/swaps`);
           console.log(`[AgentWallet] Body:`, JSON.stringify(swapBody, null, 2));
-          console.log(`[AgentWallet] fromToken: ${fromAddress} (${from_token})`);
-          console.log(`[AgentWallet] toToken: ${toAddress} (${to_token})`);
-          console.log(`[AgentWallet] fromAmount: ${rawAmount.toString()} (raw), ${amount} (human)`);
-          console.log(`[AgentWallet] taker: ${wallet.wallet_address}`);
-          
+
           const swapStartTime = Date.now();
-          let swapResult: { transaction?: { to?: string; data?: string; value?: string }; swapId?: string; permit2?: { hash?: string; eip712?: any }; issues?: any };
+          let swapResult: Record<string, any>;
           try {
             swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as any;
             console.log(`[AgentWallet] === SWAP RESPONSE (${Date.now() - swapStartTime}ms) ===`);
-            console.log(`[AgentWallet] Response:`, JSON.stringify(swapResult).slice(0, 1000));
+            console.log(`[AgentWallet] Response:`, JSON.stringify(swapResult).slice(0, 2000));
           } catch (swapErr) {
             console.error(`[AgentWallet] === SWAP FAILED (${Date.now() - swapStartTime}ms) ===`);
-            console.error(`[AgentWallet] Error:`, swapErr instanceof Error ? swapErr.message : swapErr);
             throw swapErr;
           }
 
-          // Log any issues reported by CDP (allowance/balance problems)
           if (swapResult?.issues) {
             console.warn(`[AgentWallet] Swap issues:`, JSON.stringify(swapResult.issues));
           }
 
+          // --- Step 1: Check allowance & approve Permit2 if needed (one-time) ---
+          const allowanceIssue = swapResult?.issues?.allowance;
+          if (allowanceIssue && allowanceIssue.currentAllowance === '0') {
+            console.log(`[AgentWallet] USDC allowance is 0 — sending approve tx for Permit2`);
+            const approveTx = encodeEip1559Tx({
+              chainId: 8453,
+              to: USDC_BASE,
+              value: '0',
+              data: APPROVE_PERMIT2_CALLDATA,
+            });
+            const approveResult = await cdpRequest(
+              'POST',
+              `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
+              { network: 'base', transaction: approveTx }
+            ) as { transactionHash?: string };
+            console.log(`[AgentWallet] Approve tx hash: ${approveResult?.transactionHash}`);
+
+            // Wait a moment for confirmation, then re-request the swap
+            await new Promise(r => setTimeout(r, 3000));
+
+            console.log(`[AgentWallet] Re-requesting swap after approval...`);
+            swapResult = await cdpRequest('POST', '/platform/v2/evm/swaps', swapBody) as any;
+            console.log(`[AgentWallet] Re-swap response:`, JSON.stringify(swapResult).slice(0, 2000));
+          }
+
           let txHash: string | null = null;
+
           if (swapResult?.transaction) {
-            // Handle Permit2 signing if needed (ERC-20 to ETH swaps)
-            if (swapResult.permit2?.hash) {
-              console.log(`[AgentWallet] Permit2 hash detected, signing: ${swapResult.permit2.hash}`);
+            // --- Step 2: Sign Permit2 typed data if present ---
+            if (swapResult.permit2?.eip712) {
+              console.log(`[AgentWallet] Permit2 EIP-712 data detected, signing via /sign/typed-data`);
+              const eip712 = swapResult.permit2.eip712;
               try {
                 const signResult = await cdpRequest(
                   'POST',
-                  `/platform/v2/evm/accounts/${wallet.wallet_address}/sign/hash`,
-                  { hash: swapResult.permit2.hash }
+                  `/platform/v2/evm/accounts/${wallet.wallet_address}/sign/typed-data`,
+                  {
+                    domain: eip712.domain,
+                    types: eip712.types,
+                    primaryType: eip712.primaryType,
+                    message: eip712.message,
+                  }
                 ) as { signature?: string };
                 console.log(`[AgentWallet] Permit2 signature obtained: ${signResult?.signature?.slice(0, 20)}...`);
+
+                // --- Step 3: Re-request swap with permit2 signature embedded ---
+                if (signResult?.signature) {
+                  console.log(`[AgentWallet] Re-requesting swap with permit2 signature...`);
+                  const swapWithSig = await cdpRequest('POST', '/platform/v2/evm/swaps', {
+                    ...swapBody,
+                    permit2: { signature: signResult.signature },
+                  }) as Record<string, any>;
+                  console.log(`[AgentWallet] Swap-with-sig response:`, JSON.stringify(swapWithSig).slice(0, 1000));
+                  // Use the updated transaction that has the signature baked in
+                  swapResult = swapWithSig;
+                }
               } catch (signErr) {
                 console.error(`[AgentWallet] Permit2 signing failed:`, signErr instanceof Error ? signErr.message : signErr);
-                // Continue anyway — CDP may handle it via signerAddress
+                throw new Error(`Permit2 signing failed: ${signErr instanceof Error ? signErr.message : signErr}`);
               }
             }
 
+            // --- Step 4: Send the final swap transaction ---
             const swapTx = swapResult.transaction;
             const rlpTx = encodeEip1559Tx({
               chainId: 8453,
@@ -975,10 +1019,7 @@ serve(async (req) => {
             const txResult = await cdpRequest(
               'POST',
               `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
-              {
-                network: 'base',
-                transaction: rlpTx,
-              }
+              { network: 'base', transaction: rlpTx }
             ) as { transactionHash?: string };
             txHash = txResult?.transactionHash ?? null;
           }
