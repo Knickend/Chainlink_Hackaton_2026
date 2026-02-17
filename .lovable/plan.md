@@ -1,97 +1,77 @@
 
-# Fix: CDP Swap Quote 401 and Trade 400 Errors
 
-## Problems Identified
+# Fix: Add Incoming Transaction Email Notifications
 
-### 1. Trade Quote Returns 401 Unauthorized
-**Root cause**: The `generateCdpJwt` function constructs the JWT `uri` field as:
-```
-GET api.cdp.coinbase.com/platform/v2/evm/swaps/quote?network=base&fromToken=0x833...&toToken=0x420...
-```
-CDP expects the `uri` to contain only the path, **without query parameters**. The query string causes the JWT signature to not match what CDP validates against.
+## Problem
 
-**Fix**: In `generateCdpJwt`, strip query parameters from `requestPath` before building the `uri`. The query params should still be included in the actual HTTP URL, just not in the JWT signing payload.
+The current notification system only sends emails for **outgoing** actions (send USDC, send ETH, trade, fund) because those are triggered within the `agent-wallet` edge function. When someone sends ETH or USDC **to** the wallet, no code runs — there is no detection mechanism for incoming transfers.
 
-### 2. Trade Execution Returns 400 "Unable to Estimate Gas"
-**Root cause**: The CDP swap API (`POST /platform/v2/evm/swaps`) returns a response with both a `transaction` object and a `permit2` object. For ERC-20 swaps (like USDC to ETH), the Uniswap router requires a Permit2 approval to spend the user's USDC. Our current code:
-1. Ignores the `permit2` signing requirement entirely
-2. Takes the raw `transaction` from the swap response and tries to submit it via `send/transaction`
-3. The transaction reverts during gas estimation because USDC allowance to Permit2 is not set
+## Solution: Balance-Change Polling via Cron
 
-**Fix**: Restructure the trade flow to properly handle Permit2:
-- After getting the swap response, check for `permit2` data
-- If present, sign the `permit2.hash` using CDP's `signHash` endpoint
-- Then submit the swap transaction along with the signed Permit2 signature (via a properly encoded calldata that includes both the swap and the permit)
+The most reliable approach is a lightweight polling function that runs periodically, compares the current wallet balance to the last known balance, and sends an email notification if the balance increased. This avoids the complexity of registering CDP webhooks (which require a separate subscription management flow and webhook signature verification).
 
-As an alternative simpler approach: add `signerAddress` to the swap POST body (matching the wallet address). Per CDP docs, when `signerAddress` is provided, CDP may handle Permit2 internally for server wallets. If this doesn't work, we fall back to explicit Permit2 signing.
+## Changes
 
-## File Changes
+### File 1: New Edge Function `supabase/functions/check-wallet-balance/index.ts`
 
-### `supabase/functions/agent-wallet/index.ts`
+A cron-compatible function that:
+1. Queries all `agent_wallets` where `notify_transactions = true` and `wallet_address` is not null
+2. For each wallet, calls CDP's token-balances endpoint to get current USDC and ETH balances
+3. Compares against `last_known_balance` and `last_known_eth_balance` columns stored in the `agent_wallets` table
+4. If balance increased, sends an email notification via Resend with details (token, amount received, new balance)
+5. Updates `last_known_balance` and `last_known_eth_balance` in the database
 
-#### Fix 1: Strip query params from JWT URI (affects `generateCdpJwt`, ~line 161)
+### File 2: Database Migration
 
-Change:
-```typescript
-const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
-```
-To:
-```typescript
-const pathOnly = requestPath.split('?')[0];
-const uri = `${requestMethod} api.cdp.coinbase.com${pathOnly}`;
-```
+Add two columns to `agent_wallets`:
+- `last_known_balance` (numeric, default 0) — last recorded USDC balance
+- `last_known_eth_balance` (numeric, default 0) — last recorded ETH balance
 
-This fixes the 401 on the GET quote endpoint and any future GET requests with query params.
+### File 3: Update `supabase/functions/agent-wallet/index.ts`
 
-#### Fix 2: Add `signerAddress` to swap body (affects `trade` case, ~line 881)
+After any successful outgoing action (send, trade, fund), update `last_known_balance` and `last_known_eth_balance` to the post-transaction values. This prevents the cron from double-notifying for outgoing transactions that change the balance.
 
-Add `signerAddress: wallet.wallet_address` to the swap request body. This tells CDP which server wallet account owns the tokens, allowing it to handle Permit2 approval internally.
+### File 4: `supabase/config.toml`
 
-#### Fix 3: Handle Permit2 signing if needed (affects `trade` case, ~line 910)
+Add the new function entry with `verify_jwt = false` (cron invocations don't carry JWTs).
 
-After the swap POST response, check if `permit2` is present with a `hash` to sign:
-1. Call `POST /platform/v2/evm/accounts/{address}/sign/hash` with the Permit2 hash
-2. Include the signature in the transaction data
-3. Then send the transaction via `send/transaction`
+## How the Cron Works
 
-If the swap response doesn't include `permit2` (e.g., ETH-to-USDC swaps don't need it), proceed directly with sending the transaction.
+The function would be invoked periodically (e.g., every 5 minutes) via Lovable Cloud's cron scheduling or an external scheduler hitting the function URL. On each run:
 
-#### Fix 4: Improve error context for debugging
-
-Log the full swap response `issues` field (which tells us about allowance/balance problems) before attempting to send the transaction.
+1. Fetch all wallets with notifications enabled
+2. For each wallet, get live balances from CDP
+3. Compare: if `current_balance > last_known_balance`, compute `received = current - last_known`
+4. Send email: "You received X.XX ETH/USDC to your InControl wallet"
+5. Update stored balances
 
 ## Technical Details
 
-### JWT URI Query Parameter Issue
+### Balance Comparison Logic
 
-CDP's JWT validation compares the `uri` claim against the request path. Their server strips query parameters before comparison. When we include query params in the signed URI, the JWT fails signature verification, returning 401.
-
-The fix in `generateCdpJwt` ensures:
-- `GET /platform/v2/evm/swaps/quote?network=base&...` is signed as `GET api.cdp.coinbase.com/platform/v2/evm/swaps/quote`
-- The actual HTTP request still includes the full query string in the URL
-
-### Permit2 Flow for ERC-20 Swaps
-
-The Uniswap v4 router on Base uses Permit2 for token approvals. When swapping USDC (ERC-20) for ETH:
-1. The user must have USDC approved for the Permit2 contract
-2. A Permit2 signature is needed for the specific swap amount
-3. The swap transaction includes the Permit2 signature in its calldata
-
-CDP's server wallet can sign the Permit2 hash via:
 ```
-POST /platform/v2/evm/accounts/{address}/sign/hash
-Body: { hash: "0x..." }
+received_eth = current_eth - last_known_eth
+received_usdc = current_usdc - last_known_usdc
+
+if received_eth > 0.0001:  // ignore dust
+  send notification for ETH deposit
+if received_usdc > 0.01:   // ignore dust  
+  send notification for USDC deposit
+
+// Always update stored values (even if balance decreased from outgoing tx)
+update last_known_balance = current_usdc
+update last_known_eth_balance = current_eth
 ```
 
-This returns a signature that gets included in the swap execution.
+### Email Template
 
-### Wallet Auth JWT for sign/hash
+Similar to the existing transaction notification emails but with "Deposit Received" subject and details showing the amount, token, and current total balance.
 
-The `sign/hash` endpoint is a POST, so it requires both the Authorization JWT and X-Wallet-Auth JWT (already handled by the existing `cdpRequest` function).
+### Preventing Double Notifications
 
-### Expected Outcome
+After every outgoing action in the main `agent-wallet` function (send, trade, fund), we update the `last_known_*` columns. This way, when the cron next runs, it sees the post-transaction balance and won't flag the outgoing decrease-then-increase as a deposit.
 
-After these fixes:
-- `trade-quote` will successfully return price estimates (no more 401)
-- `trade` will properly handle Permit2 approval and execute swaps (no more "unable to estimate gas")
-- Both USDC-to-ETH and ETH-to-USDC swaps will work correctly
+### Initial Seeding
+
+On migration, `last_known_balance` and `last_known_eth_balance` default to 0. On first cron run, the current balance will appear as a "deposit." To avoid this false notification, the cron should skip notifications for wallets where `last_known_balance = 0 AND last_known_eth_balance = 0` (first run) and just seed the values silently.
+
