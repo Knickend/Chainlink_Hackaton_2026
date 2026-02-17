@@ -1,87 +1,71 @@
 
 
-## Delete Account with Wallet Drain
+## Transaction Email Notifications
 
 ### Overview
 
-Add a "Delete Account" option to the Profile section in Settings. Before deletion, if the user has an agentic wallet with a balance, they must transfer all funds (USDC and ETH) to an external wallet address. Once funds are drained, all user data is purged and the auth account is deleted.
+Add an opt-in toggle so users receive email notifications when transactions (send USDC, send ETH, trade, fund) are executed from their agentic wallet. Emails are sent via Resend (already configured) after each successful transaction.
 
-### User Flow
+### Changes
 
-1. User clicks "Delete Account" button (red, at bottom of Profile section)
-2. Confirmation dialog opens explaining consequences
-3. If the user has an agentic wallet with a balance > 0:
-   - Dialog shows current USDC and ETH balances
-   - User must enter a destination wallet address to receive remaining funds
-   - "Drain & Delete" button sends all USDC, then all ETH to that address
-4. If no wallet or zero balance: skip drain step
-5. A backend function deletes all user data from every public table, then deletes the auth account
-6. User is signed out and redirected to the landing page
+#### 1. Database Migration
+
+Add a `notify_transactions` boolean column to `agent_wallets`:
+
+```sql
+ALTER TABLE agent_wallets
+  ADD COLUMN notify_transactions boolean NOT NULL DEFAULT false;
+```
+
+#### 2. Edge Function: `agent-wallet/index.ts`
+
+- Add a helper function `sendTransactionEmail(email, subject, details)` that calls Resend directly (same pattern as `send-confirmation-email`) to send a styled HTML email with transaction details (type, amount, token, recipient/pair, tx hash, timestamp).
+- After each successful transaction in the `send`, `send-eth`, `trade`, and `fund` actions, check if `wallet.notify_transactions` is true. If so, call the email helper with relevant details.
+- Add a new `update-notifications` action to toggle the `notify_transactions` column.
+
+Email template will include:
+- Transaction type (Send USDC, Send ETH, Trade, Fund)
+- Amount and token(s)
+- Recipient address (for sends) or token pair (for trades)
+- Transaction hash (linked to BaseScan)
+- Timestamp
+
+#### 3. Hook: `useAgentWallet.ts`
+
+- Add `notify_transactions` to the `AgentWalletStatus` interface
+- Include it in the status response mapping
+- Add `updateNotifications(enabled: boolean)` method that calls `invoke('update-notifications', { notify_transactions: enabled })`
+
+#### 4. UI: `AgentSection.tsx`
+
+- Add a "Notifications" card (below Spending Limits, when wallet is connected)
+- Contains a single toggle: "Email me when transactions occur"
+- Uses the new `updateNotifications` method from the hook
 
 ### Technical Details
 
-#### 1. New Component: `src/components/settings/DeleteAccountDialog.tsx`
+**Email helper (inside agent-wallet/index.ts):**
 
-- Uses `AlertDialog` for confirmation UX
-- Checks `useAgentWallet()` status for balance
-- Shows wallet drain form if balance > 0 (input for destination address, validated with `/^0x[a-fA-F0-9]{40}$/`)
-- Calls `sendUsdc` for USDC balance, then a new `sendEth` action for ETH balance
-- After drain completes (or if no balance), calls a new `delete-account` edge function
-- On success, calls `signOut()` and navigates to `/`
+```typescript
+async function sendTransactionEmail(
+  email: string,
+  txType: string,
+  details: { amount?: number; token?: string; recipient?: string; fromToken?: string; toToken?: string; txHash?: string }
+) {
+  const resendKey = Deno.env.get('RESEND_API_KEY');
+  if (!resendKey) return;
 
-#### 2. New Edge Function: `supabase/functions/delete-account/index.ts`
+  // Build subject and body based on txType
+  // POST to https://api.resend.com/emails with styled HTML
+}
+```
 
-- Authenticated endpoint (uses JWT from Authorization header)
-- Steps:
-  1. Verify the user's agent wallet balance is 0 (if wallet exists)
-  2. Delete rows from all user-owned tables (order matters for foreign keys):
-     - `agent_actions_log`
-     - `agent_wallets`
-     - `address_book`
-     - `asset_transactions`
-     - `assets`
-     - `chat_memories`
-     - `debts`
-     - `expenses`
-     - `feedback`
-     - `financial_goals`
-     - `income`
-     - `portfolio_snapshots`
-     - `rebalance_alerts`
-     - `user_investment_preferences`
-     - `user_subscriptions`
-     - `subscription_cancellations`
-     - `user_roles`
-     - `profiles`
-  3. Delete the auth user via `supabase.auth.admin.deleteUser(userId)`
-- Returns success response
-
-#### 3. New Action in `agent-wallet/index.ts`: `send-eth`
-
-- Similar to existing `send` action but for native ETH
-- Encodes and sends a simple value transfer (no ERC-20 data)
-- Required so user can drain ETH balance before account deletion
-
-#### 4. Update `useAgentWallet.ts`
-
-- Add `sendEth(amount: number, recipient: string)` method mirroring `sendUsdc`
-
-#### 5. Update `src/components/settings/ProfileSection.tsx`
-
-- Add the `DeleteAccountDialog` trigger button at the bottom of the profile card
-
-#### 6. Config: `supabase/config.toml`
-
-- Add `[functions.delete-account]` with `verify_jwt = false` (auth is handled internally via the Authorization header, same pattern as other functions)
-
-### Files to Create/Modify
+**Files to modify:**
 
 | File | Action |
 |------|--------|
-| `src/components/settings/DeleteAccountDialog.tsx` | Create |
-| `supabase/functions/delete-account/index.ts` | Create |
-| `supabase/functions/agent-wallet/index.ts` | Add `send-eth` action |
-| `src/hooks/useAgentWallet.ts` | Add `sendEth` method |
-| `src/components/settings/ProfileSection.tsx` | Add delete button |
-| `supabase/config.toml` | Add delete-account function config |
+| Database migration | Add `notify_transactions` column |
+| `supabase/functions/agent-wallet/index.ts` | Add email helper, call after txs, add `update-notifications` action |
+| `src/hooks/useAgentWallet.ts` | Add `notify_transactions` to status, add `updateNotifications` method |
+| `src/components/settings/AgentSection.tsx` | Add notifications toggle card |
 
