@@ -1,77 +1,93 @@
 
 
-# Fix: Add Incoming Transaction Email Notifications
+# Fix: USDC-to-ETH Swap "Unable to Estimate Gas" Error
 
-## Problem
+## Root Cause
 
-The current notification system only sends emails for **outgoing** actions (send USDC, send ETH, trade, fund) because those are triggered within the `agent-wallet` edge function. When someone sends ETH or USDC **to** the wallet, no code runs — there is no detection mechanism for incoming transfers.
+The swap is failing because of two issues in the trade flow:
 
-## Solution: Balance-Change Polling via Cron
+1. **Wrong signing endpoint**: The code calls `/sign/hash` which returns **404 "no matching operation was found"**. The correct CDP endpoint for Permit2 is `/sign/typed-data` (EIP-712 typed data signing), not `/sign/hash`.
 
-The most reliable approach is a lightweight polling function that runs periodically, compares the current wallet balance to the last known balance, and sends an email notification if the balance increased. This avoids the complexity of registering CDP webhooks (which require a separate subscription management flow and webhook signature verification).
+2. **Missing USDC approval for Permit2**: The swap response shows `issues.allowance.currentAllowance: "0"` -- the wallet has never approved USDC spending by the Permit2 contract (`0x000000000022d473030f116ddee9f6b43ac78ba3`). Without this approval, the swap transaction will always fail gas estimation because the Uniswap router can't pull USDC from the wallet.
 
-## Changes
+3. **Permit2 signature not included in transaction**: Even after signing, the current code ignores the signature and sends the raw transaction without it.
 
-### File 1: New Edge Function `supabase/functions/check-wallet-balance/index.ts`
+## Fix (3 changes in `supabase/functions/agent-wallet/index.ts`)
 
-A cron-compatible function that:
-1. Queries all `agent_wallets` where `notify_transactions = true` and `wallet_address` is not null
-2. For each wallet, calls CDP's token-balances endpoint to get current USDC and ETH balances
-3. Compares against `last_known_balance` and `last_known_eth_balance` columns stored in the `agent_wallets` table
-4. If balance increased, sends an email notification via Resend with details (token, amount received, new balance)
-5. Updates `last_known_balance` and `last_known_eth_balance` in the database
+### Change 1: Add a one-time USDC approval for Permit2
 
-### File 2: Database Migration
+Before attempting the swap, check if the swap response reports an allowance issue. If `currentAllowance` is `"0"`, send an ERC-20 `approve` transaction to set USDC allowance for the Permit2 contract to max uint256. This is a one-time transaction (same as how MetaMask prompts "Approve USDC for trading").
 
-Add two columns to `agent_wallets`:
-- `last_known_balance` (numeric, default 0) — last recorded USDC balance
-- `last_known_eth_balance` (numeric, default 0) — last recorded ETH balance
+The approve transaction is:
+- **to**: USDC contract (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)  
+- **data**: `approve(0x000000000022d473030f116ddee9f6b43ac78ba3, type(uint256).max)`
+- Encoded as standard ERC-20 approve calldata
 
-### File 3: Update `supabase/functions/agent-wallet/index.ts`
+After the approval tx confirms, re-request the swap quote so it no longer reports the allowance issue.
 
-After any successful outgoing action (send, trade, fund), update `last_known_balance` and `last_known_eth_balance` to the post-transaction values. This prevents the cron from double-notifying for outgoing transactions that change the balance.
+### Change 2: Use `/sign/typed-data` instead of `/sign/hash`
 
-### File 4: `supabase/config.toml`
+Replace the Permit2 signing call from:
+```
+POST /platform/v2/evm/accounts/{address}/sign/hash
+Body: { hash: "0x..." }
+```
 
-Add the new function entry with `verify_jwt = false` (cron invocations don't carry JWTs).
+To:
+```
+POST /platform/v2/evm/accounts/{address}/sign/typed-data
+Body: { domain: {...}, types: {...}, primaryType: "PermitTransferFrom", message: {...} }
+```
 
-## How the Cron Works
+The swap response already includes the full `permit2.eip712` object with `domain`, `types`, `primaryType`, and `message` -- we just need to pass those directly to the `/sign/typed-data` endpoint.
 
-The function would be invoked periodically (e.g., every 5 minutes) via Lovable Cloud's cron scheduling or an external scheduler hitting the function URL. On each run:
+### Change 3: Embed Permit2 signature in the swap transaction
 
-1. Fetch all wallets with notifications enabled
-2. For each wallet, get live balances from CDP
-3. Compare: if `current_balance > last_known_balance`, compute `received = current - last_known`
-4. Send email: "You received X.XX ETH/USDC to your InControl wallet"
-5. Update stored balances
+After obtaining the Permit2 signature, we need to re-request the swap with the signature included. The CDP swap API accepts a `permit2.signature` field in the POST body. So after signing:
+
+1. Take the signature from `/sign/typed-data` response
+2. Re-POST to `/platform/v2/evm/swaps` with the same parameters plus `permit2: { signature: "0x..." }`
+3. The returned transaction will now include the embedded Permit2 signature in its calldata
+4. Send this updated transaction via `/send/transaction`
+
+## Flow Summary
+
+For USDC-to-ETH swaps:
+
+```text
+1. POST /swaps (get quote + permit2 data)
+2. Check allowance issue:
+   a. If currentAllowance = "0":
+      - Build ERC-20 approve tx (USDC -> Permit2 contract, max uint256)
+      - Send via /send/transaction
+      - Wait for confirmation
+3. POST /sign/typed-data (sign permit2 EIP-712 data)
+4. POST /swaps again (include permit2.signature in body)
+5. Send returned transaction via /send/transaction
+```
+
+For ETH-to-USDC swaps (no permit2 needed):
+```text
+1. POST /swaps (get quote + transaction)
+2. Send transaction via /send/transaction (no approval or permit2 needed)
+```
 
 ## Technical Details
 
-### Balance Comparison Logic
+### ERC-20 Approve Calldata
 
+The approve function signature is `approve(address,uint256)` with selector `0x095ea7b3`:
 ```
-received_eth = current_eth - last_known_eth
-received_usdc = current_usdc - last_known_usdc
-
-if received_eth > 0.0001:  // ignore dust
-  send notification for ETH deposit
-if received_usdc > 0.01:   // ignore dust  
-  send notification for USDC deposit
-
-// Always update stored values (even if balance decreased from outgoing tx)
-update last_known_balance = current_usdc
-update last_known_eth_balance = current_eth
+0x095ea7b3
+  + 000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3  (Permit2 address, left-padded)
+  + ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  (max uint256)
 ```
 
-### Email Template
+### Why This Is a One-Time Cost
 
-Similar to the existing transaction notification emails but with "Deposit Received" subject and details showing the amount, token, and current total balance.
+The USDC approval to Permit2 only needs to happen once per wallet. After the first swap, subsequent USDC swaps will skip the approval step because `currentAllowance` will be non-zero.
 
-### Preventing Double Notifications
+### No Change Needed for ETH-to-USDC
 
-After every outgoing action in the main `agent-wallet` function (send, trade, fund), we update the `last_known_*` columns. This way, when the cron next runs, it sees the post-transaction balance and won't flag the outgoing decrease-then-increase as a deposit.
-
-### Initial Seeding
-
-On migration, `last_known_balance` and `last_known_eth_balance` default to 0. On first cron run, the current balance will appear as a "deposit." To avoid this false notification, the cron should skip notifications for wallets where `last_known_balance = 0 AND last_known_eth_balance = 0` (first run) and just seed the values silently.
+ETH is a native token, so no ERC-20 approval or Permit2 is needed. The existing code path (direct transaction send) should work for ETH-to-USDC swaps already.
 
