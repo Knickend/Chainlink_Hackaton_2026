@@ -452,6 +452,36 @@ async function sendTransactionEmail(
   }
 }
 
+// --- Sync last_known balances after outgoing tx to prevent cron double-notify ---
+async function syncLastKnownBalances(walletAddress: string, walletId: string, serviceClient: any) {
+  try {
+    const balanceResp = await cdpRequest('GET', `/platform/v2/evm/token-balances/base/${walletAddress}`) as Record<string, any>;
+    const tokenList = (balanceResp?.token_balances ?? balanceResp?.balances ?? []) as Array<Record<string, any>>;
+
+    const parseAmt = (entry: Record<string, any> | undefined, defaultDec: number): number => {
+      if (!entry) return 0;
+      const amountObj = entry.amount;
+      const tokenObj = entry.token;
+      if (typeof amountObj === 'string') return parseFloat(amountObj);
+      if (typeof amountObj === 'number') return amountObj;
+      if (amountObj?.amount !== undefined) return Number(amountObj.amount) / Math.pow(10, amountObj?.decimals ?? tokenObj?.decimals ?? defaultDec);
+      if (amountObj?.value !== undefined) return Number(amountObj.value) / Math.pow(10, amountObj?.decimals ?? tokenObj?.decimals ?? defaultDec);
+      return 0;
+    };
+
+    const usdcEntry = tokenList.find((t: any) => (t?.token?.symbol || '').toUpperCase() === 'USDC' || (t?.token?.contractAddress || t?.token?.contract_address || '').toLowerCase() === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913');
+    const ethEntry = tokenList.find((t: any) => (t?.token?.symbol || '').toUpperCase() === 'ETH' || (t?.token?.contractAddress || t?.token?.contract_address || '').toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' || (t?.token?.contractAddress || t?.token?.contract_address || '') === '');
+
+    await serviceClient.from('agent_wallets').update({
+      last_known_balance: parseAmt(usdcEntry, 6),
+      last_known_eth_balance: parseAmt(ethEntry, 18),
+    }).eq('id', walletId);
+    console.log('[AgentWallet] Synced last_known balances after outgoing tx');
+  } catch (err) {
+    console.error('[AgentWallet] Failed to sync last_known balances:', err);
+  }
+}
+
 // --- Token Addresses on Base ---
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const WETH_BASE = '0x4200000000000000000000000000000000000006';
@@ -773,6 +803,9 @@ serve(async (req) => {
             });
           }
 
+          // Sync balances so cron won't double-notify
+          await syncLastKnownBalances(wallet.wallet_address!, wallet.id, serviceClient);
+
           return new Response(
             JSON.stringify({
               success: true,
@@ -962,6 +995,9 @@ serve(async (req) => {
             });
           }
 
+          // Sync balances so cron won't double-notify
+          await syncLastKnownBalances(wallet.wallet_address!, wallet.id, serviceClient);
+
           return new Response(
             JSON.stringify({
               success: true,
@@ -1116,6 +1152,9 @@ serve(async (req) => {
               amount, token: 'ETH', recipient, txHash: txResult?.transactionHash,
             });
           }
+
+          // Sync balances so cron won't double-notify
+          await syncLastKnownBalances(wallet.wallet_address!, wallet.id, serviceClient);
 
           return new Response(
             JSON.stringify({
