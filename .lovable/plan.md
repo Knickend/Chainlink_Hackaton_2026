@@ -1,88 +1,97 @@
 
-# Fix: Snapshot Currency Conversion, Expense Filtering, and Tooltip
+# Fix: CDP Swap Quote 401 and Trade 400 Errors
 
 ## Problems Identified
 
-### 1. COP Stocks Treated as USD in Snapshot (Total Assets: 55M EUR instead of ~2.2M EUR)
-The `create-monthly-snapshot` edge function adds `asset.value` directly for all non-banking categories (line 209, 255). For stocks with `currency: "COP"`, the `value` field stores COP amounts (30,690,000 / 31,984,000 / 22,880) but they are summed as if they were USD. This inflates the stocks breakdown from ~$15K to ~$62.7M and cascades into `total_assets` and `net_worth`.
+### 1. Trade Quote Returns 401 Unauthorized
+**Root cause**: The `generateCdpJwt` function constructs the JWT `uri` field as:
+```
+GET api.cdp.coinbase.com/platform/v2/evm/swaps/quote?network=base&fromToken=0x833...&toToken=0x420...
+```
+CDP expects the `uri` to contain only the path, **without query parameters**. The query string causes the JWT signature to not match what CDP validates against.
 
-### 2. Net Cash Flow Incorrect (shows -319 EUR, should be positive)
-The edge function sums ALL expenses (line 226) without filtering by date. This means:
-- A January flight (1,600 EUR) and an April tax (1,100 EUR) are included in the February snapshot
-- The frontend `usePortfolio` hook correctly filters one-time expenses to the current month, but the snapshot does not
-- Result: snapshot expenses = 5,026 USD vs correct ~1,826 USD for February
+**Fix**: In `generateCdpJwt`, strip query parameters from `requestPath` before building the `uri`. The query params should still be included in the actual HTTP URL, just not in the JWT signing payload.
 
-### 3. Snapshot Tooltip Not Visible
-The `SnapshotDetailView` pie chart tooltip (line 140-147) lacks explicit text color styling, same issue as the AllocationChart that was already fixed.
+### 2. Trade Execution Returns 400 "Unable to Estimate Gas"
+**Root cause**: The CDP swap API (`POST /platform/v2/evm/swaps`) returns a response with both a `transaction` object and a `permit2` object. For ERC-20 swaps (like USDC to ETH), the Uniswap router requires a Permit2 approval to spend the user's USDC. Our current code:
+1. Ignores the `permit2` signing requirement entirely
+2. Takes the raw `transaction` from the swap response and tries to submit it via `send/transaction`
+3. The transaction reverts during gas estimation because USDC allowance to Permit2 is not set
 
-## Changes
+**Fix**: Restructure the trade flow to properly handle Permit2:
+- After getting the swap response, check for `permit2` data
+- If present, sign the `permit2.hash` using CDP's `signHash` endpoint
+- Then submit the swap transaction along with the signed Permit2 signature (via a properly encoded calldata that includes both the swap and the permit)
 
-### File 1: `supabase/functions/create-monthly-snapshot/index.ts`
+As an alternative simpler approach: add `signerAddress` to the swap POST body (matching the wallet address). Per CDP docs, when `signerAddress` is provided, CDP may handle Permit2 internally for server wallets. If this doesn't work, we fall back to explicit Permit2 signing.
 
-**Stocks currency fix** (affects `totalAssets` calc ~line 201 and `assetsBreakdown` calc ~line 247):
-- For stocks and realestate categories: check if `asset.currency` is non-USD
-- If so, convert `asset.value` from native currency to USD using `convertToUSD`
-- If USD or no currency specified, use `asset.value` as-is (already USD)
+## File Changes
 
-**Expenses date filtering** (affects expenses calc ~line 226):
-- Only include recurring expenses and one-time expenses whose `expense_date` falls within the target snapshot month
-- One-time expenses from other months are excluded
+### `supabase/functions/agent-wallet/index.ts`
 
-### File 2: `src/components/SnapshotDetailView.tsx`
+#### Fix 1: Strip query params from JWT URI (affects `generateCdpJwt`, ~line 161)
 
-**Tooltip styling** (~line 140):
-- Add `itemStyle={{ color: '#fff' }}` for white text
-- Add `labelStyle={{ color: '#9ca3af' }}` for muted labels  
-- Add `wrapperStyle={{ zIndex: 50 }}` to prevent clipping
+Change:
+```typescript
+const uri = `${requestMethod} api.cdp.coinbase.com${requestPath}`;
+```
+To:
+```typescript
+const pathOnly = requestPath.split('?')[0];
+const uri = `${requestMethod} api.cdp.coinbase.com${pathOnly}`;
+```
 
-### Post-Fix Action
-After deploying the updated edge function, the user should re-create the February 2026 snapshot to get corrected values. The existing snapshot contains the bad data computed by the old function.
+This fixes the 401 on the GET quote endpoint and any future GET requests with query params.
+
+#### Fix 2: Add `signerAddress` to swap body (affects `trade` case, ~line 881)
+
+Add `signerAddress: wallet.wallet_address` to the swap request body. This tells CDP which server wallet account owns the tokens, allowing it to handle Permit2 approval internally.
+
+#### Fix 3: Handle Permit2 signing if needed (affects `trade` case, ~line 910)
+
+After the swap POST response, check if `permit2` is present with a `hash` to sign:
+1. Call `POST /platform/v2/evm/accounts/{address}/sign/hash` with the Permit2 hash
+2. Include the signature in the transaction data
+3. Then send the transaction via `send/transaction`
+
+If the swap response doesn't include `permit2` (e.g., ETH-to-USDC swaps don't need it), proceed directly with sending the transaction.
+
+#### Fix 4: Improve error context for debugging
+
+Log the full swap response `issues` field (which tells us about allowance/balance problems) before attempting to send the transaction.
 
 ## Technical Details
 
-### Stocks Currency Fix (Edge Function)
+### JWT URI Query Parameter Issue
 
-Current code (line 207-209):
-```
-// For non-banking assets, value is already in USD
-return sum + Number(asset.value || 0);
-```
+CDP's JWT validation compares the `uri` claim against the request path. Their server strips query parameters before comparison. When we include query params in the signed URI, the JWT fails signature verification, returning 401.
 
-Updated logic:
-```
-// For stocks/realestate with non-USD currency, convert from native currency
-if ((asset.category === 'stocks' || asset.category === 'realestate') 
-    && asset.currency && asset.currency !== 'USD') {
-  return sum + convertToUSD(Number(asset.value || 0), asset.currency, forexRates, btcPrice);
-}
-// Other assets: value is already in USD
-return sum + Number(asset.value || 0);
-```
+The fix in `generateCdpJwt` ensures:
+- `GET /platform/v2/evm/swaps/quote?network=base&...` is signed as `GET api.cdp.coinbase.com/platform/v2/evm/swaps/quote`
+- The actual HTTP request still includes the full query string in the URL
 
-Same pattern applied to the `assetsBreakdown` loop.
+### Permit2 Flow for ERC-20 Swaps
 
-### Expense Date Filtering (Edge Function)
+The Uniswap v4 router on Base uses Permit2 for token approvals. When swapping USDC (ERC-20) for ETH:
+1. The user must have USDC approved for the Permit2 contract
+2. A Permit2 signature is needed for the specific swap amount
+3. The swap transaction includes the Permit2 signature in its calldata
 
-Current code (line 226-229) sums all expenses. Updated to:
+CDP's server wallet can sign the Permit2 hash via:
 ```
-const snapshotYearMonth = snapshotMonth.slice(0, 7); // "2026-02"
-const totalExpenses = (expenses || []).reduce((sum, e) => {
-  const isRecurring = e.is_recurring;
-  if (!isRecurring) {
-    // Skip one-time expenses not in the snapshot month
-    if (!e.expense_date || !e.expense_date.startsWith(snapshotYearMonth)) {
-      return sum;
-    }
-  }
-  const currency = (e.currency || 'USD').trim().toUpperCase();
-  return sum + convertToUSD(Number(e.amount || 0), currency, forexRates, btcPrice);
-}, 0);
+POST /platform/v2/evm/accounts/{address}/sign/hash
+Body: { hash: "0x..." }
 ```
 
-### Expected Corrected Values (February 2026)
+This returns a signature that gets included in the swap execution.
 
-After fix, approximate USD values:
-- Stocks: ~$54K (AAPL $27K + Davivienda $27K + COP stocks ~$15K) instead of $62.7M
-- Total Expenses: ~$1,826 (recurring + Feb one-time only) instead of $5,027
-- Net Cash Flow: ~$4,648 - $1,826 = +$2,822 USD (positive, ~+2,380 EUR) instead of -$378
-- Total Assets / Net Worth: ~$2.2M EUR instead of $55M EUR
+### Wallet Auth JWT for sign/hash
+
+The `sign/hash` endpoint is a POST, so it requires both the Authorization JWT and X-Wallet-Auth JWT (already handled by the existing `cdpRequest` function).
+
+### Expected Outcome
+
+After these fixes:
+- `trade-quote` will successfully return price estimates (no more 401)
+- `trade` will properly handle Permit2 approval and execute swaps (no more "unable to estimate gas")
+- Both USDC-to-ETH and ETH-to-USDC swaps will work correctly
