@@ -61,6 +61,12 @@ export function usePortfolio(livePrices?: LivePrices, isDemo = false) {
         typeof asset.quantity === 'number' &&
         typeof price === 'number';
 
+      // For non-USD stocks, skip live price override since cached prices may be
+      // in native currency (e.g., COP). Let categoryTotals handle conversion.
+      if (asset.category === 'stocks' && asset.currency && asset.currency !== 'USD') {
+        return asset;
+      }
+
       if (canCompute && price !== null) {
         // For commodities, convert quantity to troy oz for price calculation
         // Ensure unit is properly typed and default to 'oz' if not set

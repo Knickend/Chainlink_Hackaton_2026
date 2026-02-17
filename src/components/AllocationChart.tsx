@@ -49,6 +49,7 @@ export function AllocationChart({ data, formatDisplayUnitValue }: AllocationChar
                 outerRadius={80}
                 paddingAngle={3}
                 dataKey="total"
+                nameKey="category"
               >
                 {data.map((entry) => (
                   <Cell
@@ -64,7 +65,11 @@ export function AllocationChart({ data, formatDisplayUnitValue }: AllocationChar
                   border: '1px solid hsl(220, 15%, 20%)',
                   borderRadius: '8px',
                 }}
+                itemStyle={{ color: '#fff' }}
+                labelStyle={{ color: '#9ca3af' }}
+                wrapperStyle={{ zIndex: 50 }}
                 formatter={(value: number) => [formatDisplayUnitValue(value), '']}
+                labelFormatter={(label) => LABELS[label as keyof typeof LABELS] || label}
               />
             </PieChart>
           </ResponsiveContainer>
