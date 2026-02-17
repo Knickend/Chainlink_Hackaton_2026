@@ -26,6 +26,7 @@ export function DeleteAccountDialog() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<'confirm' | 'drain' | 'deleting'>('confirm');
   const [destinationAddress, setDestinationAddress] = useState('');
+  const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
   const hasBalance = status.connected && (
@@ -99,6 +100,7 @@ export function DeleteAccountDialog() {
     if (!newOpen) {
       setStep('confirm');
       setDestinationAddress('');
+      setConfirmText('');
     }
   };
 
@@ -141,9 +143,24 @@ export function DeleteAccountDialog() {
                 )}
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2 py-2">
+              <p className="text-sm text-muted-foreground">
+                Type <strong className="text-foreground">DELETE</strong> to confirm:
+              </p>
+              <Input
+                placeholder="Type DELETE to confirm"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className={confirmText && confirmText !== 'DELETE' ? 'border-destructive' : ''}
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <Button variant="destructive" onClick={handleProceed}>
+              <Button
+                variant="destructive"
+                onClick={handleProceed}
+                disabled={confirmText !== 'DELETE'}
+              >
                 {hasBalance ? 'Transfer Funds & Delete' : 'Delete My Account'}
               </Button>
             </AlertDialogFooter>
