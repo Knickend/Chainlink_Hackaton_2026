@@ -205,7 +205,12 @@ Deno.serve(async (req) => {
         const currency = (asset.symbol || 'USD').trim().toUpperCase();
         return sum + convertToUSD(nativeAmount, currency, forexRates, btcPrice);
       }
-      // For non-banking assets, value is already in USD
+    // For stocks/realestate with non-USD currency, convert from native currency
+      if ((asset.category === 'stocks' || asset.category === 'realestate') 
+          && asset.currency && asset.currency !== 'USD') {
+        return sum + convertToUSD(Number(asset.value || 0), asset.currency, forexRates, btcPrice);
+      }
+      // Other non-banking assets: value is already in USD
       return sum + Number(asset.value || 0);
     }, 0);
     
@@ -222,8 +227,15 @@ Deno.serve(async (req) => {
       return sum + convertToUSD(Number(i.amount || 0), currency, forexRates, btcPrice);
     }, 0);
     
-    // Calculate expenses with proper currency conversion (all expenses, recurring + one-time)
+    // Calculate expenses with proper currency conversion (only recurring + one-time in snapshot month)
+    const snapshotYearMonth = snapshotMonth.slice(0, 7); // "2026-02"
     const totalExpenses = (expenses || []).reduce((sum, e) => {
+      if (!e.is_recurring) {
+        // Skip one-time expenses not in the snapshot month
+        if (!e.expense_date || !e.expense_date.startsWith(snapshotYearMonth)) {
+          return sum;
+        }
+      }
       const currency = (e.currency || 'USD').trim().toUpperCase();
       return sum + convertToUSD(Number(e.amount || 0), currency, forexRates, btcPrice);
     }, 0);
@@ -252,6 +264,9 @@ Deno.serve(async (req) => {
           const nativeAmount = Number(asset.quantity ?? asset.value ?? 0);
           const currency = (asset.symbol || 'USD').trim().toUpperCase();
           assetsBreakdown[category] += convertToUSD(nativeAmount, currency, forexRates, btcPrice);
+        } else if ((category === 'stocks' || category === 'realestate') 
+                   && asset.currency && asset.currency !== 'USD') {
+          assetsBreakdown[category] += convertToUSD(Number(asset.value || 0), asset.currency, forexRates, btcPrice);
         } else {
           assetsBreakdown[category] += Number(asset.value || 0);
         }
