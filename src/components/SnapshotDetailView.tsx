@@ -144,6 +144,9 @@ export function SnapshotDetailView({ open, onOpenChange, snapshot, formatValue, 
                           border: '1px solid hsl(var(--border))',
                           borderRadius: '8px',
                         }}
+                        itemStyle={{ color: '#fff' }}
+                        labelStyle={{ color: '#9ca3af' }}
+                        wrapperStyle={{ zIndex: 50 }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
