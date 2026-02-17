@@ -974,6 +974,8 @@ serve(async (req) => {
           let txHash: string | null = null;
 
           if (swapResult?.transaction) {
+            let finalTxData = swapResult.transaction.data || '0x';
+
             // --- Step 2: Sign Permit2 typed data if present ---
             if (swapResult.permit2?.eip712) {
               console.log(`[AgentWallet] Permit2 EIP-712 data detected, signing via /sign/typed-data`);
@@ -991,36 +993,84 @@ serve(async (req) => {
                 ) as { signature?: string };
                 console.log(`[AgentWallet] Permit2 signature obtained: ${signResult?.signature?.slice(0, 20)}...`);
 
-                // --- Step 3: Re-request swap with permit2 signature embedded ---
+                // --- Step 3: Splice signature into ORIGINAL transaction calldata ---
+                // The original calldata contains a 65-byte zero placeholder for the permit2 signature.
+                // We find it and replace it with the actual signature bytes.
                 if (signResult?.signature) {
-                  console.log(`[AgentWallet] Re-requesting swap with permit2 signature...`);
-                  const swapWithSig = await cdpRequest('POST', '/platform/v2/evm/swaps', {
-                    ...swapBody,
-                    permit2: { signature: signResult.signature },
-                  }) as Record<string, any>;
-                  console.log(`[AgentWallet] Swap-with-sig response:`, JSON.stringify(swapWithSig).slice(0, 1000));
-                  // Use the updated transaction that has the signature baked in
-                  swapResult = swapWithSig;
+                  const sig = signResult.signature.startsWith('0x') ? signResult.signature.slice(2) : signResult.signature;
+                  const calldataHex = finalTxData.startsWith('0x') ? finalTxData.slice(2) : finalTxData;
+
+                  // Pattern: ABI length prefix for 65 bytes = 0x0000...0041 (32 bytes) followed by 65 zero bytes (130 hex chars)
+                  // The length prefix is a 32-byte word: 0000000000000000000000000000000000000000000000000000000000000041
+                  const sigLengthPrefix = '0000000000000000000000000000000000000000000000000000000000000041';
+                  const zeroSig = '0'.repeat(130); // 65 zero bytes = 130 hex chars
+                  const placeholder = sigLengthPrefix + zeroSig;
+
+                  const placeholderIdx = calldataHex.indexOf(placeholder);
+                  if (placeholderIdx !== -1) {
+                    // Replace the 65 zero bytes after the length prefix with actual signature
+                    const sigPadded = sig.padEnd(130, '0').slice(0, 130); // Ensure exactly 65 bytes
+                    const spliceStart = placeholderIdx + sigLengthPrefix.length;
+                    const newCalldata = calldataHex.slice(0, spliceStart) + sigPadded + calldataHex.slice(spliceStart + 130);
+                    finalTxData = '0x' + newCalldata;
+                    console.log(`[AgentWallet] Signature spliced into calldata at offset ${placeholderIdx}`);
+                  } else {
+                    // Fallback: try finding just 65 consecutive zero bytes (without length prefix match)
+                    const zeroIdx = calldataHex.indexOf(zeroSig);
+                    if (zeroIdx !== -1) {
+                      const sigPadded = sig.padEnd(130, '0').slice(0, 130);
+                      const newCalldata = calldataHex.slice(0, zeroIdx) + sigPadded + calldataHex.slice(zeroIdx + 130);
+                      finalTxData = '0x' + newCalldata;
+                      console.log(`[AgentWallet] Signature spliced (fallback pattern) at offset ${zeroIdx}`);
+                    } else {
+                      console.warn(`[AgentWallet] Could not find signature placeholder in calldata (length: ${calldataHex.length}). Sending original tx as-is (may work with max approval).`);
+                    }
+                  }
                 }
               } catch (signErr) {
                 console.error(`[AgentWallet] Permit2 signing failed:`, signErr instanceof Error ? signErr.message : signErr);
-                throw new Error(`Permit2 signing failed: ${signErr instanceof Error ? signErr.message : signErr}`);
+                // Fallback: try sending the original tx without permit2 signature
+                // Some routes may work with the existing max ERC-20 approval
+                console.log(`[AgentWallet] Attempting fallback: sending original tx without permit2 signature`);
               }
             }
 
             // --- Step 4: Send the final swap transaction ---
             const swapTx = swapResult.transaction;
+            console.log(`[AgentWallet] Sending swap tx — to: ${swapTx.to}, value: ${swapTx.value}, data length: ${finalTxData.length}`);
             const rlpTx = encodeEip1559Tx({
               chainId: 8453,
               to: swapTx.to || '',
               value: swapTx.value || '0',
-              data: swapTx.data || '0x',
+              data: finalTxData,
             });
-            const txResult = await cdpRequest(
-              'POST',
-              `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
-              { network: 'base', transaction: rlpTx }
-            ) as { transactionHash?: string };
+
+            let txResult: { transactionHash?: string } | null = null;
+            try {
+              txResult = await cdpRequest(
+                'POST',
+                `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
+                { network: 'base', transaction: rlpTx }
+              ) as { transactionHash?: string };
+            } catch (sendErr) {
+              // Retry with unmodified calldata as fallback
+              if (finalTxData !== swapTx.data) {
+                console.warn(`[AgentWallet] Spliced tx failed, retrying with original calldata...`);
+                const fallbackRlp = encodeEip1559Tx({
+                  chainId: 8453,
+                  to: swapTx.to || '',
+                  value: swapTx.value || '0',
+                  data: swapTx.data || '0x',
+                });
+                txResult = await cdpRequest(
+                  'POST',
+                  `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
+                  { network: 'base', transaction: fallbackRlp }
+                ) as { transactionHash?: string };
+              } else {
+                throw sendErr;
+              }
+            }
             txHash = txResult?.transactionHash ?? null;
           }
 
