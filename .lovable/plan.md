@@ -1,71 +1,54 @@
 
+# Fix: Tooltip Visibility and Stock Currency Conversion Bug
 
-## Transaction Email Notifications
+## Issue 1: Tooltip Not Fully Visible
 
-### Overview
+The Recharts tooltip on the AllocationChart pie chart lacks explicit text color styling. On the dark theme, the default Recharts tooltip text can blend into the dark `contentStyle` background. Additionally, the tooltip may get clipped by parent container overflow.
 
-Add an opt-in toggle so users receive email notifications when transactions (send USDC, send ETH, trade, fund) are executed from their agentic wallet. Emails are sent via Resend (already configured) after each successful transaction.
+**Fix in `src/components/AllocationChart.tsx`:**
+- Add `color` and `itemStyle` to the Tooltip for explicit white text
+- Add `wrapperStyle` with a high `zIndex` to prevent clipping
+- Add a `labelFormatter` using the LABELS map so the tooltip shows human-readable category names instead of raw keys
 
-### Changes
+## Issue 2: COP Stock Values Treated as USD ($62.75M bug)
 
-#### 1. Database Migration
+The database stores these COP-denominated stocks for the user:
+- Celsia SA Esp: value=30,690,000 COP
+- PEI: value=31,984,000 COP
+- Mineros (MSA): value=22,880 COP
 
-Add a `notify_transactions` boolean column to `agent_wallets`:
+These raw COP values are being summed as if they were USD, producing a $62.75M total instead of the correct ~$69K.
 
-```sql
-ALTER TABLE agent_wallets
-  ADD COLUMN notify_transactions boolean NOT NULL DEFAULT false;
-```
+**Root cause:** The `categoryTotals` calculation in `src/hooks/usePortfolio.ts` (line 361-372) has the correct non-USD branch that should convert COP to USD, but there is a secondary issue: the `assets` useMemo (line 55-82) computes `value = quantity * livePrice` for stocks where a live price exists in `price_cache`. The prices stored in `price_cache` for Colombian stocks (CELSIA=4950, PEI=70520) are in COP, not USD, but `getLiveAssetPriceUSD` treats them as USD. This creates a mismatch: the computed value is in COP but labeled as a "USD price computation."
 
-#### 2. Edge Function: `agent-wallet/index.ts`
+The net effect depends on timing -- but regardless, the conversion in `categoryTotals` should always apply. The fix ensures robustness by:
 
-- Add a helper function `sendTransactionEmail(email, subject, details)` that calls Resend directly (same pattern as `send-confirmation-email`) to send a styled HTML email with transaction details (type, amount, token, recipient/pair, tx hash, timestamp).
-- After each successful transaction in the `send`, `send-eth`, `trade`, and `fund` actions, check if `wallet.notify_transactions` is true. If so, call the email helper with relevant details.
-- Add a new `update-notifications` action to toggle the `notify_transactions` column.
-
-Email template will include:
-- Transaction type (Send USDC, Send ETH, Trade, Fund)
-- Amount and token(s)
-- Recipient address (for sends) or token pair (for trades)
-- Transaction hash (linked to BaseScan)
-- Timestamp
-
-#### 3. Hook: `useAgentWallet.ts`
-
-- Add `notify_transactions` to the `AgentWalletStatus` interface
-- Include it in the status response mapping
-- Add `updateNotifications(enabled: boolean)` method that calls `invoke('update-notifications', { notify_transactions: enabled })`
-
-#### 4. UI: `AgentSection.tsx`
-
-- Add a "Notifications" card (below Spending Limits, when wallet is connected)
-- Contains a single toggle: "Email me when transactions occur"
-- Uses the new `updateNotifications` method from the hook
-
-### Technical Details
-
-**Email helper (inside agent-wallet/index.ts):**
-
-```typescript
-async function sendTransactionEmail(
-  email: string,
-  txType: string,
-  details: { amount?: number; token?: string; recipient?: string; fromToken?: string; toToken?: string; txHash?: string }
-) {
-  const resendKey = Deno.env.get('RESEND_API_KEY');
-  if (!resendKey) return;
-
-  // Build subject and body based on txType
-  // POST to https://api.resend.com/emails with styled HTML
-}
-```
+1. Adding a `price_currency` awareness to the stock price pipeline so COP prices are not confused with USD
+2. Ensuring `categoryTotals` always converts non-USD stock values properly even during initial render
 
 **Files to modify:**
 
-| File | Action |
-|------|--------|
-| Database migration | Add `notify_transactions` column |
-| `supabase/functions/agent-wallet/index.ts` | Add email helper, call after txs, add `update-notifications` action |
-| `src/hooks/useAgentWallet.ts` | Add `notify_transactions` to status, add `updateNotifications` method |
-| `src/components/settings/AgentSection.tsx` | Add notifications toggle card |
+### `src/hooks/usePortfolio.ts`
+- In the `assets` useMemo: for stocks with `asset.currency !== 'USD'`, skip live price override (since the cached price may be in native currency, not USD). Keep the DB value and let `categoryTotals` handle conversion.
+- In `categoryTotals` stocks branch: no logic change needed (the existing code is correct), but add a safety `console.warn` for debugging if values seem abnormally large before conversion.
 
+### `src/components/AllocationChart.tsx`
+- Update `Tooltip` props: add `itemStyle={{ color: '#fff' }}`, `labelStyle={{ color: '#9ca3af' }}`, and `wrapperStyle={{ zIndex: 50 }}`
+- Add `labelFormatter` to map category keys to human-readable LABELS
+- Add `nameKey="category"` to the Pie component for proper tooltip label resolution
+
+---
+
+## Technical Details
+
+### Stock Price Currency Problem
+
+The `price_cache` table stores stock prices without a currency indicator. Colombian stocks like CELSIA (4950 COP/share) and PEI (70,520 COP/share) are stored alongside USD stocks like AAPL ($250/share). The `getLiveAssetPriceUSD` function assumes all prices are USD, which is incorrect.
+
+**Fix approach:** In the `assets` useMemo, when a stock has `currency` set to a non-USD value, skip the `quantity * livePrice` computation entirely. The DB `value` field already stores the correct native-currency amount. The `categoryTotals` conversion logic then handles the COP-to-USD conversion using `getForexRateToUSD`.
+
+This is the minimal fix. A more comprehensive solution (adding `price_currency` to `price_cache`) can be done later.
+
+### Tooltip Fix
+
+Add explicit styling to ensure the Recharts tooltip is always readable on dark backgrounds and not clipped by parent containers.
