@@ -1,54 +1,88 @@
 
-# Fix: Tooltip Visibility and Stock Currency Conversion Bug
+# Fix: Snapshot Currency Conversion, Expense Filtering, and Tooltip
 
-## Issue 1: Tooltip Not Fully Visible
+## Problems Identified
 
-The Recharts tooltip on the AllocationChart pie chart lacks explicit text color styling. On the dark theme, the default Recharts tooltip text can blend into the dark `contentStyle` background. Additionally, the tooltip may get clipped by parent container overflow.
+### 1. COP Stocks Treated as USD in Snapshot (Total Assets: 55M EUR instead of ~2.2M EUR)
+The `create-monthly-snapshot` edge function adds `asset.value` directly for all non-banking categories (line 209, 255). For stocks with `currency: "COP"`, the `value` field stores COP amounts (30,690,000 / 31,984,000 / 22,880) but they are summed as if they were USD. This inflates the stocks breakdown from ~$15K to ~$62.7M and cascades into `total_assets` and `net_worth`.
 
-**Fix in `src/components/AllocationChart.tsx`:**
-- Add `color` and `itemStyle` to the Tooltip for explicit white text
-- Add `wrapperStyle` with a high `zIndex` to prevent clipping
-- Add a `labelFormatter` using the LABELS map so the tooltip shows human-readable category names instead of raw keys
+### 2. Net Cash Flow Incorrect (shows -319 EUR, should be positive)
+The edge function sums ALL expenses (line 226) without filtering by date. This means:
+- A January flight (1,600 EUR) and an April tax (1,100 EUR) are included in the February snapshot
+- The frontend `usePortfolio` hook correctly filters one-time expenses to the current month, but the snapshot does not
+- Result: snapshot expenses = 5,026 USD vs correct ~1,826 USD for February
 
-## Issue 2: COP Stock Values Treated as USD ($62.75M bug)
+### 3. Snapshot Tooltip Not Visible
+The `SnapshotDetailView` pie chart tooltip (line 140-147) lacks explicit text color styling, same issue as the AllocationChart that was already fixed.
 
-The database stores these COP-denominated stocks for the user:
-- Celsia SA Esp: value=30,690,000 COP
-- PEI: value=31,984,000 COP
-- Mineros (MSA): value=22,880 COP
+## Changes
 
-These raw COP values are being summed as if they were USD, producing a $62.75M total instead of the correct ~$69K.
+### File 1: `supabase/functions/create-monthly-snapshot/index.ts`
 
-**Root cause:** The `categoryTotals` calculation in `src/hooks/usePortfolio.ts` (line 361-372) has the correct non-USD branch that should convert COP to USD, but there is a secondary issue: the `assets` useMemo (line 55-82) computes `value = quantity * livePrice` for stocks where a live price exists in `price_cache`. The prices stored in `price_cache` for Colombian stocks (CELSIA=4950, PEI=70520) are in COP, not USD, but `getLiveAssetPriceUSD` treats them as USD. This creates a mismatch: the computed value is in COP but labeled as a "USD price computation."
+**Stocks currency fix** (affects `totalAssets` calc ~line 201 and `assetsBreakdown` calc ~line 247):
+- For stocks and realestate categories: check if `asset.currency` is non-USD
+- If so, convert `asset.value` from native currency to USD using `convertToUSD`
+- If USD or no currency specified, use `asset.value` as-is (already USD)
 
-The net effect depends on timing -- but regardless, the conversion in `categoryTotals` should always apply. The fix ensures robustness by:
+**Expenses date filtering** (affects expenses calc ~line 226):
+- Only include recurring expenses and one-time expenses whose `expense_date` falls within the target snapshot month
+- One-time expenses from other months are excluded
 
-1. Adding a `price_currency` awareness to the stock price pipeline so COP prices are not confused with USD
-2. Ensuring `categoryTotals` always converts non-USD stock values properly even during initial render
+### File 2: `src/components/SnapshotDetailView.tsx`
 
-**Files to modify:**
+**Tooltip styling** (~line 140):
+- Add `itemStyle={{ color: '#fff' }}` for white text
+- Add `labelStyle={{ color: '#9ca3af' }}` for muted labels  
+- Add `wrapperStyle={{ zIndex: 50 }}` to prevent clipping
 
-### `src/hooks/usePortfolio.ts`
-- In the `assets` useMemo: for stocks with `asset.currency !== 'USD'`, skip live price override (since the cached price may be in native currency, not USD). Keep the DB value and let `categoryTotals` handle conversion.
-- In `categoryTotals` stocks branch: no logic change needed (the existing code is correct), but add a safety `console.warn` for debugging if values seem abnormally large before conversion.
-
-### `src/components/AllocationChart.tsx`
-- Update `Tooltip` props: add `itemStyle={{ color: '#fff' }}`, `labelStyle={{ color: '#9ca3af' }}`, and `wrapperStyle={{ zIndex: 50 }}`
-- Add `labelFormatter` to map category keys to human-readable LABELS
-- Add `nameKey="category"` to the Pie component for proper tooltip label resolution
-
----
+### Post-Fix Action
+After deploying the updated edge function, the user should re-create the February 2026 snapshot to get corrected values. The existing snapshot contains the bad data computed by the old function.
 
 ## Technical Details
 
-### Stock Price Currency Problem
+### Stocks Currency Fix (Edge Function)
 
-The `price_cache` table stores stock prices without a currency indicator. Colombian stocks like CELSIA (4950 COP/share) and PEI (70,520 COP/share) are stored alongside USD stocks like AAPL ($250/share). The `getLiveAssetPriceUSD` function assumes all prices are USD, which is incorrect.
+Current code (line 207-209):
+```
+// For non-banking assets, value is already in USD
+return sum + Number(asset.value || 0);
+```
 
-**Fix approach:** In the `assets` useMemo, when a stock has `currency` set to a non-USD value, skip the `quantity * livePrice` computation entirely. The DB `value` field already stores the correct native-currency amount. The `categoryTotals` conversion logic then handles the COP-to-USD conversion using `getForexRateToUSD`.
+Updated logic:
+```
+// For stocks/realestate with non-USD currency, convert from native currency
+if ((asset.category === 'stocks' || asset.category === 'realestate') 
+    && asset.currency && asset.currency !== 'USD') {
+  return sum + convertToUSD(Number(asset.value || 0), asset.currency, forexRates, btcPrice);
+}
+// Other assets: value is already in USD
+return sum + Number(asset.value || 0);
+```
 
-This is the minimal fix. A more comprehensive solution (adding `price_currency` to `price_cache`) can be done later.
+Same pattern applied to the `assetsBreakdown` loop.
 
-### Tooltip Fix
+### Expense Date Filtering (Edge Function)
 
-Add explicit styling to ensure the Recharts tooltip is always readable on dark backgrounds and not clipped by parent containers.
+Current code (line 226-229) sums all expenses. Updated to:
+```
+const snapshotYearMonth = snapshotMonth.slice(0, 7); // "2026-02"
+const totalExpenses = (expenses || []).reduce((sum, e) => {
+  const isRecurring = e.is_recurring;
+  if (!isRecurring) {
+    // Skip one-time expenses not in the snapshot month
+    if (!e.expense_date || !e.expense_date.startsWith(snapshotYearMonth)) {
+      return sum;
+    }
+  }
+  const currency = (e.currency || 'USD').trim().toUpperCase();
+  return sum + convertToUSD(Number(e.amount || 0), currency, forexRates, btcPrice);
+}, 0);
+```
+
+### Expected Corrected Values (February 2026)
+
+After fix, approximate USD values:
+- Stocks: ~$54K (AAPL $27K + Davivienda $27K + COP stocks ~$15K) instead of $62.7M
+- Total Expenses: ~$1,826 (recurring + Feb one-time only) instead of $5,027
+- Net Cash Flow: ~$4,648 - $1,826 = +$2,822 USD (positive, ~+2,380 EUR) instead of -$378
+- Total Assets / Net Worth: ~$2.2M EUR instead of $55M EUR
