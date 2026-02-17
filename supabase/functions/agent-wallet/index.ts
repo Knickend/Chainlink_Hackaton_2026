@@ -403,6 +403,53 @@ async function generateWalletAuthJwt(
   return jwt;
 }
 
+// --- Transaction Email Notification Helper ---
+async function sendTransactionEmail(
+  email: string,
+  txType: string,
+  details: { amount?: number; token?: string; recipient?: string; fromToken?: string; toToken?: string; txHash?: string }
+) {
+  const resendKey = Deno.env.get('RESEND_API_KEY');
+  if (!resendKey || !email) return;
+
+  try {
+    const subject = `InControl: ${txType} Transaction Executed`;
+    const baseScanLink = details.txHash ? `https://basescan.org/tx/${details.txHash}` : null;
+    const timestamp = new Date().toUTCString();
+
+    let detailsHtml = '';
+    if (details.amount !== undefined && details.token) {
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Amount</td><td style="padding:8px 0;font-weight:600;">${details.amount} ${details.token}</td></tr>`;
+    }
+    if (details.recipient) {
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Recipient</td><td style="padding:8px 0;font-family:monospace;font-size:13px;">${details.recipient}</td></tr>`;
+    }
+    if (details.fromToken && details.toToken) {
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Pair</td><td style="padding:8px 0;font-weight:600;">${details.fromToken} → ${details.toToken}</td></tr>`;
+    }
+    if (baseScanLink) {
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Tx Hash</td><td style="padding:8px 0;"><a href="${baseScanLink}" style="color:#6366f1;text-decoration:none;font-family:monospace;font-size:13px;">${details.txHash!.slice(0, 10)}…${details.txHash!.slice(-8)}</a></td></tr>`;
+    }
+    detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Time</td><td style="padding:8px 0;">${timestamp}</td></tr>`;
+
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 16px;color:#111;">🔔 ${txType}</h2>
+        <table style="width:100%;border-collapse:collapse;">${detailsHtml}</table>
+        <p style="margin:24px 0 0;color:#888;font-size:13px;">You received this because transaction notifications are enabled in your InControl settings.</p>
+      </div>`;
+
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'InControl <noreply@incontrol.app>', to: [email], subject, html }),
+    });
+    console.log(`[AgentWallet] Transaction email sent to ${email} for ${txType}`);
+  } catch (emailErr) {
+    console.error('[AgentWallet] Failed to send transaction email:', emailErr);
+  }
+}
+
 // --- Token Addresses on Base ---
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const WETH_BASE = '0x4200000000000000000000000000000000000006';
@@ -605,6 +652,7 @@ serve(async (req) => {
             daily_spent: wallet?.daily_spent ?? 0,
             balance,
             eth_balance: ethBalance,
+            notify_transactions: wallet?.notify_transactions ?? false,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -715,6 +763,13 @@ serve(async (req) => {
               daily_reset_at: new Date(now.toISOString().split('T')[0] + 'T00:00:00Z').toISOString(),
             })
             .eq('user_id', user.id);
+
+          // Send transaction email notification
+          if (wallet.notify_transactions && wallet.wallet_email) {
+            await sendTransactionEmail(wallet.wallet_email, 'Send USDC', {
+              amount, token: 'USDC', recipient, txHash: txResult?.transactionHash,
+            });
+          }
 
           return new Response(
             JSON.stringify({
@@ -876,6 +931,13 @@ serve(async (req) => {
             .update({ status: 'executed', result: { swapResult, txHash } })
             .eq('id', logEntry?.id);
 
+          // Send transaction email notification
+          if (wallet.notify_transactions && wallet.wallet_email) {
+            await sendTransactionEmail(wallet.wallet_email, 'Trade', {
+              amount, fromToken: from_token, toToken: to_token, txHash,
+            });
+          }
+
           return new Response(
             JSON.stringify({
               success: true,
@@ -951,6 +1013,13 @@ serve(async (req) => {
             .update({ status: 'executed', result: { sessionId, onramp_url: onrampUrl } })
             .eq('id', logEntry?.id);
 
+          // Send transaction email notification
+          if (wallet.notify_transactions && wallet.wallet_email) {
+            await sendTransactionEmail(wallet.wallet_email, 'Fund Wallet', {
+              amount, token: 'USDC',
+            });
+          }
+
           return new Response(
             JSON.stringify({
               success: true,
@@ -1017,6 +1086,13 @@ serve(async (req) => {
             .update({ status: 'executed', result: txResult })
             .eq('id', logEntry?.id);
 
+          // Send transaction email notification
+          if (wallet.notify_transactions && wallet.wallet_email) {
+            await sendTransactionEmail(wallet.wallet_email, 'Send ETH', {
+              amount, token: 'ETH', recipient, txHash: txResult?.transactionHash,
+            });
+          }
+
           return new Response(
             JSON.stringify({
               success: true,
@@ -1049,6 +1125,20 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ logs: logs || [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // ===== NOTIFICATION SETTINGS =====
+      case 'update-notifications': {
+        const { notify_transactions } = params;
+        await userClient
+          .from('agent_wallets')
+          .update({ notify_transactions: !!notify_transactions })
+          .eq('user_id', user.id);
+
+        return new Response(
+          JSON.stringify({ success: true, notify_transactions: !!notify_transactions }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
