@@ -25,37 +25,19 @@ function sanitizeField(value: string | null): string | null {
 
 interface Filters {
   debtType: string | null;
-  minInterestRate: number | null;
-  limit: number;
 }
 
 async function parseFilters(req: Request, url: URL): Promise<Filters> {
   const filters: Filters = {
     debtType: null,
-    minInterestRate: null,
-    limit: 500,
   };
 
   if (req.method === "GET") {
     filters.debtType = sanitizeField(url.searchParams.get("debtType") || url.searchParams.get("type"));
-    const minRateParam = url.searchParams.get("minInterestRate") || url.searchParams.get("minRate");
-    if (minRateParam) {
-      filters.minInterestRate = parseFloat(minRateParam);
-    }
-    const limitParam = url.searchParams.get("limit");
-    if (limitParam) {
-      filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 500), 1000);
-    }
   } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       const body = await req.json();
       filters.debtType = sanitizeField(body.debtType || body.type || null);
-      if (body.minInterestRate !== undefined || body.minRate !== undefined) {
-        filters.minInterestRate = parseFloat(body.minInterestRate || body.minRate);
-      }
-      if (body.limit) {
-        filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 500), 1000);
-      }
     } catch {
       // Empty body is OK, use defaults
     }
@@ -77,7 +59,6 @@ Deno.serve(async (req) => {
     const paymentHeader = req.headers.get("X-Payment");
 
     if (!paymentHeader) {
-      // No payment - return 402 challenge
       console.log("No payment header, returning 402 challenge");
       const challenge = createPaymentChallenge(
         PRICE_CENTS,
@@ -98,73 +79,33 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
-    // Parse filters from query params OR request body
     const filters = await parseFilters(req, url);
 
-    // Payment verified - serve the data
+    // Use anon key - only access pre-aggregated data via RPC
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Build query for debt data (anonymized aggregates)
-    let query = supabase
-      .from("debts")
-      .select("debt_type, interest_rate, principal_amount, monthly_payment");
+    // Get pre-aggregated debt stats from materialized view via RPC
+    const { data: debtStats } = await supabase.rpc("get_aggregated_debt_stats");
 
+    // Filter by debt type if requested
+    let filteredStats = debtStats || [];
     if (filters.debtType) {
-      query = query.eq("debt_type", filters.debtType);
+      filteredStats = filteredStats.filter((row: { debt_type: string }) => row.debt_type === filters.debtType);
     }
 
-    if (filters.minInterestRate !== null) {
-      query = query.gte("interest_rate", filters.minInterestRate);
-    }
-
-    query = query.limit(filters.limit);
-
-    const { data: debtData } = await query;
-
-    // Analyze debt by type
-    const debtByType: Record<string, { 
-      totalPrincipal: number; 
-      avgInterestRate: number; 
-      count: number;
-      totalWeightedRate: number;
-    }> = {};
-
-    if (debtData) {
-      debtData.forEach((debt: { 
-        debt_type: string; 
-        interest_rate: number; 
-        principal_amount: number;
-      }) => {
-        if (!debtByType[debt.debt_type]) {
-          debtByType[debt.debt_type] = { 
-            totalPrincipal: 0, 
-            avgInterestRate: 0, 
-            count: 0,
-            totalWeightedRate: 0,
-          };
-        }
-        debtByType[debt.debt_type].totalPrincipal += debt.principal_amount || 0;
-        debtByType[debt.debt_type].totalWeightedRate += 
-          (debt.interest_rate || 0) * (debt.principal_amount || 0);
-        debtByType[debt.debt_type].count++;
-      });
-    }
-
-    // Calculate weighted average rates
-    const debtAnalysis = Object.entries(debtByType).map(([type, stats]) => ({
-      debtType: type,
-      avgInterestRate: stats.totalPrincipal > 0 
-        ? Math.round((stats.totalWeightedRate / stats.totalPrincipal) * 100) / 100
-        : 0,
-      totalCount: stats.count,
-    })).sort((a, b) => b.avgInterestRate - a.avgInterestRate);
+    const debtAnalysis = filteredStats
+      .map((row: { debt_type: string; avg_interest_rate: number; debt_count: number }) => ({
+        debtType: row.debt_type,
+        avgInterestRate: Math.round((row.avg_interest_rate || 0) * 100) / 100,
+        totalCount: Number(row.debt_count),
+      }))
+      .sort((a: { avgInterestRate: number }, b: { avgInterestRate: number }) => b.avgInterestRate - a.avgInterestRate);
 
     // Generate payoff strategies
     const strategies = [];
 
-    // Find highest interest debt type
     const highestRateDebt = debtAnalysis[0];
     if (highestRateDebt && highestRateDebt.avgInterestRate > 15) {
       strategies.push({
@@ -176,7 +117,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for consolidation opportunities
     if (debtAnalysis.length > 2) {
       strategies.push({
         strategy: "consolidation",
@@ -187,7 +127,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Snowball method for motivation
     strategies.push({
       strategy: "snowball",
       priority: "medium",
@@ -196,8 +135,7 @@ Deno.serve(async (req) => {
       difficulty: "easy",
     });
 
-    // Balance transfer if credit card debt exists
-    if (debtAnalysis.some(d => d.debtType === "credit_card")) {
+    if (debtAnalysis.some((d: { debtType: string }) => d.debtType === "credit_card")) {
       strategies.push({
         strategy: "balance_transfer",
         priority: "high",
@@ -213,8 +151,6 @@ Deno.serve(async (req) => {
         method: req.method,
         filters: {
           debtType: filters.debtType || "all",
-          minInterestRate: filters.minInterestRate,
-          limit: filters.limit,
         },
       },
       debtAnalysis: {

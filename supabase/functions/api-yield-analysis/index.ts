@@ -26,14 +26,12 @@ function sanitizeField(value: string | null): string | null {
 interface Filters {
   category: string | null;
   minYield: number | null;
-  limit: number;
 }
 
 async function parseFilters(req: Request, url: URL): Promise<Filters> {
   const filters: Filters = {
     category: null,
     minYield: null,
-    limit: 500,
   };
 
   if (req.method === "GET") {
@@ -42,19 +40,12 @@ async function parseFilters(req: Request, url: URL): Promise<Filters> {
     if (minYieldParam) {
       filters.minYield = parseFloat(minYieldParam);
     }
-    const limitParam = url.searchParams.get("limit");
-    if (limitParam) {
-      filters.limit = Math.min(Math.max(1, parseInt(limitParam, 10) || 500), 1000);
-    }
   } else if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       const body = await req.json();
       filters.category = sanitizeField(body.category || null);
       if (body.minYield !== undefined) {
         filters.minYield = parseFloat(body.minYield);
-      }
-      if (body.limit) {
-        filters.limit = Math.min(Math.max(1, parseInt(body.limit, 10) || 500), 1000);
       }
     } catch {
       // Empty body is OK, use defaults
@@ -77,7 +68,6 @@ Deno.serve(async (req) => {
     const paymentHeader = req.headers.get("X-Payment");
 
     if (!paymentHeader) {
-      // No payment - return 402 challenge
       console.log("No payment header, returning 402 challenge");
       const challenge = createPaymentChallenge(
         PRICE_CENTS,
@@ -98,56 +88,40 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
-    // Parse filters from query params OR request body
     const filters = await parseFilters(req, url);
 
-    // Payment verified - serve the data
+    // Use anon key - only access pre-aggregated data via RPC
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Build query for yield-bearing assets data (anonymized)
-    let query = supabase
-      .from("assets")
-      .select("category, yield, value")
-      .not("yield", "is", null)
-      .gt("yield", filters.minYield || 0);
+    // Get pre-aggregated yield stats from materialized view via RPC
+    const { data: yieldStats } = await supabase.rpc("get_aggregated_yield_stats");
 
+    // Filter and calculate yield analysis from pre-aggregated data
+    let filteredStats = yieldStats || [];
     if (filters.category) {
-      query = query.eq("category", filters.category);
+      filteredStats = filteredStats.filter((row: { category: string }) => row.category === filters.category);
     }
 
-    query = query.limit(filters.limit);
-
-    const { data: yieldAssets } = await query;
-
-    // Calculate yield statistics by category
-    const yieldByCategory: Record<string, { totalValue: number; weightedYield: number; count: number }> = {};
-    
-    if (yieldAssets) {
-      yieldAssets.forEach((asset: { category: string; yield: number; value: number }) => {
-        if (!yieldByCategory[asset.category]) {
-          yieldByCategory[asset.category] = { totalValue: 0, weightedYield: 0, count: 0 };
-        }
-        yieldByCategory[asset.category].totalValue += asset.value || 0;
-        yieldByCategory[asset.category].weightedYield += (asset.yield || 0) * (asset.value || 0);
-        yieldByCategory[asset.category].count++;
-      });
-    }
-
-    // Calculate average yields
-    const yieldAnalysis = Object.entries(yieldByCategory).map(([category, stats]) => ({
-      category,
-      averageYield: stats.totalValue > 0 
-        ? Math.round((stats.weightedYield / stats.totalValue) * 100) / 100
-        : 0,
-      assetCount: stats.count,
-    })).sort((a, b) => b.averageYield - a.averageYield);
+    const yieldAnalysis = filteredStats
+      .map((row: { category: string; asset_count: number; total_value: number; weighted_yield_sum: number }) => {
+        const avgYield = row.total_value > 0
+          ? Math.round((row.weighted_yield_sum / row.total_value) * 100) / 100
+          : 0;
+        return {
+          category: row.category,
+          averageYield: avgYield,
+          assetCount: Number(row.asset_count),
+        };
+      })
+      .filter((row: { averageYield: number }) => !filters.minYield || row.averageYield >= filters.minYield)
+      .sort((a: { averageYield: number }, b: { averageYield: number }) => b.averageYield - a.averageYield);
 
     // Generate yield optimization strategies
     const strategies = [];
-    
-    if (yieldAnalysis.some(y => y.category === "crypto" && y.averageYield > 3)) {
+
+    if (yieldAnalysis.some((y: { category: string; averageYield: number }) => y.category === "crypto" && y.averageYield > 3)) {
       strategies.push({
         type: "staking",
         recommendation: "Consider liquid staking derivatives for better capital efficiency",
@@ -156,7 +130,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (yieldAnalysis.some(y => y.category === "banking" && y.averageYield < 4)) {
+    if (yieldAnalysis.some((y: { category: string; averageYield: number }) => y.category === "banking" && y.averageYield < 4)) {
       strategies.push({
         type: "reallocation",
         recommendation: "Traditional savings may underperform - consider high-yield alternatives",
@@ -172,6 +146,10 @@ Deno.serve(async (req) => {
       risk: "low",
     });
 
+    const totalYieldBearingAssets = filteredStats.reduce(
+      (sum: number, row: { asset_count: number }) => sum + Number(row.asset_count), 0
+    );
+
     const response = {
       timestamp: new Date().toISOString(),
       request: {
@@ -179,12 +157,11 @@ Deno.serve(async (req) => {
         filters: {
           category: filters.category || "all",
           minYield: filters.minYield || 0,
-          limit: filters.limit,
         },
       },
       yieldAnalysis: {
         byCategory: yieldAnalysis,
-        totalYieldBearingAssets: yieldAssets?.length || 0,
+        totalYieldBearingAssets,
       },
       optimizationStrategies: strategies,
       marketContext: {

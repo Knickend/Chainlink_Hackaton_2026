@@ -884,33 +884,6 @@ export type Database = {
       }
     }
     Views: {
-      aggregated_debt_stats: {
-        Row: {
-          avg_interest_rate: number | null
-          debt_count: number | null
-          debt_type: string | null
-          total_monthly_payments: number | null
-          total_principal: number | null
-        }
-        Relationships: []
-      }
-      aggregated_portfolio_stats: {
-        Row: {
-          asset_count: number | null
-          category: string | null
-          total_value: number | null
-        }
-        Relationships: []
-      }
-      aggregated_yield_stats: {
-        Row: {
-          asset_count: number | null
-          category: string | null
-          total_value: number | null
-          weighted_yield_sum: number | null
-        }
-        Relationships: []
-      }
       feedback_user_view: {
         Row: {
           attachments: string[] | null
@@ -952,6 +925,33 @@ export type Database = {
       }
     }
     Functions: {
+      get_aggregated_debt_stats: {
+        Args: never
+        Returns: {
+          avg_interest_rate: number
+          debt_count: number
+          debt_type: string
+          total_monthly_payments: number
+          total_principal: number
+        }[]
+      }
+      get_aggregated_portfolio_stats: {
+        Args: never
+        Returns: {
+          asset_count: number
+          category: string
+          total_value: number
+        }[]
+      }
+      get_aggregated_yield_stats: {
+        Args: never
+        Returns: {
+          asset_count: number
+          category: string
+          total_value: number
+          weighted_yield_sum: number
+        }[]
+      }
       get_platform_analytics: { Args: never; Returns: Json }
       has_role: {
         Args: {
