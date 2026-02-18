@@ -1,44 +1,39 @@
 
 
-# Fix: Show Swap Amounts in Trade Confirmation Email
+# Rename "Financial Advisor" to "AI CFO"
 
-## Problem
-The trade confirmation email is missing the amounts because the email template only renders an "Amount" row when both `details.amount` and `details.token` are provided. For trades, `token` is not passed (only `fromToken` and `toToken`), so the amount row is skipped entirely.
+## Summary
+Rename all user-facing references from "Financial Advisor" to "AI CFO" across the application to avoid implying a licensed financial advisory service. The backend edge function folder name stays the same (renaming folders in edge functions is disruptive), but all labels, system prompts, and log messages will be updated.
 
-## Solution
-Update the `sendTransactionEmail` function in `supabase/functions/agent-wallet/index.ts` to handle trade-specific amount display. Two changes needed:
+## Files to Change
 
-### Change 1: Pass trade amounts to the email function
-Update the trade email call (line 1041-1043) to also pass the `fromAmount` and `toAmount` values from the swap result so the email can show exactly what was swapped.
+### 1. `src/components/FinancialAdvisorChat.tsx`
+- Header title: "Financial Advisor" -> "AI CFO"
+- Component name and interface can stay (internal code), but the visible UI label changes
 
-```typescript
-await sendTransactionEmail(wallet.wallet_email, 'Trade', {
-  amount, fromToken: from_token, toToken: to_token, txHash,
-  fromAmount: swapResult?.fromAmount,
-  toAmount: swapResult?.toAmount,
-  fromDecimals: from_token === 'USDC' ? 6 : 18,
-  toDecimals: to_token === 'ETH' ? 18 : 6,
-});
-```
+### 2. `supabase/functions/financial-advisor/index.ts`
+- System prompt: "You are InControl's AI Financial Advisor" -> "You are InControl's AI CFO"
+- Console log messages: "financial advisor" -> "AI CFO"
 
-### Change 2: Update the email template to render trade amounts
-In the `sendTransactionEmail` function, add a trade-specific row that shows "Amount: 0.2 USDC -> 0.000100 ETH" when `fromToken`, `toToken`, and `amount` are all present.
+### 3. `src/components/Tutorial/tutorialSteps.ts`
+- Title: "Your AI Financial Advisor" -> "Your AI CFO"
+- Content: "AI financial advisor" -> "AI CFO"
 
-Update the details type to include optional `fromAmount`/`toAmount` fields and add a new template row:
+### 4. `src/pages/Index.tsx`
+- Comment: "AI Financial Advisor Chat" -> "AI CFO Chat"
 
-```typescript
-// For trades, show the input amount alongside the pair
-if (details.fromToken && details.toToken && details.amount !== undefined) {
-  detailsHtml += `<tr><td style="...">Amount</td><td style="...;font-weight:600;">${details.amount} ${details.fromToken}</td></tr>`;
-  detailsHtml += `<tr><td style="...">Pair</td><td style="...;font-weight:600;">${details.fromToken} -> ${details.toToken}</td></tr>`;
-}
-```
+### 5. `src/pages/Terms.tsx`
+- Disclaimer text: "IS NOT a financial advisor" -> "IS NOT a financial advisor or CFO service" (keep the legal disclaimer broad)
 
-This way the email will show:
-- **Amount**: 0.2 USDC
-- **Pair**: USDC -> ETH
-- **Tx Hash**: 0x144385ec...bb58cf7c
-- **Time**: Wed, 18 Feb 2026 01:48:20 GMT
+### 6. `src/lib/subscription.ts`
+- Feature label: "AI advisor with memory" -> "AI CFO with memory"
 
-### File changed
-- `supabase/functions/agent-wallet/index.ts` -- update `sendTransactionEmail` to show amounts for trades
+### 7. `supabase/functions/sales-bot/index.ts`
+- Pricing description: "AI advisor" -> "AI CFO"
+
+## Technical Details
+- The edge function folder `supabase/functions/financial-advisor/` and its URL path remain unchanged to avoid breaking the API endpoint
+- The `CHAT_URL` in `FinancialAdvisorChat.tsx` stays as `/functions/v1/financial-advisor` (no endpoint rename needed)
+- The React component export name `FinancialAdvisorChat` stays the same internally -- only user-visible strings change
+- The edge function will be redeployed after updating the system prompt
+
