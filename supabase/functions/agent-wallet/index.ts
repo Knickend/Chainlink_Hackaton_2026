@@ -444,7 +444,7 @@ async function sendTransactionEmail(
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'InControl <noreply@incontrol.app>', to: [email], subject, html }),
+      body: JSON.stringify({ from: 'InControl <noreply@incontrol.finance>', to: [email], subject, html }),
     });
     console.log(`[AgentWallet] Transaction email sent to ${email} for ${txType}`);
   } catch (emailErr) {
