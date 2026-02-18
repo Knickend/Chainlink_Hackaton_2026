@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff, Brain, ArrowUpRight, Repeat, Wallet, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -365,11 +366,18 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       body.walletContext = `Connected: Yes\nAddress: ${walletStatus.wallet_address}\nBalance: ${walletStatus.balance != null ? `$${walletStatus.balance}` : 'unknown'}\nEnabled skills: ${skills}\nSpending limit per tx: $${walletStatus.spending_limit_per_tx}\nDaily limit: $${walletStatus.spending_limit_daily} (spent today: $${walletStatus.daily_spent})`;
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      throw new Error('You must be logged in to use the AI advisor.');
+    }
+
     const resp = await fetch(CHAT_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        Authorization: `Bearer ${token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify(body),
     });
