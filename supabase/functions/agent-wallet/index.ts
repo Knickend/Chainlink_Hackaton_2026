@@ -941,13 +941,15 @@ serve(async (req) => {
             console.warn(`[AgentWallet] Swap issues:`, JSON.stringify(swapResult.issues));
           }
 
-          // Step 2: Handle allowance (one-time Permit2 approval)
+          // Step 2: Handle allowance (one-time Permit2 approval for the fromToken)
           const allowanceIssue = swapResult?.issues?.allowance;
           if (allowanceIssue && allowanceIssue.currentAllowance === '0') {
-            console.log(`[AgentWallet] USDC allowance is 0 — sending approve tx for Permit2`);
+            // Approve the actual fromToken (not hardcoded USDC) for Permit2
+            const tokenToApprove = fromAddress;
+            console.log(`[AgentWallet] ${from_token} allowance is 0 — sending approve tx for Permit2 on ${tokenToApprove}`);
             const approveTx = encodeEip1559Tx({
               chainId: 8453,
-              to: USDC_BASE,
+              to: tokenToApprove,
               value: '0',
               data: APPROVE_PERMIT2_CALLDATA,
             });
