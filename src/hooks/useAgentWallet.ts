@@ -160,7 +160,8 @@ export function useAgentWallet() {
     setIsActing(true);
     try {
       const result = await invoke('send', { amount, recipient });
-      await fetchLogs();
+      await new Promise(r => setTimeout(r, 500));
+      await Promise.all([fetchLogs(), fetchStatus()]);
       toast({ title: 'USDC Sent', description: result.message });
       return result;
     } catch (err) {
@@ -175,7 +176,8 @@ export function useAgentWallet() {
     setIsActing(true);
     try {
       const result = await invoke('send-eth', { amount, recipient });
-      await fetchLogs();
+      await new Promise(r => setTimeout(r, 500));
+      await Promise.all([fetchLogs(), fetchStatus()]);
       toast({ title: 'ETH Sent', description: result.message });
       return result;
     } catch (err) {
@@ -200,7 +202,8 @@ export function useAgentWallet() {
     setIsActing(true);
     try {
       const result = await invoke('trade', { amount, from_token: fromToken, to_token: toToken });
-      await fetchLogs();
+      await new Promise(r => setTimeout(r, 500));
+      await Promise.all([fetchLogs(), fetchStatus()]);
       toast({ title: 'Trade Executed', description: result.message });
       return result;
     } catch (err) {

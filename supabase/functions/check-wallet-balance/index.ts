@@ -123,7 +123,7 @@ async function sendDepositEmail(resend: Resend, email: string, token: string, re
     </div>`;
 
   await resend.emails.send({
-    from: 'InControl <noreply@incontrol.app>',
+    from: 'InControl <noreply@incontrol.finance>',
     to: [email],
     subject,
     html,
