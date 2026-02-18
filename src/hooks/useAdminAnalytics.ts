@@ -27,6 +27,10 @@ export interface AdminAnalytics {
   platform: {
     totalPortfolioValue: number;
     totalTrackedDebt: number;
+    subscriptionFree: number;
+    subscriptionStandard: number;
+    subscriptionPro: number;
+    agentWalletCount: number;
   };
   isLoading: boolean;
   error: Error | null;
@@ -76,6 +80,10 @@ export function useAdminAnalytics(options: UseAdminAnalyticsOptions = {}): Admin
         total_portfolio_value: number;
         total_tracked_debt: number;
         active_users: number;
+        subscription_free: number;
+        subscription_standard: number;
+        subscription_pro: number;
+        agent_wallet_count: number;
       } | null;
     },
   });
@@ -110,6 +118,10 @@ export function useAdminAnalytics(options: UseAdminAnalyticsOptions = {}): Admin
   const platform = {
     totalPortfolioValue: platformData?.total_portfolio_value ?? 0,
     totalTrackedDebt: platformData?.total_tracked_debt ?? 0,
+    subscriptionFree: platformData?.subscription_free ?? 0,
+    subscriptionStandard: platformData?.subscription_standard ?? 0,
+    subscriptionPro: platformData?.subscription_pro ?? 0,
+    agentWalletCount: platformData?.agent_wallet_count ?? 0,
   };
 
   return {
