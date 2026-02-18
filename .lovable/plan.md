@@ -1,34 +1,36 @@
 
 
-# Fix: USDC-to-ETH Swap "Unable to Estimate Gas" — RESOLVED
+# Fix: Transaction Email Not Sending + Activity Log Delay
 
-## Root Cause
+## Issue 1: Transaction emails silently failing (wrong domain)
 
-The Permit2 signature was being **spliced into** the calldata at a zero-byte placeholder offset. This approach was fragile and incorrect.
+The `sendTransactionEmail` function in `agent-wallet/index.ts` sends from `noreply@incontrol.app`, but the verified Resend domain is `incontrol.finance` (used by the working confirmation email). Resend rejects emails from unverified domains silently.
 
-## Solution (from CDP SDK source code)
+**Fix**: Change the `from` address in `sendTransactionEmail` (line 447) from `noreply@incontrol.app` to `noreply@incontrol.finance`.
 
-Reading the official CDP SDK source (`sendSwapTransaction.ts`), the correct approach is to **append** the signature to the end of the transaction data:
+Also fix the same issue in `check-wallet-balance/index.ts` (line 126) which uses the same wrong domain for deposit notification emails.
+
+## Issue 2: Activity log not appearing immediately
+
+The `tradeTokens` function in `useAgentWallet.ts` calls `fetchLogs()` after the trade completes, but there are two problems:
+
+1. **No immediate UI refresh after fetchLogs**: The `fetchLogs` call fetches logs from the edge function, but the component may not re-render promptly if the state update races with other updates.
+
+2. **Missing refetch after trade response**: The hook should also call `fetchStatus()` to update the wallet balance shown in the UI, not just logs.
+
+**Fix**: In `useAgentWallet.ts`, update `tradeTokens` to call both `fetchStatus` and `fetchLogs` after a successful trade, and add a small delay before fetching logs to ensure the database write has committed:
 
 ```typescript
-// From CDP SDK: concat([txData, signatureLengthInHex, signature])
-const sigLenHex = sigByteLength.toString(16).padStart(64, '0');
-finalTxData = '0x' + txDataHex + sigLenHex + sig;
+const result = await invoke('trade', { amount, from_token: fromToken, to_token: toToken });
+// Small delay to ensure DB write is committed
+await new Promise(r => setTimeout(r, 500));
+await Promise.all([fetchLogs(), fetchStatus()]);
 ```
 
-The signature length (as a 32-byte big-endian word) + raw signature bytes are appended after the original calldata. The swap router contract reads the signature from the end of the calldata.
+Apply the same pattern to `sendUsdc` and `sendEth` which have the same issue.
 
-## Updated Flow
+## Files Changed
 
-```text
-For ERC-20 → ETH swaps (USDC → ETH):
-1. POST /swaps (get quote + permit2 data + transaction)
-2. Check allowance, approve Permit2 if needed (one-time)
-3. POST /sign/typed-data (sign permit2 EIP-712 data)
-4. APPEND signature length + signature to ORIGINAL transaction calldata
-5. RLP-encode and send via /send/transaction
-
-For ETH → ERC-20 swaps (no permit2 needed):
-1. POST /swaps (get transaction)
-2. RLP-encode and send via /send/transaction
-```
+1. **supabase/functions/agent-wallet/index.ts** - Fix email `from` domain (`incontrol.app` to `incontrol.finance`)
+2. **supabase/functions/check-wallet-balance/index.ts** - Fix email `from` domain (`incontrol.app` to `incontrol.finance`)
+3. **src/hooks/useAgentWallet.ts** - Add 500ms delay before log/status refetch in `tradeTokens`, `sendUsdc`, `sendEth`
