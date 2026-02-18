@@ -420,14 +420,15 @@ async function sendTransactionEmail(
     const timestamp = new Date().toUTCString();
 
     let detailsHtml = '';
-    if (details.amount !== undefined && details.token) {
+    if (details.fromToken && details.toToken && details.amount !== undefined) {
+      // Trade: show amount sent and the pair
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Amount</td><td style="padding:8px 0;font-weight:600;">${details.amount} ${details.fromToken}</td></tr>`;
+      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Pair</td><td style="padding:8px 0;font-weight:600;">${details.fromToken} → ${details.toToken}</td></tr>`;
+    } else if (details.amount !== undefined && details.token) {
       detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Amount</td><td style="padding:8px 0;font-weight:600;">${details.amount} ${details.token}</td></tr>`;
     }
     if (details.recipient) {
       detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Recipient</td><td style="padding:8px 0;font-family:monospace;font-size:13px;">${details.recipient}</td></tr>`;
-    }
-    if (details.fromToken && details.toToken) {
-      detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Pair</td><td style="padding:8px 0;font-weight:600;">${details.fromToken} → ${details.toToken}</td></tr>`;
     }
     if (baseScanLink) {
       detailsHtml += `<tr><td style="padding:8px 0;color:#888;">Tx Hash</td><td style="padding:8px 0;"><a href="${baseScanLink}" style="color:#6366f1;text-decoration:none;font-family:monospace;font-size:13px;">${details.txHash!.slice(0, 10)}…${details.txHash!.slice(-8)}</a></td></tr>`;
