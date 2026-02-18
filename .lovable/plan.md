@@ -1,56 +1,58 @@
 
+# Fix Admin Dashboard: User Count Mismatch and Currency Conversion
 
-# Improve Admin Dashboard: Subscription Breakdown and Agent Wallet Stats
+## Issues Found
 
-## Summary
-Add two new data points to the admin dashboard overview:
-1. **Users per subscription tier** (Free / Standard / Pro) with counts
-2. **Users with an agentic wallet** count
+### 1. Total Users vs Subscription Counts
+- "Total Users" = 4 (from `profiles` table)
+- Subscription breakdown: 4 free + 1 standard + 3 pro = 8 (from `user_subscriptions` table)
+- Root cause: 4 orphaned subscription records exist for users who no longer have profiles (deleted accounts or test data)
+- **Fix**: Change the "Total Users" stat to be derived from the sum of subscription tier counts (from `get_platform_analytics`), so the numbers are always consistent. Also add a `total_users` field to the RPC function that counts distinct users in `user_subscriptions` who also have a profile.
 
-## Approach
+### 2. Total Portfolio Value Currency Bug
+- The SQL does `SUM(value)` across ALL assets regardless of currency
+- 62.7M COP + 2.8M USD = "$65.5M" -- this is wrong
+- **Fix**: Join with `price_cache` forex rates to convert non-USD values to USD before summing. Assets with no currency or USD currency use their value directly. Non-USD assets are divided by the forex rate (which represents units of foreign currency per 1 USD).
 
-All new data will be added to the existing `get_platform_analytics` SECURITY DEFINER function so no individual user data is exposed via the API. The frontend will consume the new fields and render them in the existing "User & Platform Analytics" section of the Overview tab.
+## Changes
 
-### 1. Database Migration: Extend `get_platform_analytics()`
+### 1. Database Migration: Update `get_platform_analytics()`
 
-Add to the returned JSONB object:
-- `subscription_free`: count of users on `free` tier
-- `subscription_standard`: count of users on `standard` tier  
-- `subscription_pro`: count of users on `pro` tier
-- `agent_wallet_count`: count of rows in `agent_wallets` (users who have generated a wallet)
+Update the SQL function to:
+- Add `total_users` count from `user_subscriptions` joined with `profiles`
+- Convert asset values to USD using `price_cache` forex rates before summing
+- Similarly convert debt values to USD
 
 ```text
-SELECT COUNT(*) FROM user_subscriptions WHERE tier = 'free'
-SELECT COUNT(*) FROM user_subscriptions WHERE tier = 'standard'
-SELECT COUNT(*) FROM user_subscriptions WHERE tier = 'pro'
-SELECT COUNT(*) FROM agent_wallets
+-- Total users: only count subscriptions that have a matching profile
+SELECT COUNT(*) INTO total_user_count
+FROM user_subscriptions us
+INNER JOIN profiles p ON us.user_id = p.user_id;
+
+-- Portfolio value with currency conversion
+SELECT COALESCE(SUM(
+  CASE
+    WHEN a.currency IS NULL OR a.currency = 'USD' THEN a.value
+    ELSE a.value / NULLIF(pc.price, 0)
+  END
+), 0) INTO total_portfolio_value
+FROM assets a
+LEFT JOIN price_cache pc ON pc.symbol = a.currency AND pc.asset_type = 'forex';
 ```
 
 ### 2. Update `useAdminAnalytics.ts`
 
-- Extend the `platformData` type to include the four new fields
-- Pass them through to the `AdminAnalytics.platform` object
-- Add to the `AdminAnalytics` interface: `subscriptionFree`, `subscriptionStandard`, `subscriptionPro`, `agentWalletCount`
+- Add `totalUsers` to the platform data interface
+- Use `platform.totalUsers` for the "Total Users" stat instead of `profiles.length`
 
 ### 3. Update `AdminOverview.tsx`
 
-Add new stat cards to the "User & Platform Analytics" section:
-- **Free Users** (Users icon, primary color)
-- **Standard Users** (CreditCard icon, warning color)
-- **Pro Users** (Crown/Star icon, success color)
-- **Agent Wallets** (Wallet icon, primary color)
-
-These will render alongside the existing Total Portfolio Value and Total Tracked Debt cards in the same grid.
-
-### 4. Update `types.ts`
-
-The Supabase types file will auto-update after the migration. No manual edit needed.
+- Change "Total Users" stat to use `platform.totalUsers` from the RPC function instead of `users.total`
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| New migration SQL | Extend `get_platform_analytics()` with subscription + wallet counts |
-| `src/hooks/useAdminAnalytics.ts` | Add new fields to interface and data flow |
-| `src/components/admin/AdminOverview.tsx` | Add 4 new stat cards |
-
+| New migration SQL | Update `get_platform_analytics()` with currency conversion and total users count |
+| `src/hooks/useAdminAnalytics.ts` | Add `totalUsers` to platform interface and data mapping |
+| `src/components/admin/AdminOverview.tsx` | Use `platform.totalUsers` for total user count |
