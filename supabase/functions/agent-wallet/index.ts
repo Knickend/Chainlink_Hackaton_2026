@@ -941,7 +941,24 @@ serve(async (req) => {
             console.warn(`[AgentWallet] Swap issues:`, JSON.stringify(swapResult.issues));
           }
 
-          // Step 2: Handle allowance (one-time Permit2 approval for the fromToken)
+          // Step 2a: Check for insufficient balance before doing anything else
+          const balanceIssue = swapResult?.issues?.balance;
+          if (balanceIssue) {
+            const requiredRaw = BigInt(balanceIssue.requiredBalance || '0');
+            const currentRaw = BigInt(balanceIssue.currentBalance || '0');
+            if (currentRaw < requiredRaw) {
+              const balDecimals = from_token.toUpperCase() === 'USDC' ? 6 : 18;
+              const requiredHuman = Number(requiredRaw) / Math.pow(10, balDecimals);
+              const currentHuman = Number(currentRaw) / Math.pow(10, balDecimals);
+              throw new Error(
+                `Insufficient ${from_token} balance for swap. ` +
+                `Required: ${requiredHuman.toFixed(balDecimals === 6 ? 2 : 6)} ${from_token}, ` +
+                `Available: ${currentHuman.toFixed(balDecimals === 6 ? 2 : 6)} ${from_token}.`
+              );
+            }
+          }
+
+          // Step 2b: Handle allowance (one-time Permit2 approval for the fromToken)
           const allowanceIssue = swapResult?.issues?.allowance;
           if (allowanceIssue && allowanceIssue.currentAllowance === '0') {
             // Approve the actual fromToken (not hardcoded USDC) for Permit2
