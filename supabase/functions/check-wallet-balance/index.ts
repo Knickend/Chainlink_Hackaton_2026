@@ -143,6 +143,16 @@ serve(async (req) => {
   const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
   const resend = resendKey ? new Resend(resendKey) : null;
 
+  // Verify cron secret
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const authHeader = req.headers.get("Authorization");
+  if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   try {
     // Fetch all wallets with notifications enabled
     const { data: wallets, error } = await serviceClient
