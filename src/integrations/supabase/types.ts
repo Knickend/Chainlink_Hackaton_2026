@@ -884,6 +884,33 @@ export type Database = {
       }
     }
     Views: {
+      aggregated_debt_stats: {
+        Row: {
+          avg_interest_rate: number | null
+          debt_count: number | null
+          debt_type: string | null
+          total_monthly_payments: number | null
+          total_principal: number | null
+        }
+        Relationships: []
+      }
+      aggregated_portfolio_stats: {
+        Row: {
+          asset_count: number | null
+          category: string | null
+          total_value: number | null
+        }
+        Relationships: []
+      }
+      aggregated_yield_stats: {
+        Row: {
+          asset_count: number | null
+          category: string | null
+          total_value: number | null
+          weighted_yield_sum: number | null
+        }
+        Relationships: []
+      }
       feedback_user_view: {
         Row: {
           attachments: string[] | null
@@ -933,6 +960,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      refresh_aggregated_views: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
