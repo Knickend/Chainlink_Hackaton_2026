@@ -13,6 +13,7 @@ import {
   Activity,
   Wallet,
   CreditCard,
+  Crown,
 } from 'lucide-react';
 import { AdminAnalytics } from '@/hooks/useAdminAnalytics';
 import { FeedbackTrendChart } from './FeedbackTrendChart';
@@ -140,6 +141,34 @@ export function AdminOverview({ analytics }: AdminOverviewProps) {
       icon: CreditCard,
       color: 'text-destructive',
       bg: 'bg-destructive/10',
+    },
+    {
+      label: 'Free Users',
+      value: platform.subscriptionFree,
+      icon: Users,
+      color: 'text-muted-foreground',
+      bg: 'bg-muted',
+    },
+    {
+      label: 'Standard Users',
+      value: platform.subscriptionStandard,
+      icon: CreditCard,
+      color: 'text-warning',
+      bg: 'bg-warning/10',
+    },
+    {
+      label: 'Pro Users',
+      value: platform.subscriptionPro,
+      icon: Crown,
+      color: 'text-success',
+      bg: 'bg-success/10',
+    },
+    {
+      label: 'Agent Wallets',
+      value: platform.agentWalletCount,
+      icon: Wallet,
+      color: 'text-primary',
+      bg: 'bg-primary/10',
     },
   ];
 
