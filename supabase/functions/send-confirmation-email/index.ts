@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "resend";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
@@ -10,29 +11,77 @@ const corsHeaders = {
 };
 
 interface ConfirmationEmailRequest {
-  email: string;
   confirmationUrl: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { email, confirmationUrl }: ConfirmationEmailRequest = await req.json();
-
-    // Validate required fields
-    if (!email || !confirmationUrl) {
-      throw new Error("Missing required fields: email and confirmationUrl are required");
+    // Authenticate the request
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
     }
 
-    console.log(`Sending confirmation email to: ${email}`);
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const userEmail = claimsData.claims.email as string;
+    if (!userEmail) {
+      return new Response(JSON.stringify({ error: "No email associated with account" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const { confirmationUrl }: ConfirmationEmailRequest = await req.json();
+
+    if (!confirmationUrl) {
+      return new Response(JSON.stringify({ error: "Missing confirmationUrl" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // Validate confirmationUrl is from our domain to prevent phishing
+    const allowedOrigins = ["https://edtudwkmswyjxamkdkbu.supabase.co", "https://wealth-whisperer-206.lovable.app"];
+    let isAllowedUrl = false;
+    try {
+      const url = new URL(confirmationUrl);
+      isAllowedUrl = allowedOrigins.some(origin => url.origin === origin);
+    } catch {
+      isAllowedUrl = false;
+    }
+    if (!isAllowedUrl) {
+      return new Response(JSON.stringify({ error: "Invalid confirmation URL" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    console.log(`Sending confirmation email to authenticated user: ${userEmail}`);
 
     const emailResponse = await resend.emails.send({
       from: "InControl <noreply@incontrol.finance>",
-      to: [email],
+      to: [userEmail],
       subject: "Confirm your InControl account",
       html: `
 <!DOCTYPE html>
@@ -118,15 +167,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(JSON.stringify({ success: true, data: emailResponse }), {
       status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error: any) {
     console.error("Error in send-confirmation-email function:", error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: "Failed to send email" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
