@@ -1,36 +1,44 @@
 
 
-# Fix: Transaction Email Not Sending + Activity Log Delay
+# Fix: Show Swap Amounts in Trade Confirmation Email
 
-## Issue 1: Transaction emails silently failing (wrong domain)
+## Problem
+The trade confirmation email is missing the amounts because the email template only renders an "Amount" row when both `details.amount` and `details.token` are provided. For trades, `token` is not passed (only `fromToken` and `toToken`), so the amount row is skipped entirely.
 
-The `sendTransactionEmail` function in `agent-wallet/index.ts` sends from `noreply@incontrol.app`, but the verified Resend domain is `incontrol.finance` (used by the working confirmation email). Resend rejects emails from unverified domains silently.
+## Solution
+Update the `sendTransactionEmail` function in `supabase/functions/agent-wallet/index.ts` to handle trade-specific amount display. Two changes needed:
 
-**Fix**: Change the `from` address in `sendTransactionEmail` (line 447) from `noreply@incontrol.app` to `noreply@incontrol.finance`.
-
-Also fix the same issue in `check-wallet-balance/index.ts` (line 126) which uses the same wrong domain for deposit notification emails.
-
-## Issue 2: Activity log not appearing immediately
-
-The `tradeTokens` function in `useAgentWallet.ts` calls `fetchLogs()` after the trade completes, but there are two problems:
-
-1. **No immediate UI refresh after fetchLogs**: The `fetchLogs` call fetches logs from the edge function, but the component may not re-render promptly if the state update races with other updates.
-
-2. **Missing refetch after trade response**: The hook should also call `fetchStatus()` to update the wallet balance shown in the UI, not just logs.
-
-**Fix**: In `useAgentWallet.ts`, update `tradeTokens` to call both `fetchStatus` and `fetchLogs` after a successful trade, and add a small delay before fetching logs to ensure the database write has committed:
+### Change 1: Pass trade amounts to the email function
+Update the trade email call (line 1041-1043) to also pass the `fromAmount` and `toAmount` values from the swap result so the email can show exactly what was swapped.
 
 ```typescript
-const result = await invoke('trade', { amount, from_token: fromToken, to_token: toToken });
-// Small delay to ensure DB write is committed
-await new Promise(r => setTimeout(r, 500));
-await Promise.all([fetchLogs(), fetchStatus()]);
+await sendTransactionEmail(wallet.wallet_email, 'Trade', {
+  amount, fromToken: from_token, toToken: to_token, txHash,
+  fromAmount: swapResult?.fromAmount,
+  toAmount: swapResult?.toAmount,
+  fromDecimals: from_token === 'USDC' ? 6 : 18,
+  toDecimals: to_token === 'ETH' ? 18 : 6,
+});
 ```
 
-Apply the same pattern to `sendUsdc` and `sendEth` which have the same issue.
+### Change 2: Update the email template to render trade amounts
+In the `sendTransactionEmail` function, add a trade-specific row that shows "Amount: 0.2 USDC -> 0.000100 ETH" when `fromToken`, `toToken`, and `amount` are all present.
 
-## Files Changed
+Update the details type to include optional `fromAmount`/`toAmount` fields and add a new template row:
 
-1. **supabase/functions/agent-wallet/index.ts** - Fix email `from` domain (`incontrol.app` to `incontrol.finance`)
-2. **supabase/functions/check-wallet-balance/index.ts** - Fix email `from` domain (`incontrol.app` to `incontrol.finance`)
-3. **src/hooks/useAgentWallet.ts** - Add 500ms delay before log/status refetch in `tradeTokens`, `sendUsdc`, `sendEth`
+```typescript
+// For trades, show the input amount alongside the pair
+if (details.fromToken && details.toToken && details.amount !== undefined) {
+  detailsHtml += `<tr><td style="...">Amount</td><td style="...;font-weight:600;">${details.amount} ${details.fromToken}</td></tr>`;
+  detailsHtml += `<tr><td style="...">Pair</td><td style="...;font-weight:600;">${details.fromToken} -> ${details.toToken}</td></tr>`;
+}
+```
+
+This way the email will show:
+- **Amount**: 0.2 USDC
+- **Pair**: USDC -> ETH
+- **Tx Hash**: 0x144385ec...bb58cf7c
+- **Time**: Wed, 18 Feb 2026 01:48:20 GMT
+
+### File changed
+- `supabase/functions/agent-wallet/index.ts` -- update `sendTransactionEmail` to show amounts for trades
