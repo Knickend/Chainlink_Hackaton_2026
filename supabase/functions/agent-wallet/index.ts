@@ -9,6 +9,11 @@ const corsHeaders = {
 
 const CDP_API_BASE = 'https://api.cdp.coinbase.com';
 
+function isValidEthereumAddress(address: string): boolean {
+  if (!address) return false;
+  return /^0x[0-9a-fA-F]{40}$/.test(address);
+}
+
 // --- Minimal RLP encoder for EIP-1559 transactions ---
 function rlpEncodeLength(len: number, offset: number): Uint8Array {
   if (len < 56) return new Uint8Array([len + offset]);
@@ -738,6 +743,7 @@ serve(async (req) => {
       case 'send': {
         const { amount, recipient } = params;
         if (!amount || !recipient) throw new Error('Amount and recipient are required');
+        if (!isValidEthereumAddress(recipient)) throw new Error('Invalid Ethereum address format. Must be 0x followed by 40 hex characters.');
 
         const { data: wallet } = await userClient
           .from('agent_wallets')
@@ -1173,6 +1179,7 @@ serve(async (req) => {
       case 'send-eth': {
         const { amount, recipient } = params;
         if (!amount || !recipient) throw new Error('Amount and recipient are required');
+        if (!isValidEthereumAddress(recipient)) throw new Error('Invalid Ethereum address format. Must be 0x followed by 40 hex characters.');
 
         const { data: wallet } = await userClient
           .from('agent_wallets')
