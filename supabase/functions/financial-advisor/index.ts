@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,23 +30,20 @@ function checkRateLimit(key: string, maxRequests: number, windowMs: number): { a
   return { allowed: true, remaining: maxRequests - record.count, resetTime: record.resetTime };
 }
 
-function getClientIP(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
-    || req.headers.get("x-real-ip") 
-    || "unknown";
-}
 
-function getUserIdFromAuth(req: Request): string | null {
+async function getAuthenticatedUser(req: Request): Promise<{ userId: string } | null> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
-  
+
   try {
-    const token = authHeader.replace("Bearer ", "");
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return payload.sub || null;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) return null;
+    return { userId: user.id };
   } catch {
     return null;
   }
@@ -107,9 +105,15 @@ serve(async (req) => {
   }
 
   try {
-    const userId = getUserIdFromAuth(req);
-    const clientIP = getClientIP(req);
-    const rateLimitKey = userId ? `user:${userId}` : `ip:${clientIP}`;
+    const authResult = await getAuthenticatedUser(req);
+    if (!authResult) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const userId = authResult.userId;
+    const rateLimitKey = `user:${userId}`;
     
     const { allowed, remaining, resetTime } = checkRateLimit(
       rateLimitKey, 
