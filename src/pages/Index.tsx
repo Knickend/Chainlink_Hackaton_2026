@@ -781,7 +781,7 @@ const IndexContent = () => {
         </motion.footer>
       </div>
 
-        {/* AI Financial Advisor Chat */}
+        {/* AI CFO Chat */}
         <FinancialAdvisorChat
           portfolioData={{
             assets,

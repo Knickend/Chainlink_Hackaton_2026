@@ -51,7 +51,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
       'Non-recurring expense tracking',
       'Debt payoff calculator',
       'Investment strategy advisor',
-      'AI advisor with memory',
+      'AI CFO with memory',
       'Priority support',
       'Early access to features',
     ],

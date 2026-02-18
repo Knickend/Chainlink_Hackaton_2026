@@ -746,7 +746,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">Financial Advisor</h3>
+                    <h3 className="font-semibold">AI CFO</h3>
                     {isPro && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
                         <Brain className="w-3 h-3" />

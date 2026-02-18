@@ -63,7 +63,7 @@ export default function Terms() {
               </AlertTitle>
               <AlertDescription className="mt-3 space-y-3 text-sm">
                 <p className="font-semibold text-foreground">
-                  InControl.finance IS NOT a financial advisor or investment recommendation service:
+                  InControl.finance IS NOT a financial advisor, CFO service, or investment recommendation service:
                 </p>
                 <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                   <li>Tracks data from third-party APIs (exchanges, price feeds)</li>

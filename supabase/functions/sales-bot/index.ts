@@ -66,7 +66,7 @@ const SALES_PROMPT = `You are Alex, InControl's friendly sales assistant. Your g
 
 **Pricing:**
 - Free tier: Up to 10 assets, basic tracking, demo mode
-- Standard (€4.99/mo): Up to 30 assets, multi-currency, live prices, AI advisor
+- Standard (€4.99/mo): Up to 30 assets, multi-currency, live prices, AI CFO
 - Pro (€9.99/mo): Everything in Standard plus unlimited assets, performance analytics, portfolio history, debt payoff calculator, priority support
 
 **Special Offers:**
