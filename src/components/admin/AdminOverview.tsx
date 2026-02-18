@@ -106,7 +106,7 @@ export function AdminOverview({ analytics }: AdminOverviewProps) {
   const userStats = [
     {
       label: 'Total Users',
-      value: users.total,
+      value: platform.totalUsers,
       icon: Users,
       color: 'text-primary',
       bg: 'bg-primary/10',
