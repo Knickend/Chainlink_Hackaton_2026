@@ -64,7 +64,6 @@ Deno.serve(async (req) => {
     const paymentHeader = req.headers.get("X-Payment");
 
     if (!paymentHeader) {
-      // No payment - return 402 challenge
       console.log("No payment header, returning 402 challenge");
       const challenge = createPaymentChallenge(
         PRICE_CENTS,
@@ -85,51 +84,36 @@ Deno.serve(async (req) => {
 
     console.log("Payment verified, serving data...");
 
-    // Parse filters from query params OR request body
     const filters = await parseFilters(req, url);
 
-    // Payment verified - serve the data
+    // Use anon key instead of service role - only access public/aggregated data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Fetch aggregated portfolio data (anonymized insights)
+    // Fetch public price cache data (has public SELECT policy)
     const { data: priceData } = await supabase
       .from("price_cache")
       .select("symbol, price, change_percent, asset_type, updated_at")
       .order("updated_at", { ascending: false })
       .limit(filters.limit);
 
-    // Get platform-wide aggregated stats (no individual user data)
+    // Get pre-aggregated category stats from materialized view via RPC
     let categoryDistribution: { category: string; percentage: number; assetCount: number }[] = [];
     let totalTrackedCategories = 0;
 
     if (filters.includeCategories) {
-      const { data: assetStats } = await supabase
-        .from("assets")
-        .select("category, value")
-        .limit(1000);
+      const { data: aggStats } = await supabase.rpc("get_aggregated_portfolio_stats");
 
-      // Calculate category distribution
-      const categoryTotals: Record<string, { count: number; totalValue: number }> = {};
-      if (assetStats) {
-        assetStats.forEach((asset: { category: string; value: number }) => {
-          if (!categoryTotals[asset.category]) {
-            categoryTotals[asset.category] = { count: 0, totalValue: 0 };
-          }
-          categoryTotals[asset.category].count++;
-          categoryTotals[asset.category].totalValue += asset.value || 0;
-        });
+      if (aggStats) {
+        const totalValue = aggStats.reduce((sum: number, row: { total_value: number }) => sum + (row.total_value || 0), 0);
+        categoryDistribution = aggStats.map((row: { category: string; total_value: number; asset_count: number }) => ({
+          category: row.category,
+          percentage: totalValue > 0 ? Math.round(((row.total_value || 0) / totalValue) * 100) : 0,
+          assetCount: Number(row.asset_count),
+        }));
+        totalTrackedCategories = aggStats.length;
       }
-
-      // Calculate percentages
-      const totalValue = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.totalValue, 0);
-      categoryDistribution = Object.entries(categoryTotals).map(([category, stats]) => ({
-        category,
-        percentage: totalValue > 0 ? Math.round((stats.totalValue / totalValue) * 100) : 0,
-        assetCount: stats.count,
-      }));
-      totalTrackedCategories = Object.keys(categoryTotals).length;
     }
 
     const response = {
