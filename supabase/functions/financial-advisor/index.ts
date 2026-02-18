@@ -57,7 +57,7 @@ function getRateLimitHeaders(remaining: number, resetTime: number): Record<strin
   };
 }
 
-const BASE_SYSTEM_PROMPT = `You are InControl's AI Financial Advisor, a knowledgeable and friendly expert in personal finance. You help users with:
+const BASE_SYSTEM_PROMPT = `You are InControl's AI CFO, a knowledgeable and friendly expert in personal finance. You help users with:
 
 1. **Budgeting**: Creating and maintaining budgets, expense tracking, identifying areas to save money
 2. **Investing**: Understanding different asset classes (cash, stablecoins, real estate, cryptocurrency, stocks, bonds, ETFs, commodities), portfolio diversification, risk management, and long-term wealth building strategies
@@ -155,7 +155,7 @@ serve(async (req) => {
       systemPrompt += `\n\n## Agent Wallet Status\nThe user has an agentic crypto wallet on Base network.\n${walletContext}\n\nWhen relevant, suggest DeFi actions the user can take. They can say things like "Send 50 USDC to Alice" or "Swap 100 USDC for ETH". The chat will parse and execute these commands with user confirmation.`;
     }
     
-    console.log("Starting financial advisor chat with", messages.length, "messages", portfolioContext ? "+ portfolio context" : "(no portfolio)", memories?.length ? `+ ${memories.length} memories` : "(no memories)", walletContext ? "+ wallet context" : "", `(${rateLimitKey})`);
+    console.log("Starting AI CFO chat with", messages.length, "messages", portfolioContext ? "+ portfolio context" : "(no portfolio)", memories?.length ? `+ ${memories.length} memories` : "(no memories)", walletContext ? "+ wallet context" : "", `(${rateLimitKey})`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

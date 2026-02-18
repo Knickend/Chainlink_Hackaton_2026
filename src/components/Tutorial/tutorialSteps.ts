@@ -107,8 +107,8 @@ export const tutorialSteps: TutorialStep[] = [
   {
     id: 'ai-advisor',
     target: 'ai-advisor-button',
-    title: 'Your AI Financial Advisor',
-    content: 'Have questions about investing, budgeting, or debt? Click here to chat with our AI financial advisor anytime.',
+    title: 'Your AI CFO',
+    content: 'Have questions about investing, budgeting, or debt? Click here to chat with our AI CFO anytime.',
     position: 'left',
   },
   {
