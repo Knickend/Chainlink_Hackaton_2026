@@ -1,38 +1,32 @@
 
 
-# Fix Coinbase Onramp: Premature Email + iframe Blocked
+# Fix Coinbase Onramp UX in Preview Environment
 
-## Problem Summary
+## Problem
 
-Two issues with the "Fund Wallet" flow:
+Two remaining issues after the previous fix:
 
-1. **"pay.coinbase.com refused to connect"**: Coinbase's payment page sets `X-Frame-Options` headers that prevent loading inside iframes. The Lovable preview runs in an iframe, so `window.open` either gets blocked or the page refuses to render. This will work correctly on your published site, but we should improve the UX regardless.
+1. **The toast notification shows raw markdown** -- when the fund action succeeds, `toast({ title: result.message })` displays the raw markdown link text `**[Open Coinbase Pay here](https://...)** to complete payment` instead of a clean message. The toast component doesn't render markdown.
 
-2. **Premature notification email**: The edge function sends a "Fund Wallet Transaction Executed" email immediately when the onramp *session* is created -- before you've actually paid. This is why you get the email even though the payment page failed to load.
+2. **`window.open` is blocked by the iframe sandbox** -- the Lovable preview runs inside a sandboxed iframe, so `window.open` silently fails. The markdown link in the chat bubble *should* be clickable (ReactMarkdown renders it), but users need to know to click it there, not rely on a new tab opening.
 
 ## Solution
 
-### 1. Stop sending email on fund action (edge function)
+### 1. Fix the toast to show a clean message (not markdown)
 
-Remove the email notification from the `fund` action in `supabase/functions/agent-wallet/index.ts`. The onramp session creation is NOT a completed transaction -- the actual funding happens asynchronously when the user completes payment on Coinbase. The `check-wallet-balance` cron job already detects incoming deposits and can send the notification at that point instead.
+In `handleConfirmAction` in `FinancialAdvisorChat.tsx`, strip the markdown from the toast message. For FUND_WALLET specifically, show a simple toast like "Onramp session created -- use the link in chat to complete payment."
 
-**File**: `supabase/functions/agent-wallet/index.ts` (lines 1150-1154)
-- Remove the `sendTransactionEmail` call from the `fund` case
+### 2. Ensure the markdown link opens in a new tab
 
-### 2. Improve onramp URL handling in the frontend
+Add a custom `components` prop to the ReactMarkdown renderer so that all links open with `target="_blank"` and `rel="noopener noreferrer"`, and are visually styled as clickable links (underline, color).
 
-Update `src/hooks/useVoiceActions.ts` to not rely solely on `window.open` (which fails in iframes). Instead, always return the URL in the message as a clickable link so the user can open it manually.
+### 3. Keep `window.open` as best-effort (already done)
 
-**File**: `src/hooks/useVoiceActions.ts` (lines 404-413)
-- Keep `window.open` as a best-effort attempt
-- Always provide the clickable link in the response message regardless of whether `window.open` succeeded
-
-No other changes needed. The `check-wallet-balance` cron already handles incoming deposit detection and notifications.
+The `try { window.open(...) } catch {}` in `useVoiceActions.ts` stays. On the published site it will work; in preview it won't, but the clickable link in chat is the reliable fallback.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/agent-wallet/index.ts` | Remove premature email send from `fund` action |
-| `src/hooks/useVoiceActions.ts` | Improve fallback messaging for onramp URL |
+| `src/components/FinancialAdvisorChat.tsx` | Strip markdown from toast title for fund wallet results; add `target="_blank"` to ReactMarkdown link rendering |
 
