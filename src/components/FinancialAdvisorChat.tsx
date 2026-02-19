@@ -574,7 +574,11 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       }
       
       if (result.success) {
-        toast({ title: result.message });
+        // Strip markdown from toast — it doesn't render markdown
+        const toastTitle = pendingAction.action === 'FUND_WALLET'
+          ? 'Onramp session created — use the link in chat to complete payment.'
+          : result.message.replace(/\*\*|\[([^\]]+)\]\([^)]+\)/g, '$1');
+        toast({ title: toastTitle });
       }
     } catch (error) {
       console.error('Confirm action error:', error);
@@ -896,7 +900,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
                         {message.role === 'assistant' ? (
                           <div className="flex items-start justify-between gap-2">
                             <div className="prose prose-sm dark:prose-invert max-w-none flex-1">
-                              <ReactMarkdown>{message.content}</ReactMarkdown>
+                              <ReactMarkdown components={{ a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80" /> }}>{message.content}</ReactMarkdown>
                             </div>
                             <Button
                               size="icon"
