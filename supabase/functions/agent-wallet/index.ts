@@ -1147,12 +1147,8 @@ serve(async (req) => {
             .update({ status: 'executed', result: { sessionId, onramp_url: onrampUrl } })
             .eq('id', logEntry?.id);
 
-          // Send transaction email notification
-          if (wallet.notify_transactions && wallet.wallet_email) {
-            await sendTransactionEmail(wallet.wallet_email, 'Fund Wallet', {
-              amount, token: 'USDC',
-            });
-          }
+          // NOTE: No email here — onramp session creation is NOT a completed transaction.
+          // The check-wallet-balance cron detects actual deposits and notifies then.
 
           return new Response(
             JSON.stringify({
