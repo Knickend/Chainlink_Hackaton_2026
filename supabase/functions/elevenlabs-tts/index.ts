@@ -23,6 +23,14 @@ serve(async (req) => {
       throw new Error('Text is required');
     }
 
+    const MAX_TEXT_LENGTH = 5000;
+    if (text.length > MAX_TEXT_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     // Use George voice by default - professional and authoritative
     const selectedVoiceId = voiceId || 'JBFqnCBsd6RMkjVDRZzb';
 
