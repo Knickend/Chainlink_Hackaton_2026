@@ -405,10 +405,11 @@ export function useVoiceActions(handlers: ActionHandlers) {
           if (!handlers.fundWallet) return { success: false, message: 'Agent wallet not connected.' };
           const result = await handlers.fundWallet(data.amount);
           if (result?.onramp_url) {
-            window.open(result.onramp_url, '_blank', 'noopener,noreferrer');
+            // Best-effort: may be blocked in iframe environments
+            try { window.open(result.onramp_url, '_blank', 'noopener,noreferrer'); } catch {}
           }
           const msg = result?.onramp_url
-            ? `Onramp session created for $${data.amount}. A payment window has been opened. [Click here if it didn't open](${result.onramp_url})`
+            ? `Onramp session created for $${data.amount}. **[Open Coinbase Pay here](${result.onramp_url})** to complete payment. (If a new tab opened, you can use that instead.)`
             : result?.message || `Funding initiated for $${data.amount}.`;
           return { success: true, message: msg };
         }
