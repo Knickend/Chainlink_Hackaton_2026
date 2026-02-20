@@ -1,105 +1,75 @@
 
-## Fix plan: AI CFO should always attach a date when user mentions one
 
-### What I found
-The missing date is happening on a different path than the AI CFO backend function:
+# DCA Implementation Plan -- Ready to Execute
 
-1. **Text chat commands are pre-routed through `parse-voice-command` first** in `src/components/FinancialAdvisorChat.tsx` (`sendMessage`).
-2. For actionable text like “add bill for dinner 3 days ago for 56 usd”, the app calls `parse-voice-command` and executes immediately (without using the AI CFO `financial-advisor` flow).
-3. Current parser schema in `supabase/functions/parse-voice-command/index.ts` does **not include** `expense_date`/`income_date`, so date gets dropped.
-4. Confirmed from network/logs:
-   - `POST /functions/v1/parse-voice-command` returns:
-     `{"action":"ADD_EXPENSE","data":{"name":"dinner","amount":56,"category":"Food","is_recurring":false,"currency":"USD"}}`
-   - No matching `financial-advisor` log for that message.
+## Summary
 
-So the AI CFO date rules were improved, but the active command path for add/update still omitted date fields.
+Implementing the approved DCA (Dollar Cost Averaging) feature for crypto via the existing agent wallet. This adds automated, user-configurable crypto purchases (USDC to WETH/ETH/cbBTC on Base) with dip-buying logic.
 
----
+## Implementation Steps (in order)
 
-## Implementation approach
+### Step 1: Database Migration
+Create two new tables with RLS policies:
+- **`dca_strategies`** -- user config (frequency, amount, token pair, dip rules, budget tracking)
+- **`dca_executions`** -- execution log (price, amount, tx hash, trigger type)
+- `updated_at` trigger on `dca_strategies`
+- RLS: users manage their own rows; service role has full access for the orchestrator
 
-### 1) Upgrade command parser contract to support dates (primary fix)
-**File:** `supabase/functions/parse-voice-command/index.ts`
+### Step 2: Update `agent-wallet/index.ts`
+- Add **cbBTC** (`0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf`) to `TOKEN_MAP` and `SWAP_TOKEN_MAP`
+- Add **service-role bypass**: when `Authorization` matches the service role key AND `x-user-id` header is present, skip user JWT auth and use the override user ID (skips subscription check too, since the DCA orchestrator already verified eligibility)
 
-- Extend parser action schemas to include:
-  - `ADD_EXPENSE`: `expense_date?: string`
-  - `UPDATE_EXPENSE`: `expense_date?: string`
-  - `ADD_INCOME`: `income_date?: string`
-  - `UPDATE_INCOME`: `income_date?: string`
-- Add explicit parser rules:
-  - If user mentions a date/relative date, always include date field.
-  - Date must be `YYYY-MM-DD`.
-  - If date is present on ADD expense/income, default to one-time (`is_recurring: false`) unless user explicitly says recurring.
+### Step 3: Create `execute-dca-order` Edge Function
+New function secured by `CRON_SECRET`. Receives a payload from the CRE workflow:
+1. Validates CRON_SECRET
+2. Fetches user wallet, verifies trade skill + spending limits
+3. Inserts pending `dca_executions` row
+4. Calls `agent-wallet` trade via service role + `x-user-id`
+5. Updates execution status, strategy totals, `last_executed_at`
+6. Deactivates strategy if budget exhausted or executions hit 0
 
-### 2) Add deterministic date post-processing so it never silently drops
-**File:** `supabase/functions/parse-voice-command/index.ts`
+### Step 4: Create CRE Workflow `dca-trigger-ts`
+New folder `incontrol-cre-ts/dca-trigger-ts/` with:
+- `main.ts` -- daily CRE workflow that checks which strategies are due, fetches price, applies dip logic, calls `execute-dca-order`
+- `package.json`, `tsconfig.json`, `workflow.yaml`, `config.production.json`, `config.test.json`
 
-After model JSON is parsed, normalize output before returning:
+### Step 5: Frontend -- DCA Dashboard
+- **`src/hooks/useDCAStrategies.ts`** -- CRUD hook for strategies + executions
+- **`src/components/DCAStrategyForm.tsx`** -- config form (token, frequency, amount, budget, dip rules)
+- **`src/components/DCAProgressCard.tsx`** -- budget progress bar, tokens accumulated, next execution estimate
+- **`src/components/DCAExecutionHistory.tsx`** -- execution log table with BaseScan links
+- **`src/pages/DCA.tsx`** -- dashboard page combining all components
+- **`src/App.tsx`** -- add `/dca` route
 
-- Detect temporal references from original text (examples to support):
-  - `today`, `yesterday`, `tomorrow`
-  - `N days ago` / `N weeks ago`
-  - `last Monday` (weekday references)
-  - explicit date forms (`YYYY-MM-DD`, `Feb 20`, `February 20`, etc. where practical)
-- If action is expense/income ADD/UPDATE and parsed payload is missing date but temporal reference exists:
-  - inject computed `expense_date` / `income_date`.
-- Enforce recurrence defaults on ADD:
-  - date present + no explicit recurring intent → `is_recurring = false`.
+### Step 6: Config Updates
+- Add `[functions.execute-dca-order]` with `verify_jwt = false` to `supabase/config.toml` (auto-managed)
 
-This makes behavior reliable even when model output is incomplete.
+## Files Created
+| File | Purpose |
+|------|---------|
+| `supabase/functions/execute-dca-order/index.ts` | DCA orchestration edge function |
+| `incontrol-cre-ts/dca-trigger-ts/main.ts` | CRE workflow |
+| `incontrol-cre-ts/dca-trigger-ts/package.json` | Dependencies |
+| `incontrol-cre-ts/dca-trigger-ts/tsconfig.json` | TS config |
+| `incontrol-cre-ts/dca-trigger-ts/workflow.yaml` | CRE descriptor |
+| `incontrol-cre-ts/dca-trigger-ts/config.production.json` | Prod config |
+| `incontrol-cre-ts/dca-trigger-ts/config.test.json` | Test config |
+| `src/pages/DCA.tsx` | Dashboard page |
+| `src/hooks/useDCAStrategies.ts` | Data hook |
+| `src/components/DCAStrategyForm.tsx` | Strategy form |
+| `src/components/DCAProgressCard.tsx` | Progress card |
+| `src/components/DCAExecutionHistory.tsx` | History table |
 
-### 3) Prevent text-mode date regressions at routing layer
-**File:** `src/components/FinancialAdvisorChat.tsx`
+## Files Modified
+| File | Change |
+|------|--------|
+| `supabase/functions/agent-wallet/index.ts` | cbBTC token + service-role bypass |
+| `src/App.tsx` | Add `/dca` route |
 
-Add guard before immediate execution of parsed action in `sendMessage`:
+## Security
+- CRON_SECRET validates all automated calls to `execute-dca-order`
+- Service-role bypass gated on exact key match + `x-user-id` header
+- RLS enforces user isolation; service role can write for orchestration
+- Existing spending limits (per-tx + daily) are respected
+- Strategy auto-deactivates when budget is exhausted
 
-- If parsed action is `ADD/UPDATE_EXPENSE` or `ADD/UPDATE_INCOME`,
-- and user text includes temporal reference,
-- and parsed payload still lacks the required date field,
-- **do not execute parser result directly**; fall back to AI CFO chat flow for that message.
-
-This is a safety net so date is never lost again in text mode.
-
-### 4) Ensure date updates persist in backend update calls (hardening)
-**File:** `src/hooks/usePortfolioData.ts`
-
-Current update payload builders omit date fields. Extend:
-- `updateExpense` payload to include `expense_date` and `is_recurring` when provided.
-- `updateIncome` payload to include `income_date` and `is_recurring` when provided.
-
-This prevents “looks updated in UI but not actually persisted” issues for date edits.
-
----
-
-## Sequence
-1. Update parser schema + rules.
-2. Add parser post-processing normalization.
-3. Add routing guard in chat send flow.
-4. Add persistence hardening in portfolio update hooks.
-5. Validate manually end-to-end.
-
----
-
-## Validation checklist (must pass)
-1. Text mode:  
-   “add dinner expense 56 usd 3 days ago”  
-   → creates one-time expense with correct `expense_date`, correct amount.
-2. Text mode:  
-   “add groceries expense of 35 dollars that I made yesterday”  
-   → date auto-included (`YYYY-MM-DD`), no follow-up needed.
-3. Voice mode: same phrases above  
-   → same outcome with date present.
-4. Non-dated add:  
-   “add netflix expense 15 usd monthly”  
-   → remains recurring, no date forced.
-5. Update flow:  
-   “set date of dinner expense to yesterday”  
-   → date persists after refresh (not only local state).
-6. UI verification: item row shows non-recurring badge **and** date badge in Expense list.
-
----
-
-## Technical notes
-- No database migration required.
-- No authentication changes required.
-- This fix keeps existing architecture while closing the parser-vs-chat behavior gap that caused the missed dates.
