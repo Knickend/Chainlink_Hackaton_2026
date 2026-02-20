@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -269,6 +269,17 @@ const IndexContent = () => {
               >
                 <HelpCircle className="w-4 h-4" />
                 <span className="hidden sm:inline">Tour</span>
+              </Button>
+            )}
+            {!isDemo && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/dca')}
+                className="rounded-full"
+                title="DCA Strategies"
+              >
+                <Repeat className="w-5 h-5" />
               </Button>
             )}
             {!isDemo && (

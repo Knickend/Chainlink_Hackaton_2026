@@ -18,6 +18,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useChatMemories } from '@/hooks/useChatMemories';
 import { useAgentWallet } from '@/hooks/useAgentWallet';
 import { useAddressBook } from '@/hooks/useAddressBook';
+import { useDCAStrategies } from '@/hooks/useDCAStrategies';
 
 import { Asset, Income, Expense, Debt, Goal, getCurrencySymbol } from '@/lib/types';
 
@@ -261,6 +262,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
   // Agent wallet & address book
   const { status: walletStatus, sendUsdc, tradeTokens, getTradeQuote, fundWallet } = useAgentWallet();
   const { contacts } = useAddressBook();
+  const { createStrategy: createDCAStrategy } = useDCAStrategies();
   const walletConnected = walletStatus.connected;
 
   // Voice chat hook with fallback callback
@@ -347,6 +349,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     tradeTokens: walletConnected ? tradeTokens : undefined,
     getTradeQuote: walletConnected ? getTradeQuote : undefined,
     fundWallet: walletConnected ? fundWallet : undefined,
+    createDCAStrategy,
   });
 
   // Auto-scroll to bottom

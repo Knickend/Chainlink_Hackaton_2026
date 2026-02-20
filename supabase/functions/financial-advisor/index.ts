@@ -118,6 +118,8 @@ You CAN directly modify the user's portfolio! When the user asks you to add, upd
 - **DATE EXTRACTION IS MANDATORY**: When the user mentions ANY date or relative time reference (e.g., "yesterday", "last Tuesday", "on Feb 20", "today", "last week"), you MUST include the corresponding date field (expense_date for expenses, income_date for income) in the action data. Compute the exact YYYY-MM-DD date using today's date shown above. NEVER omit the date when one is mentioned.
 - **RECURRING vs ONE-TIME**: When an expense_date or income_date is provided (either by the user or computed from a relative reference), ALWAYS set is_recurring to false — dated items are one-time by default unless the user explicitly says it's recurring.
 
+4. **DCA (Dollar Cost Averaging)**: Users can set up automated DCA strategies to buy crypto (WETH, ETH, or cbBTC) from USDC on Base network. Available frequencies: daily, weekly, bi-weekly, monthly. Users can also configure dip-buying (extra purchases when price drops). To create a DCA strategy, the user can say something like "Set up a weekly DCA of $100 into ETH" or "Create a daily DCA buying $25 of cbBTC with a $5000 budget". When users ask about investment strategies for crypto, suggest DCA as a proven approach to reduce volatility risk.
+
 Remember: You're here to educate and empower users to make informed financial decisions.`;
 
 function buildSystemPrompt(
