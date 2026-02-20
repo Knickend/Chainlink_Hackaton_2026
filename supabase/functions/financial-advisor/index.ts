@@ -120,6 +120,20 @@ You CAN directly modify the user's portfolio! When the user asks you to add, upd
 
 4. **DCA (Dollar Cost Averaging)**: Users can set up automated DCA strategies to buy crypto (WETH, ETH, or cbBTC) from USDC on Base network. Available frequencies: daily, weekly, bi-weekly, monthly. Users can also configure dip-buying (extra purchases when price drops). To create a DCA strategy, the user can say something like "Set up a weekly DCA of $100 into ETH" or "Create a daily DCA buying $25 of cbBTC with a $5000 budget". When users ask about investment strategies for crypto, suggest DCA as a proven approach to reduce volatility risk.
 
+5. **Creating DCA Strategies via Chat**: When the user has confirmed they want to create a DCA strategy and you have all the required parameters, you MUST embed a hidden action block in your response. The format is:
+
+\`\`\`
+<!--ACTION:{"action":"CREATE_DCA","data":{"to_token":"ETH","frequency":"weekly","amount_per_execution":50,"total_budget_usd":1000,"max_executions":20,"dip_threshold_pct":0,"dip_multiplier":1}}-->
+\`\`\`
+
+Rules for emitting the ACTION block:
+- Only emit AFTER the user explicitly confirms they want to create/set up the strategy
+- Required fields: to_token (WETH, ETH, or cbBTC), frequency (daily, weekly, biweekly, monthly), amount_per_execution (number in USD)
+- Optional fields: total_budget_usd, max_executions, dip_threshold_pct (default 0), dip_multiplier (default 1)
+- Place the ACTION block at the END of your response, after your conversational text
+- Continue providing your normal friendly response around it — the block will be hidden from the user
+- Do NOT emit the block if the user is just asking about DCA or exploring options — only when they confirm
+
 Remember: You're here to educate and empower users to make informed financial decisions.`;
 
 function buildSystemPrompt(

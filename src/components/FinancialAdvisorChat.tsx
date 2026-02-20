@@ -453,7 +453,45 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     }
 
     return assistantContent;
-  }, []);
+  }, [walletConnected, walletStatus]);
+
+  // Parse and execute embedded ACTION blocks from advisor responses
+  const processActionBlocks = useCallback(async (content: string): Promise<string> => {
+    const actionRegex = /<!--ACTION:(.*?)-->/gs;
+    const matches = [...content.matchAll(actionRegex)];
+    
+    if (matches.length === 0) return content;
+
+    let cleanContent = content;
+    for (const match of matches) {
+      try {
+        const actionPayload = JSON.parse(match[1]);
+        console.log('[processActionBlocks] Found embedded action:', actionPayload);
+        const result = await executeAction(actionPayload);
+        if (result.success) {
+          toast({
+            title: '✅ Strategy Created',
+            description: result.message,
+          });
+        }
+      } catch (err) {
+        console.error('[processActionBlocks] Failed to execute embedded action:', err);
+      }
+      cleanContent = cleanContent.replace(match[0], '');
+    }
+
+    // Update displayed message with clean content
+    const trimmed = cleanContent.trim();
+    setMessages(prev => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'assistant') {
+        return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: trimmed } : m);
+      }
+      return prev;
+    });
+
+    return trimmed;
+  }, [executeAction, toast]);
 
   const sendMessage = useCallback(async (messageText?: string, skipVoicePlayback = false) => {
     const text = messageText || input.trim();
@@ -504,17 +542,18 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
         const portfolioContext = buildPortfolioSummary(assets, income, expenses, debts, goals);
         const assistantContent = await streamChat(text, newMessages, memories, portfolioContext);
 
-        // Parse action tags from AI response
+        // Parse action tags from AI response (dashboard actions + DCA)
+        let finalContent = assistantContent;
         if (assistantContent) {
-          const actionMatch = assistantContent.match(/<!--ACTION:(.*?)-->/);
+          const actionMatch = assistantContent.match(/<!--ACTION:(.*?)-->/s);
           if (actionMatch) {
             try {
               const actionPayload = JSON.parse(actionMatch[1]) as VoiceAction;
-              // Strip action tag from visible message
-              const cleanContent = assistantContent.replace(/<!--ACTION:.*?-->/g, '').trim();
+              // Strip action tags from visible message
+              finalContent = assistantContent.replace(/<!--ACTION:.*?-->/gs, '').trim();
               setMessages(prev =>
                 prev.map((m, i) =>
-                  i === prev.length - 1 ? { ...m, content: cleanContent } : m
+                  i === prev.length - 1 ? { ...m, content: finalContent } : m
                 )
               );
 
@@ -537,11 +576,11 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
           }
         }
 
-        if (isPro && assistantContent) {
-          storeConversationTurn(text, assistantContent.replace(/<!--ACTION:.*?-->/g, '').trim());
+        if (isPro && finalContent) {
+          storeConversationTurn(text, finalContent);
         }
-        if (voiceMode && !skipVoicePlayback && assistantContent) {
-          const plainText = assistantContent.replace(/<!--ACTION:.*?-->/g, '').replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
+        if (voiceMode && !skipVoicePlayback && finalContent) {
+          const plainText = finalContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
           await playResponse(plainText, messages.length);
         }
       }
@@ -557,7 +596,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, streamChat, voiceMode, playResponse, isPro, recallMemories, storeConversationTurn, parseVoiceCommand, contacts, executeAction]);
+  }, [input, isLoading, messages, streamChat, voiceMode, playResponse, isPro, recallMemories, storeConversationTurn, parseVoiceCommand, contacts, executeAction, processActionBlocks]);
 
   const handleVoiceCommand = useCallback(async (transcribedText: string) => {
     // Add user message to chat
