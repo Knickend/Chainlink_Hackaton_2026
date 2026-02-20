@@ -26,10 +26,10 @@ export function DCAProgressCard({ strategy, onToggle, onDelete, onEdit }: DCAPro
       const next = new Date(strategy.next_execution_at);
       return next > new Date() ? fmt(strategy.next_execution_at) : 'Due now';
     }
-    if (!strategy.last_executed_at) return 'Pending first run';
-    const last = new Date(strategy.last_executed_at);
+    const baseDate = strategy.last_executed_at || strategy.created_at;
+    const base = new Date(baseDate);
     const freqHours: Record<string, number> = { hourly: 1, daily: 24, weekly: 168, biweekly: 336, monthly: 720 };
-    const nextDate = new Date(last.getTime() + (freqHours[strategy.frequency] || 24) * 3600_000);
+    const nextDate = new Date(base.getTime() + (freqHours[strategy.frequency] || 24) * 3600_000);
     return nextDate > new Date() ? fmt(nextDate.toISOString()) : 'Due now';
   })();
 
