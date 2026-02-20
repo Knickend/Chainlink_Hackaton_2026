@@ -3,16 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDCAStrategies, type CreateStrategyInput } from '@/hooks/useDCAStrategies';
+import { useDCAStrategies, type CreateStrategyInput, type DCAStrategy } from '@/hooks/useDCAStrategies';
 import { DCAStrategyForm } from '@/components/DCAStrategyForm';
 import { DCAProgressCard } from '@/components/DCAProgressCard';
 import { DCAExecutionHistory } from '@/components/DCAExecutionHistory';
+import { EditDCAStrategyDialog } from '@/components/EditDCAStrategyDialog';
 
 export default function DCA() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { strategies, executions, isLoading, createStrategy, toggleStrategy, deleteStrategy } = useDCAStrategies();
+  const { strategies, executions, isLoading, createStrategy, updateStrategy, toggleStrategy, deleteStrategy } = useDCAStrategies();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingStrategy, setEditingStrategy] = useState<DCAStrategy | null>(null);
 
   if (!user) {
     navigate('/auth');
@@ -54,12 +56,22 @@ export default function DCA() {
                 strategy={s}
                 onToggle={toggleStrategy}
                 onDelete={deleteStrategy}
+                onEdit={setEditingStrategy}
               />
             ))}
           </div>
         ) : null}
 
         <DCAExecutionHistory executions={executions} />
+
+        {editingStrategy && (
+          <EditDCAStrategyDialog
+            strategy={editingStrategy}
+            open={!!editingStrategy}
+            onOpenChange={(open) => { if (!open) setEditingStrategy(null); }}
+            onSave={updateStrategy}
+          />
+        )}
       </div>
     </div>
   );

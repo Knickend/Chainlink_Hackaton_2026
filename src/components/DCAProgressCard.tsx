@@ -2,16 +2,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Pause, Play, Trash2 } from 'lucide-react';
+import { Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import type { DCAStrategy } from '@/hooks/useDCAStrategies';
 
 interface DCAProgressCardProps {
   strategy: DCAStrategy;
   onToggle: (id: string, isActive: boolean) => void;
   onDelete: (id: string) => void;
+  onEdit: (strategy: DCAStrategy) => void;
 }
 
-export function DCAProgressCard({ strategy, onToggle, onDelete }: DCAProgressCardProps) {
+export function DCAProgressCard({ strategy, onToggle, onDelete, onEdit }: DCAProgressCardProps) {
   const budgetProgress = strategy.total_budget_usd
     ? Math.min(100, (strategy.total_spent_usd / strategy.total_budget_usd) * 100)
     : null;
@@ -35,6 +36,9 @@ export function DCAProgressCard({ strategy, onToggle, onDelete }: DCAProgressCar
           <Badge variant={strategy.is_active ? 'default' : 'secondary'}>
             {strategy.is_active ? 'Active' : 'Paused'}
           </Badge>
+          <Button size="icon" variant="ghost" onClick={() => onEdit(strategy)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
           <Button size="icon" variant="ghost" onClick={() => onToggle(strategy.id, !strategy.is_active)}>
             {strategy.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>

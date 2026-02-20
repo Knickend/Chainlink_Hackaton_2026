@@ -159,11 +159,33 @@ export function useDCAStrategies() {
     await fetchStrategies();
   }, [toast, fetchStrategies]);
 
+  const updateStrategy = useCallback(async (id: string, input: Partial<CreateStrategyInput>) => {
+    const { error } = await supabase
+      .from('dca_strategies')
+      .update({
+        frequency: input.frequency,
+        amount_per_execution: input.amount_per_execution,
+        total_budget_usd: input.total_budget_usd ?? null,
+        max_executions: input.max_executions ?? null,
+        dip_threshold_pct: input.dip_threshold_pct ?? 0,
+        dip_multiplier: input.dip_multiplier ?? 1,
+      } as any)
+      .eq('id', id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update strategy', variant: 'destructive' });
+      throw error;
+    }
+    toast({ title: 'Strategy Updated', description: 'Your DCA strategy has been adjusted' });
+    await fetchStrategies();
+  }, [toast, fetchStrategies]);
+
   return {
     strategies,
     executions,
     isLoading,
     createStrategy,
+    updateStrategy,
     toggleStrategy,
     deleteStrategy,
     fetchExecutions,
