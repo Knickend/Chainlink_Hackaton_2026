@@ -17,13 +17,20 @@ export function DCAProgressCard({ strategy, onToggle, onDelete, onEdit }: DCAPro
     ? Math.min(100, (strategy.total_spent_usd / strategy.total_budget_usd) * 100)
     : null;
 
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
   const nextExecLabel = (() => {
     if (!strategy.is_active) return 'Paused';
+    if (strategy.next_execution_at) {
+      const next = new Date(strategy.next_execution_at);
+      return next > new Date() ? fmt(strategy.next_execution_at) : 'Due now';
+    }
     if (!strategy.last_executed_at) return 'Pending first run';
     const last = new Date(strategy.last_executed_at);
     const freqHours: Record<string, number> = { hourly: 1, daily: 24, weekly: 168, biweekly: 336, monthly: 720 };
     const nextDate = new Date(last.getTime() + (freqHours[strategy.frequency] || 24) * 3600_000);
-    return nextDate > new Date() ? `~${nextDate.toLocaleDateString()}` : 'Due now';
+    return nextDate > new Date() ? fmt(nextDate.toISOString()) : 'Due now';
   })();
 
   return (
@@ -65,7 +72,11 @@ export function DCAProgressCard({ strategy, onToggle, onDelete, onEdit }: DCAPro
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground">Next</p>
+            <p className="text-muted-foreground">Created</p>
+            <p className="font-medium">{fmt(strategy.created_at)}</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-muted-foreground">Next Run</p>
             <p className="font-medium">{nextExecLabel}</p>
           </div>
         </div>
