@@ -1,64 +1,80 @@
 
+# Add Edit/Adjust Option to DCA Strategy
 
-# Fix: AI Advisor DCA Strategy Creation
+## Overview
 
-## Problem
+Add an edit button to each DCA strategy card that opens a dialog pre-filled with the current strategy values, allowing users to adjust amount, frequency, budget, max executions, and dip-buying settings.
 
-The AI advisor discusses DCA strategies conversationally but never actually creates them in the database. Two root causes:
+## Changes
 
-1. **parse-voice-command failure**: The edge function call fails ("Failed to fetch"), so `CREATE_DCA` is never triggered
-2. **Multi-turn conversations don't trigger actions**: The advisor builds strategy details across multiple messages (as seen in your screenshots), but `parse-voice-command` only parses single messages -- it can't accumulate intent across a conversation
+### 1. Add `updateStrategy` to `useDCAStrategies` hook
 
-## Solution
+**File: `src/hooks/useDCAStrategies.ts`**
 
-Enable the `financial-advisor` edge function itself to return structured action commands embedded in its response, so the frontend can detect and execute them -- no dependency on `parse-voice-command`.
+Add a new `updateStrategy` function that accepts a strategy ID and a partial `CreateStrategyInput`, then calls `supabase.from('dca_strategies').update(...)`. Export it from the hook's return value.
 
-### How It Works
+### 2. Create `EditDCAStrategyDialog` component
 
-1. Update the `financial-advisor` system prompt to emit a special JSON block (e.g. `<!--ACTION:{"action":"CREATE_DCA","data":{...}}-->`) when the user confirms they want to create a strategy
-2. After streaming the advisor's response, the frontend scans for this action block
-3. If found, it extracts the action and runs it through `executeAction` (same path as voice commands)
-4. The strategy gets created in the database and appears on the `/dca` page
+**File: `src/components/EditDCAStrategyDialog.tsx`** (new)
 
-### Step 1: Update `financial-advisor` System Prompt
+A dialog component that:
+- Receives the current `DCAStrategy` and an `onSave` callback
+- Pre-fills all form fields (token, frequency, amount, budget, max executions, dip settings) from the strategy
+- Reuses the same form layout as `DCAStrategyForm` but inside a Dialog
+- Token selection is read-only (changing the token mid-strategy would break tracking)
+- On save, calls `onSave` with the updated values
 
-**File: `supabase/functions/financial-advisor/index.ts`**
+### 3. Add Edit button to `DCAProgressCard`
 
-Add instructions telling the AI to embed an action block when the user has confirmed all DCA parameters. The format:
+**File: `src/components/DCAProgressCard.tsx`**
 
+- Add a `Pencil` icon button next to the pause/delete buttons
+- Add `onEdit` callback prop
+- Wire it to open the edit dialog
+
+### 4. Wire everything in `DCA.tsx`
+
+**File: `src/pages/DCA.tsx`**
+
+- Get `updateStrategy` from the hook
+- Pass `onEdit` handler to `DCAProgressCard` that opens `EditDCAStrategyDialog`
+- Or: manage the edit dialog state at this level, passing the selected strategy down
+
+## Technical Details
+
+### `updateStrategy` function signature
+```typescript
+const updateStrategy = async (id: string, input: Partial<CreateStrategyInput>) => {
+  const { error } = await supabase
+    .from('dca_strategies')
+    .update({
+      frequency: input.frequency,
+      amount_per_execution: input.amount_per_execution,
+      total_budget_usd: input.total_budget_usd ?? null,
+      max_executions: input.max_executions ?? null,
+      dip_threshold_pct: input.dip_threshold_pct ?? 0,
+      dip_multiplier: input.dip_multiplier ?? 1,
+    })
+    .eq('id', id);
+  // toast + refetch
+};
 ```
-<!--ACTION:{"action":"CREATE_DCA","data":{"to_token":"cbBTC","frequency":"daily","amount_per_execution":10,"total_budget_usd":210,"max_executions":21,"dip_threshold_pct":5,"dip_multiplier":2}}-->
-```
 
-The AI should only emit this after the user confirms. It should continue providing its normal conversational response around the action block.
+### Editable fields
+- Frequency (daily/weekly/biweekly/monthly)
+- Amount per execution
+- Total budget
+- Max executions
+- Dip threshold and multiplier
 
-### Step 2: Parse Action Blocks in Frontend
+### Non-editable fields (displayed but disabled)
+- Token pair (from_token / to_token) -- changing mid-strategy would break accumulation tracking
 
-**File: `src/components/FinancialAdvisorChat.tsx`**
+## Files
 
-After `streamChat` returns the assistant's response, scan for `<!--ACTION:...-->` patterns. If found:
-- Extract the JSON payload
-- Call `executeAction` with the parsed action
-- Strip the action block from the displayed message (so the user sees clean text)
-- Show a toast confirming the strategy was created
-
-### Step 3: Ensure parse-voice-command Still Works as Fast Path
-
-No changes needed to the existing `parse-voice-command` flow -- it remains as an optimization for simple one-shot commands like "Create a weekly DCA of $50 into ETH". The new embedded-action approach handles the multi-turn conversation case.
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `supabase/functions/financial-advisor/index.ts` | Add ACTION block instructions to system prompt |
-| `src/components/FinancialAdvisorChat.tsx` | Parse ACTION blocks from streamed responses and execute them |
-
-## No New Files
-
-## Result
-
-- The AI advisor can create DCA strategies through natural multi-turn conversation
-- Strategies appear immediately on the `/dca` dashboard after creation
-- Works independently of `parse-voice-command` (no single point of failure)
-- One-shot commands still use the fast `parse-voice-command` path when available
-
+| File | Type | Change |
+|------|------|--------|
+| `src/hooks/useDCAStrategies.ts` | Modified | Add `updateStrategy` |
+| `src/components/EditDCAStrategyDialog.tsx` | New | Edit dialog with pre-filled form |
+| `src/components/DCAProgressCard.tsx` | Modified | Add edit button + `onEdit` prop |
+| `src/pages/DCA.tsx` | Modified | Wire edit dialog and `updateStrategy` |
