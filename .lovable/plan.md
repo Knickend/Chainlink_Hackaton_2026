@@ -1,75 +1,67 @@
 
 
-# DCA Implementation Plan -- Ready to Execute
+# Add DCA Navigation Link + AI Advisor DCA Strategy Creation
 
-## Summary
+## Overview
 
-Implementing the approved DCA (Dollar Cost Averaging) feature for crypto via the existing agent wallet. This adds automated, user-configurable crypto purchases (USDC to WETH/ETH/cbBTC on Base) with dip-buying logic.
+Two changes: (1) add a visible navigation link to `/dca` from the main dashboard, and (2) enable the AI CFO advisor to create DCA strategies through conversation.
 
-## Implementation Steps (in order)
+## Step 1: Add DCA Navigation to Dashboard Header
 
-### Step 1: Database Migration
-Create two new tables with RLS policies:
-- **`dca_strategies`** -- user config (frequency, amount, token pair, dip rules, budget tracking)
-- **`dca_executions`** -- execution log (price, amount, tx hash, trigger type)
-- `updated_at` trigger on `dca_strategies`
-- RLS: users manage their own rows; service role has full access for the orchestrator
+**File: `src/pages/Index.tsx`**
 
-### Step 2: Update `agent-wallet/index.ts`
-- Add **cbBTC** (`0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf`) to `TOKEN_MAP` and `SWAP_TOKEN_MAP`
-- Add **service-role bypass**: when `Authorization` matches the service role key AND `x-user-id` header is present, skip user JWT auth and use the override user ID (skips subscription check too, since the DCA orchestrator already verified eligibility)
+Add a "DCA" button in the header controls section (next to the Settings icon) that navigates to `/dca`. Uses the `Repeat` icon from lucide-react to represent recurring purchases. Only shown for authenticated (non-demo) users.
 
-### Step 3: Create `execute-dca-order` Edge Function
-New function secured by `CRON_SECRET`. Receives a payload from the CRE workflow:
-1. Validates CRON_SECRET
-2. Fetches user wallet, verifies trade skill + spending limits
-3. Inserts pending `dca_executions` row
-4. Calls `agent-wallet` trade via service role + `x-user-id`
-5. Updates execution status, strategy totals, `last_executed_at`
-6. Deactivates strategy if budget exhausted or executions hit 0
+## Step 2: Add `CREATE_DCA` Action to Voice Command Parser
 
-### Step 4: Create CRE Workflow `dca-trigger-ts`
-New folder `incontrol-cre-ts/dca-trigger-ts/` with:
-- `main.ts` -- daily CRE workflow that checks which strategies are due, fetches price, applies dip logic, calls `execute-dca-order`
-- `package.json`, `tsconfig.json`, `workflow.yaml`, `config.production.json`, `config.test.json`
+**File: `supabase/functions/parse-voice-command/index.ts`**
 
-### Step 5: Frontend -- DCA Dashboard
-- **`src/hooks/useDCAStrategies.ts`** -- CRUD hook for strategies + executions
-- **`src/components/DCAStrategyForm.tsx`** -- config form (token, frequency, amount, budget, dip rules)
-- **`src/components/DCAProgressCard.tsx`** -- budget progress bar, tokens accumulated, next execution estimate
-- **`src/components/DCAExecutionHistory.tsx`** -- execution log table with BaseScan links
-- **`src/pages/DCA.tsx`** -- dashboard page combining all components
-- **`src/App.tsx`** -- add `/dca` route
+Add a new action type to the system prompt:
 
-### Step 6: Config Updates
-- Add `[functions.execute-dca-order]` with `verify_jwt = false` to `supabase/config.toml` (auto-managed)
+```
+CREATE_DCA: { action: "CREATE_DCA", data: { to_token: "WETH"|"ETH"|"cbBTC", frequency: "daily"|"weekly"|"biweekly"|"monthly", amount_per_execution: number, total_budget_usd?: number, dip_threshold_pct?: number, dip_multiplier?: number } }
+```
 
-## Files Created
-| File | Purpose |
-|------|---------|
-| `supabase/functions/execute-dca-order/index.ts` | DCA orchestration edge function |
-| `incontrol-cre-ts/dca-trigger-ts/main.ts` | CRE workflow |
-| `incontrol-cre-ts/dca-trigger-ts/package.json` | Dependencies |
-| `incontrol-cre-ts/dca-trigger-ts/tsconfig.json` | TS config |
-| `incontrol-cre-ts/dca-trigger-ts/workflow.yaml` | CRE descriptor |
-| `incontrol-cre-ts/dca-trigger-ts/config.production.json` | Prod config |
-| `incontrol-cre-ts/dca-trigger-ts/config.test.json` | Test config |
-| `src/pages/DCA.tsx` | Dashboard page |
-| `src/hooks/useDCAStrategies.ts` | Data hook |
-| `src/components/DCAStrategyForm.tsx` | Strategy form |
-| `src/components/DCAProgressCard.tsx` | Progress card |
-| `src/components/DCAExecutionHistory.tsx` | History table |
+This lets the parser recognize DCA-related commands like "Set up a weekly DCA of $50 into ETH" or "Create a daily DCA buying $25 of cbBTC with a $5000 budget".
+
+## Step 3: Handle `CREATE_DCA` in `useVoiceActions`
+
+**File: `src/hooks/useVoiceActions.ts`**
+
+- Accept `createDCAStrategy` as an optional handler prop
+- Add a `CREATE_DCA` case that calls `createDCAStrategy` with the parsed parameters
+- Returns a confirmation message with the strategy details
+
+## Step 4: Wire DCA Hook into FinancialAdvisorChat
+
+**File: `src/components/FinancialAdvisorChat.tsx`**
+
+- Import and use `useDCAStrategies` hook
+- Pass `createStrategy` to `useVoiceActions` as `createDCAStrategy`
+- This enables the chat to create DCA strategies from natural conversation
+
+## Step 5: Update AI CFO System Prompt
+
+**File: `supabase/functions/financial-advisor/index.ts`**
+
+Add DCA awareness to the system prompt so the AI knows:
+- Users can set up automated DCA strategies via chat commands
+- Available tokens: WETH, ETH, cbBTC (from USDC)
+- Available frequencies: daily, weekly, bi-weekly, monthly
+- It can suggest DCA when users ask about investment strategies
+- Example phrasing: "Set up a weekly DCA of $100 into ETH"
 
 ## Files Modified
+
 | File | Change |
 |------|--------|
-| `supabase/functions/agent-wallet/index.ts` | cbBTC token + service-role bypass |
-| `src/App.tsx` | Add `/dca` route |
+| `src/pages/Index.tsx` | Add DCA navigation button in header |
+| `supabase/functions/parse-voice-command/index.ts` | Add CREATE_DCA action type |
+| `src/hooks/useVoiceActions.ts` | Handle CREATE_DCA action |
+| `src/components/FinancialAdvisorChat.tsx` | Wire useDCAStrategies into chat |
+| `supabase/functions/financial-advisor/index.ts` | Add DCA context to system prompt |
 
-## Security
-- CRON_SECRET validates all automated calls to `execute-dca-order`
-- Service-role bypass gated on exact key match + `x-user-id` header
-- RLS enforces user isolation; service role can write for orchestration
-- Existing spending limits (per-tx + daily) are respected
-- Strategy auto-deactivates when budget is exhausted
+## No New Files
+
+All changes are modifications to existing files.
 
