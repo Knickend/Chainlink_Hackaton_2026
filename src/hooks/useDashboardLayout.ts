@@ -18,42 +18,54 @@ export const CARD_REGISTRY: CardConfig[] = [
   { id: 'allocation-chart', label: 'Allocation Chart', defaultW: 4, defaultH: 3, minW: 3, minH: 2 },
   { id: 'portfolio-history', label: 'Portfolio History', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'pnl-overview', label: 'Profit & Loss', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
+  { id: 'asset-categories', label: 'Asset Categories', defaultW: 12, defaultH: 4, minW: 6, minH: 3 },
+  { id: 'rebalancer', label: 'Portfolio Rebalancer', defaultW: 6, defaultH: 4, minW: 4, minH: 3 },
   { id: 'goals-overview', label: 'Financial Goals', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
   { id: 'investment-strategy', label: 'Investment Strategy', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
   { id: 'income-card', label: 'Income', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'expense-card', label: 'Expenses', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'debt-card', label: 'Debt Overview', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'debt-payoff', label: 'Debt Payoff Calculator', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
-  { id: 'rebalancer', label: 'Portfolio Rebalancer', defaultW: 6, defaultH: 4, minW: 4, minH: 3 },
 ];
 
 function generateDefaultLayout(): LayoutItem[] {
   let y = 0;
   const layout: LayoutItem[] = [];
 
-  layout.push({ i: 'net-worth-trend', x: 0, y, w: 4, h: 3, minW: 3, minH: 2 });
-  layout.push({ i: 'allocation-chart', x: 4, y, w: 4, h: 3, minW: 3, minH: 2 });
+  // Row 1: Charts
+  layout.push({ i: 'net-worth-trend', x: 0, y, w: 4, h: 4, minW: 3, minH: 2 });
+  layout.push({ i: 'allocation-chart', x: 4, y, w: 4, h: 4, minW: 3, minH: 2 });
   layout.push({ i: 'portfolio-history', x: 8, y, w: 4, h: 4, minW: 3, minH: 3 });
   y += 4;
 
+  // Row 2: Profit & Loss
   layout.push({ i: 'pnl-overview', x: 0, y, w: 12, h: 3, minW: 6, minH: 2 });
   y += 3;
 
+  // Row 3: Asset Categories
+  layout.push({ i: 'asset-categories', x: 0, y, w: 12, h: 4, minW: 6, minH: 3 });
+  y += 4;
+
+  // Row 4: Rebalancer
+  layout.push({ i: 'rebalancer', x: 0, y, w: 6, h: 4, minW: 4, minH: 3 });
+  y += 4;
+
+  // Row 5: Goals
   layout.push({ i: 'goals-overview', x: 0, y, w: 12, h: 3, minW: 6, minH: 2 });
   y += 3;
 
+  // Row 6: Investment Strategy
   layout.push({ i: 'investment-strategy', x: 0, y, w: 12, h: 3, minW: 6, minH: 2 });
   y += 3;
 
+  // Row 7: Income / Expenses / Debt
   layout.push({ i: 'income-card', x: 0, y, w: 4, h: 4, minW: 3, minH: 3 });
   layout.push({ i: 'expense-card', x: 4, y, w: 4, h: 4, minW: 3, minH: 3 });
   layout.push({ i: 'debt-card', x: 8, y, w: 4, h: 4, minW: 3, minH: 3 });
   y += 4;
 
+  // Row 8: Debt Payoff
   layout.push({ i: 'debt-payoff', x: 0, y, w: 12, h: 3, minW: 6, minH: 2 });
-  y += 3;
-
-  layout.push({ i: 'rebalancer', x: 0, y, w: 6, h: 4, minW: 4, minH: 3 });
 
   return layout;
 }

@@ -645,221 +645,221 @@ const IndexContent = () => {
                 />
               ) : null
             ),
+            'asset-categories': (
+              <div>
+                <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
+                  <h2 className="text-xl font-semibold">Assets by Category</h2>
+                  <div className="flex items-center gap-2">
+                    <ViewAllAssetsDialog
+                      assets={Object.values(assetsByCategory).flat()}
+                      formatValue={formatValue}
+                      onUpdateAsset={isDemo ? undefined : updateAsset}
+                      onDeleteAsset={isDemo ? undefined : deleteAsset}
+                      onSellAsset={isDemo ? undefined : async (assetId, data) => {
+                        const asset = assets.find(a => a.id === assetId);
+                        if (!asset) return;
+                        
+                        await addTransaction({
+                          asset_id: assetId,
+                          transaction_type: 'sell',
+                          symbol: asset.symbol || asset.name,
+                          asset_name: asset.name,
+                          category: asset.category,
+                          quantity: data.quantity,
+                          price_per_unit: data.price_per_unit,
+                          total_value: data.total_value,
+                          realized_pnl: data.realized_pnl,
+                          transaction_date: data.transaction_date,
+                          notes: data.notes,
+                        });
+                        
+                        const remainingQty = (asset.quantity || 0) - data.quantity;
+                        
+                        if (remainingQty <= 0) {
+                          await deleteAsset(assetId);
+                        } else {
+                          const originalQty = asset.quantity || 0;
+                          const newCostBasis = asset.cost_basis 
+                            ? asset.cost_basis * (remainingQty / originalQty)
+                            : undefined;
+                          
+                          await updateAsset(assetId, {
+                            quantity: remainingQty,
+                            cost_basis: newCostBasis,
+                          });
+                        }
+                      }}
+                      livePrices={prices}
+                    />
+                    {isDemo ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/auth')}
+                        className="gap-2"
+                        data-tutorial="add-asset-button"
+                      >
+                        <PiggyBank className="w-4 h-4" />
+                        Add Asset
+                      </Button>
+                    ) : (
+                      <div data-tutorial="add-asset-button">
+                        <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {categoryTotals.length === 0 ? (
+                  <div className="glass-card rounded-xl p-8 text-center">
+                    <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(() => {
+                      const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
+                      return categoryTotals.map((cat, index) => (
+                        <AssetCategoryCard
+                          key={cat.category}
+                          category={cat.category as AssetCategory}
+                          assets={assetsByCategory[cat.category] || []}
+                          total={formatDisplayUnitValue(cat.total)}
+                          percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
+                          formatValue={formatValue}
+                          formatDisplayUnitValue={formatDisplayUnitValue}
+                          displayUnit={displayUnit}
+                          conversionRates={conversionRates}
+                          onUpdateAsset={isDemo ? undefined : updateAsset}
+                          onDeleteAsset={isDemo ? undefined : deleteAsset}
+                          onBuyMore={isDemo ? undefined : async (assetId, data) => {
+                            const asset = assets.find(a => a.id === assetId);
+                            if (!asset) return;
+                            
+                            if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                              const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                              if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
+                                console.error('Insufficient source balance');
+                                return;
+                              }
+                            }
+                            
+                            await addTransaction({
+                              asset_id: assetId,
+                              transaction_type: 'buy',
+                              symbol: asset.symbol || asset.name,
+                              asset_name: asset.name,
+                              category: asset.category,
+                              quantity: data.quantity,
+                              price_per_unit: data.price_per_unit,
+                              total_value: data.quantity * data.price_per_unit,
+                              transaction_date: data.transaction_date,
+                              fund_flow_mode: data.fund_flow_mode,
+                              source_asset_id: data.source_asset_id,
+                              source_label: data.source_label,
+                              source_currency: data.source_currency,
+                              source_amount: data.source_amount,
+                            });
+                            
+                            const newQuantity = (asset.quantity || 0) + data.quantity;
+                            const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
+                            
+                            await updateAsset(assetId, {
+                              quantity: newQuantity,
+                              cost_basis: newCostBasis,
+                              purchase_price_per_unit: newCostBasis / newQuantity,
+                            });
+                            
+                            if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                              const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                              if (sourceAsset) {
+                                const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
+                                if (newSourceQty <= 0) {
+                                  await deleteAsset(data.source_asset_id);
+                                } else {
+                                  const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
+                                  
+                                  if (sourceAsset.category === 'banking') {
+                                    const forexRate = getForexRateToUSD(
+                                      sourceAsset.symbol || 'USD',
+                                      prices.forex
+                                    );
+                                    updateData.value = newSourceQty * forexRate;
+                                  }
+                                  
+                                  await updateAsset(data.source_asset_id, updateData);
+                                }
+                              }
+                            }
+                          }}
+                          onSell={isDemo ? undefined : async (assetId, data) => {
+                            const asset = assets.find(a => a.id === assetId);
+                            if (!asset) return;
+                            
+                            await addTransaction({
+                              asset_id: assetId,
+                              transaction_type: 'sell',
+                              symbol: asset.symbol || asset.name,
+                              asset_name: asset.name,
+                              category: asset.category,
+                              quantity: data.quantity,
+                              price_per_unit: data.price_per_unit,
+                              total_value: data.total_value,
+                              realized_pnl: data.realized_pnl,
+                              transaction_date: data.transaction_date,
+                              notes: data.notes,
+                              fund_flow_mode: data.fund_flow_mode,
+                              destination_asset_id: data.destination_asset_id,
+                              destination_label: data.destination_label,
+                              destination_currency: data.destination_currency,
+                              destination_amount: data.destination_amount,
+                            });
+                            
+                            const remainingQty = (asset.quantity || 0) - data.quantity;
+                            
+                            if (remainingQty <= 0) {
+                              await deleteAsset(assetId);
+                            } else {
+                              const originalQty = asset.quantity || 0;
+                              const newCostBasis = asset.cost_basis 
+                                ? asset.cost_basis * (remainingQty / originalQty)
+                                : undefined;
+                              
+                              await updateAsset(assetId, {
+                                quantity: remainingQty,
+                                cost_basis: newCostBasis,
+                              });
+                            }
+                            
+                            if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
+                              const destAsset = assets.find(a => a.id === data.destination_asset_id);
+                              if (destAsset) {
+                                const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
+                                
+                                const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
+                                
+                                if (destAsset.category === 'banking') {
+                                  const forexRate = getForexRateToUSD(
+                                    destAsset.symbol || 'USD',
+                                    prices.forex
+                                  );
+                                  updateData.value = newDestQty * forexRate;
+                                }
+                                
+                                await updateAsset(data.destination_asset_id, updateData);
+                              }
+                            }
+                          }}
+                          livePrices={prices}
+                          allAssets={assets}
+                          delay={index * 0.1}
+                        />
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+            ),
           }}
         />
-
-        {/* Asset Categories */}
-        <div className="mb-8 mt-8">
-          <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
-            <h2 className="text-xl font-semibold">Assets by Category</h2>
-            <div className="flex items-center gap-2">
-              <ViewAllAssetsDialog
-                assets={Object.values(assetsByCategory).flat()}
-                formatValue={formatValue}
-                onUpdateAsset={isDemo ? undefined : updateAsset}
-                onDeleteAsset={isDemo ? undefined : deleteAsset}
-                onSellAsset={isDemo ? undefined : async (assetId, data) => {
-                  const asset = assets.find(a => a.id === assetId);
-                  if (!asset) return;
-                  
-                  await addTransaction({
-                    asset_id: assetId,
-                    transaction_type: 'sell',
-                    symbol: asset.symbol || asset.name,
-                    asset_name: asset.name,
-                    category: asset.category,
-                    quantity: data.quantity,
-                    price_per_unit: data.price_per_unit,
-                    total_value: data.total_value,
-                    realized_pnl: data.realized_pnl,
-                    transaction_date: data.transaction_date,
-                    notes: data.notes,
-                  });
-                  
-                  const remainingQty = (asset.quantity || 0) - data.quantity;
-                  
-                  if (remainingQty <= 0) {
-                    await deleteAsset(assetId);
-                  } else {
-                    const originalQty = asset.quantity || 0;
-                    const newCostBasis = asset.cost_basis 
-                      ? asset.cost_basis * (remainingQty / originalQty)
-                      : undefined;
-                    
-                    await updateAsset(assetId, {
-                      quantity: remainingQty,
-                      cost_basis: newCostBasis,
-                    });
-                  }
-                }}
-                livePrices={prices}
-              />
-              {isDemo ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/auth')}
-                  className="gap-2"
-                  data-tutorial="add-asset-button"
-                >
-                  <PiggyBank className="w-4 h-4" />
-                  Add Asset
-                </Button>
-              ) : (
-                <div data-tutorial="add-asset-button">
-                  <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />
-                </div>
-              )}
-            </div>
-          </div>
-          {categoryTotals.length === 0 ? (
-            <div className="glass-card rounded-xl p-8 text-center">
-              <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(() => {
-                const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
-                return categoryTotals.map((cat, index) => (
-                  <AssetCategoryCard
-                    key={cat.category}
-                    category={cat.category as AssetCategory}
-                    assets={assetsByCategory[cat.category] || []}
-                    total={formatDisplayUnitValue(cat.total)}
-                    percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
-                    formatValue={formatValue}
-                    formatDisplayUnitValue={formatDisplayUnitValue}
-                    displayUnit={displayUnit}
-                    conversionRates={conversionRates}
-                    onUpdateAsset={isDemo ? undefined : updateAsset}
-                    onDeleteAsset={isDemo ? undefined : deleteAsset}
-                  onBuyMore={isDemo ? undefined : async (assetId, data) => {
-                    const asset = assets.find(a => a.id === assetId);
-                    if (!asset) return;
-                    
-                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
-                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
-                      if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
-                        console.error('Insufficient source balance');
-                        return;
-                      }
-                    }
-                    
-                    await addTransaction({
-                      asset_id: assetId,
-                      transaction_type: 'buy',
-                      symbol: asset.symbol || asset.name,
-                      asset_name: asset.name,
-                      category: asset.category,
-                      quantity: data.quantity,
-                      price_per_unit: data.price_per_unit,
-                      total_value: data.quantity * data.price_per_unit,
-                      transaction_date: data.transaction_date,
-                      fund_flow_mode: data.fund_flow_mode,
-                      source_asset_id: data.source_asset_id,
-                      source_label: data.source_label,
-                      source_currency: data.source_currency,
-                      source_amount: data.source_amount,
-                    });
-                    
-                    const newQuantity = (asset.quantity || 0) + data.quantity;
-                    const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
-                    
-                    await updateAsset(assetId, {
-                      quantity: newQuantity,
-                      cost_basis: newCostBasis,
-                      purchase_price_per_unit: newCostBasis / newQuantity,
-                    });
-                    
-                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
-                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
-                      if (sourceAsset) {
-                        const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
-                        if (newSourceQty <= 0) {
-                          await deleteAsset(data.source_asset_id);
-                        } else {
-                          const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
-                          
-                          if (sourceAsset.category === 'banking') {
-                            const forexRate = getForexRateToUSD(
-                              sourceAsset.symbol || 'USD',
-                              prices.forex
-                            );
-                            updateData.value = newSourceQty * forexRate;
-                          }
-                          
-                          await updateAsset(data.source_asset_id, updateData);
-                        }
-                      }
-                    }
-                  }}
-                  onSell={isDemo ? undefined : async (assetId, data) => {
-                    const asset = assets.find(a => a.id === assetId);
-                    if (!asset) return;
-                    
-                    await addTransaction({
-                      asset_id: assetId,
-                      transaction_type: 'sell',
-                      symbol: asset.symbol || asset.name,
-                      asset_name: asset.name,
-                      category: asset.category,
-                      quantity: data.quantity,
-                      price_per_unit: data.price_per_unit,
-                      total_value: data.total_value,
-                      realized_pnl: data.realized_pnl,
-                      transaction_date: data.transaction_date,
-                      notes: data.notes,
-                      fund_flow_mode: data.fund_flow_mode,
-                      destination_asset_id: data.destination_asset_id,
-                      destination_label: data.destination_label,
-                      destination_currency: data.destination_currency,
-                      destination_amount: data.destination_amount,
-                    });
-                    
-                    const remainingQty = (asset.quantity || 0) - data.quantity;
-                    
-                    if (remainingQty <= 0) {
-                      await deleteAsset(assetId);
-                    } else {
-                      const originalQty = asset.quantity || 0;
-                      const newCostBasis = asset.cost_basis 
-                        ? asset.cost_basis * (remainingQty / originalQty)
-                        : undefined;
-                      
-                      await updateAsset(assetId, {
-                        quantity: remainingQty,
-                        cost_basis: newCostBasis,
-                      });
-                    }
-                    
-                    if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
-                      const destAsset = assets.find(a => a.id === data.destination_asset_id);
-                      if (destAsset) {
-                        const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
-                        
-                        const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
-                        
-                        if (destAsset.category === 'banking') {
-                          const forexRate = getForexRateToUSD(
-                            destAsset.symbol || 'USD',
-                            prices.forex
-                          );
-                          updateData.value = newDestQty * forexRate;
-                        }
-                        
-                        await updateAsset(data.destination_asset_id, updateData);
-                      }
-                    }
-                  }}
-                  livePrices={prices}
-                  allAssets={assets}
-                  delay={index * 0.1}
-                />
-                ));
-              })()}
-            </div>
-          )}
-        </div>
 
         {/* Footer */}
         <motion.footer
