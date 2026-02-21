@@ -1,32 +1,51 @@
 
 
-# Make All Assets Visible & Full-Width Rebalancer
+# Add Base Chain Chainlink Price Feeds for DCA
+
+## Overview
+
+Add three new Chainlink price feeds on Base mainnet (cbBTC/USD, EURC/USD, ETH/USD) to get accurate on-chain prices for the DCA strategy. This requires updating the `CHAINLINK_FEEDS` secret and adding a Base-specific fallback RPC to the edge function.
 
 ## Changes
 
-### 1. Remove scroll constraint on asset cards
-**`src/components/AssetCategoryCard.tsx`** (line 114): Remove `max-h-[240px] overflow-y-auto pr-1` from the asset list container so all individual assets are always visible without scrolling.
+### 1. Update the `CHAINLINK_FEEDS` secret
 
-### 2. Update rebalancer default size to full width
-**`src/hooks/useDashboardLayout.ts`**:
-- Change the rebalancer registry entry from `defaultW: 6` to `defaultW: 12` (line 24)
-- Change the rebalancer in `generateDefaultLayout()` from `w: 6` to `w: 12` (line 52)
-- Increase `asset-categories` default height from `h: 4` to `h: 6` in the layout (line 48) and registry (line 23) to accommodate showing all assets without scroll
-- Bump `LAYOUT_VERSION` from `2` to `3` (line 7) so existing users get the updated defaults
+The existing secret contains only Sepolia feeds. It needs to be updated to include the 3 new Base feeds appended to the array:
 
-### 3. Adjust Y offsets
-Update the Y positions in `generateDefaultLayout()` to account for the taller asset categories card:
-- Asset Categories: y=7, h=6 (was h=4)
-- Rebalancer: y=13, w=12 (was y=11, w=6)
-- Goals: y=17 (was y=15)
-- Investment Strategy: y=20 (was y=18)
-- Income/Expenses/Debt: y=23 (was y=21)
-- Debt Payoff: y=27 (was y=25)
+```json
+[
+  {"pair":"AUD/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x7D45Af19782C6f765477f105E626E686FBE84377"},
+  {"pair":"CZK/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0xC32f0A9D70A34B9E7377C10FDAd88512596f61EA"},
+  {"pair":"EUR/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x01653D082a836a0197a962687B92a54bf47d7923"},
+  {"pair":"GBP/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x91FAB41F5f3bE955963a986366edAcff1aaeaa83"},
+  {"pair":"JPY/USD","network":"sepolia","rpc":"https://rpc.sepolia.org","address":"0x8A6af2B75F23831ADc973ce6288e5329F63D86c6"},
+  {"pair":"cbBTC/USD","network":"base","rpc":"https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91","address":"0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D"},
+  {"pair":"EURC/USD","network":"base","rpc":"https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91","address":"0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250"},
+  {"pair":"ETH/USD","network":"base","rpc":"https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91","address":"0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"}
+]
+```
+
+### 2. Update the edge function with Base fallback RPCs
+
+**`supabase/functions/fetch-chainlink-feeds/index.ts`**:
+
+The current `FALLBACK_RPCS` array only has Sepolia RPCs. Since feeds now span multiple networks, the fallback logic needs to be network-aware:
+
+- Add a `FALLBACK_RPCS_BY_NETWORK` map with entries for both `sepolia` and `base`
+- Base fallback RPCs: the two Moralis endpoints provided
+- Update the `fetchFeed` function to pick fallback RPCs based on `f.network` instead of using one global list
+
+### 3. Add a Base example config file
+
+**`supabase/chainlink-feeds.base.example.json`** (new file):
+
+Document the three Base feeds for reference, matching the format of the existing Sepolia example.
 
 ## Files modified
 
 | File | Change |
 |------|--------|
-| `src/components/AssetCategoryCard.tsx` | Remove `max-h-[240px] overflow-y-auto pr-1` from asset list |
-| `src/hooks/useDashboardLayout.ts` | Bump version to 3, rebalancer to 12w, asset-categories to h=6, adjust Y offsets |
+| `CHAINLINK_FEEDS` secret | Add 3 Base chain feed entries |
+| `supabase/functions/fetch-chainlink-feeds/index.ts` | Network-aware fallback RPCs for Base vs Sepolia |
+| `supabase/chainlink-feeds.base.example.json` | New reference file with Base feed addresses |
 
