@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, DollarSign, Bitcoin, Gem } from 'lucide-react';
+import chainlinkLogo from '@/assets/chainlink-logo.png';
 import { motion } from 'framer-motion';
 import { LivePrices, useLivePrices } from '@/hooks/useLivePrices';
 import { BANKING_CURRENCIES, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
@@ -179,7 +180,7 @@ export function ExchangeRatesDialog({
               Commodities
             </TabsTrigger>
             <TabsTrigger value="chainlink" className="gap-2">
-              <span className="w-4 h-4 inline-block font-mono">CL</span>
+              <img src={chainlinkLogo} alt="Chainlink" className="w-4 h-4" />
               Chainlink
             </TabsTrigger>
           </TabsList>
