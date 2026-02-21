@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 
-export const LAYOUT_VERSION = 2;
+export const LAYOUT_VERSION = 3;
 
 export interface CardConfig {
   id: string;
@@ -20,8 +20,8 @@ export const CARD_REGISTRY: CardConfig[] = [
   { id: 'allocation-chart', label: 'Allocation Chart', defaultW: 4, defaultH: 3, minW: 3, minH: 2 },
   { id: 'portfolio-history', label: 'Portfolio History', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'pnl-overview', label: 'Profit & Loss', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
-  { id: 'asset-categories', label: 'Asset Categories', defaultW: 12, defaultH: 4, minW: 6, minH: 3 },
-  { id: 'rebalancer', label: 'Portfolio Rebalancer', defaultW: 6, defaultH: 4, minW: 4, minH: 3 },
+  { id: 'asset-categories', label: 'Asset Categories', defaultW: 12, defaultH: 6, minW: 6, minH: 3 },
+  { id: 'rebalancer', label: 'Portfolio Rebalancer', defaultW: 12, defaultH: 4, minW: 4, minH: 3 },
   { id: 'goals-overview', label: 'Financial Goals', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
   { id: 'investment-strategy', label: 'Investment Strategy', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
   { id: 'income-card', label: 'Income', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
@@ -45,11 +45,11 @@ function generateDefaultLayout(): LayoutItem[] {
   y += 3;
 
   // Row 3: Asset Categories
-  layout.push({ i: 'asset-categories', x: 0, y, w: 12, h: 4, minW: 6, minH: 3 });
-  y += 4;
+  layout.push({ i: 'asset-categories', x: 0, y, w: 12, h: 6, minW: 6, minH: 3 });
+  y += 6;
 
   // Row 4: Rebalancer
-  layout.push({ i: 'rebalancer', x: 0, y, w: 6, h: 4, minW: 4, minH: 3 });
+  layout.push({ i: 'rebalancer', x: 0, y, w: 12, h: 4, minW: 4, minH: 3 });
   y += 4;
 
   // Row 5: Goals
