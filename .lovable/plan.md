@@ -1,72 +1,120 @@
 
 
-# Fix DCA Trigger CRE Workflow to Use Correct SDK API
+# Fix Chainlink Price Feed Mapping in DCA CRE Workflow
 
 ## Problem
 
-The current `dca-trigger-ts/main.ts` uses a fabricated `Workflow` / `addStep` API pattern that does not exist in the `@chainlink/cre-sdk`. The real SDK uses `cre.Handler()` with a `CronCapability` trigger and a callback receiving `(runtime, config)`, plus `HTTPClient` for HTTP calls with consensus -- exactly as the working `portfolio-summary-ts/main.ts` does.
+The DCA workflow fetches prices using `strategy.to_token` (e.g., `"cbBTC"`, `"ETH"`, `"WETH"`), but the `price_cache` table stores Chainlink feed prices with the format `network:pair` (e.g., `"base:cbBTC/USD"`, `"base:ETH/USD"`). This mismatch means the price lookup always fails, and executions are recorded with `token_price_usd: null`.
 
 ## Solution
 
-Rewrite `main.ts` to use the correct CRE SDK API while preserving all existing business logic (strategy filtering, budget checks, dip-buy placeholders, execute-dca-order calls).
+Add a token-to-Chainlink-symbol mapping inside `main.ts` and change the price fetch to query `price_cache` directly via the Supabase REST API (instead of the generic `priceApiUrl`), filtering by the mapped symbol.
 
 ## Changes
 
-### `incontrol-cre-ts/dca-trigger-ts/main.ts` -- Full rewrite
+### `incontrol-cre-ts/dca-trigger-ts/main.ts`
 
-**Before (broken):**
-```text
-import { Workflow, Config } from "@chainlink/cre-sdk";
-const workflow = new Workflow<DCAConfig>({ ... });
-workflow.addStep("fetch-due-strategies", async (ctx) => { ... });
-workflow.addStep("execute-orders", async (ctx) => { ... });
-export default workflow;
-```
+**1. Add a symbol mapping constant (after the interfaces, before `filterDueStrategies`):**
 
-**After (correct SDK pattern):**
-```text
-import * as cre from "@chainlink/cre-sdk";
-
-type DCAConfig = {
-  supabaseUrl: string;
-  supabaseServiceRoleKey: string;
-  cronSecret: string;
-  priceApiUrl?: string;
+```typescript
+const CHAINLINK_SYMBOL_MAP: Record<string, string> = {
+  cbBTC: "base:cbBTC/USD",
+  ETH:   "base:ETH/USD",
+  WETH:  "base:ETH/USD",   // WETH tracks ETH price
 };
-
-export default cre.Handler(
-  new cre.capabilities.CronCapability().trigger({
-    schedule: "0 0 */1 * * *"  // every hour (config overrides)
-  }),
-  async (config: DCAConfig, runtime: cre.Runtime) => {
-    // 1. Fetch active strategies via HTTPClient with consensus
-    // 2. Filter due strategies by frequency
-    // 3. For each due strategy: budget check, price fetch, execute order
-    // All using runtime.runInNodeMode() + HTTPClient instead of bare fetch()
-  }
-);
 ```
 
-**Key API corrections:**
+**2. Replace the price fetch block (lines 122-152)** to query `price_cache` directly instead of the optional `priceApiUrl`:
 
-| Old (broken) | New (correct) |
-|---|---|
-| `import { Workflow, Config }` | `import * as cre` |
-| `new Workflow<T>()` | `cre.Handler(trigger, callback)` |
-| `workflow.addStep()` | Single callback function |
-| `ctx.config` / `ctx.state` | `config` and local variables |
-| Bare `fetch()` calls | `cre.capabilities.HTTPClient` with `runtime.runInNodeMode()` and consensus |
-| `export default workflow` | `export default cre.Handler(...)` |
+- Build the mapped symbol: `CHAINLINK_SYMBOL_MAP[strategy.to_token]`
+- If a mapping exists, query `{supabaseUrl}/rest/v1/price_cache?symbol=eq.{mappedSymbol}&select=price&limit=1` using the service role key
+- Parse the response and extract `price`
+- Fall back to `priceApiUrl` if no Chainlink mapping exists (preserves existing behavior for non-mapped tokens)
+- Log which price source was used (Chainlink on-chain vs fallback)
 
-**Business logic preserved:**
-- Fetch all active strategies from Supabase REST API
-- Filter strategies due for execution based on frequency (hourly/daily/weekly/biweekly/monthly)
-- Budget remaining checks and auto-skip when exhausted
-- Price fetching for dip-buy logic (placeholder comparison kept as-is)
-- POST to `execute-dca-order` edge function for each due strategy
-- Result logging
+**3. Remove `priceApiUrl` from the `DCAConfig` type** -- no, keep it as an optional fallback for tokens not in the Chainlink map.
 
-### `incontrol-cre-ts/dca-trigger-ts/package.json` -- Bump SDK version
+### No other files change
 
-Update `@chainlink/cre-sdk` from `^1.0.7` to `^1.0.8` to match the root project.
+The `price_cache` table and `fetch-chainlink-feeds` function already handle the on-chain data correctly. This fix is purely in the CRE workflow's price lookup logic.
+
+---
+
+## Technical Details
+
+### Price fetch flow after the fix
+
+```text
+for each strategy:
+  1. Look up to_token in CHAINLINK_SYMBOL_MAP
+     - "cbBTC" -> "base:cbBTC/USD"
+     - "ETH"   -> "base:ETH/USD"
+     - "WETH"  -> "base:ETH/USD"
+  2. If mapping found:
+     GET {supabaseUrl}/rest/v1/price_cache?symbol=eq.base:cbBTC/USD&select=price&limit=1
+     -> returns [{ price: 107234.56 }]
+     -> tokenPriceUsd = 107234.56
+  3. If no mapping found:
+     Fall back to priceApiUrl (existing behavior)
+  4. Pass tokenPriceUsd to execute-dca-order
+```
+
+### Updated price fetch code (replacing lines 122-152)
+
+```typescript
+// Fetch current price — prefer Chainlink on-chain feed via price_cache
+const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[strategy.to_token];
+
+if (chainlinkSymbol) {
+  try {
+    const priceData = await runtime.runInNodeMode(
+      (nodeRuntime: cre.NodeRuntime) => {
+        const httpClient = new cre.capabilities.HTTPClient();
+        const encodedSymbol = encodeURIComponent(chainlinkSymbol);
+        const url = `${config.supabaseUrl}/rest/v1/price_cache?symbol=eq.${encodedSymbol}&select=price&limit=1`;
+
+        const response = httpClient.sendRequest(nodeRuntime, {
+          url,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: config.supabaseServiceRoleKey,
+            Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+          },
+          timeout: 10000,
+        }).result();
+
+        if (response.statusCode !== 200) {
+          throw new Error(`price_cache query returned ${response.statusCode}`);
+        }
+
+        const text = new TextDecoder().decode(response.body);
+        const rows = JSON.parse(text) as Array<{ price: number }>;
+        return rows.length > 0 ? { price: rows[0].price } : { price: undefined };
+      },
+      cre.consensusMedianAggregation(),
+    )(config);
+
+    tokenPriceUsd = priceData?.price ?? null;
+    if (tokenPriceUsd && tokenPriceUsd > 0) {
+      runtime.log(`[DCA] Chainlink price for ${strategy.to_token} (${chainlinkSymbol}): $${tokenPriceUsd}`);
+    } else {
+      runtime.log(`[DCA] Chainlink price not available for ${chainlinkSymbol}`);
+    }
+  } catch (priceErr) {
+    runtime.log(`[DCA] Chainlink price fetch failed for ${strategy.to_token}: ${priceErr}`);
+  }
+} else if (config.priceApiUrl) {
+  // Fallback for tokens without a Chainlink mapping
+  try {
+    // ... existing priceApiUrl fetch logic ...
+  } catch (priceErr) {
+    runtime.log(`[DCA] Fallback price fetch failed for ${strategy.to_token}: ${priceErr}`);
+  }
+}
+```
+
+| File | Change |
+|------|--------|
+| `incontrol-cre-ts/dca-trigger-ts/main.ts` | Add `CHAINLINK_SYMBOL_MAP`, rewrite price fetch to query `price_cache` by mapped symbol, keep `priceApiUrl` as fallback |
 
