@@ -24,6 +24,7 @@ export const CARD_REGISTRY: CardConfig[] = [
   { id: 'expense-card', label: 'Expenses', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'debt-card', label: 'Debt Overview', defaultW: 4, defaultH: 4, minW: 3, minH: 3 },
   { id: 'debt-payoff', label: 'Debt Payoff Calculator', defaultW: 12, defaultH: 3, minW: 6, minH: 2 },
+  { id: 'rebalancer', label: 'Portfolio Rebalancer', defaultW: 6, defaultH: 4, minW: 4, minH: 3 },
 ];
 
 function generateDefaultLayout(): LayoutItem[] {
@@ -50,6 +51,9 @@ function generateDefaultLayout(): LayoutItem[] {
   y += 4;
 
   layout.push({ i: 'debt-payoff', x: 0, y, w: 12, h: 3, minW: 6, minH: 2 });
+  y += 3;
+
+  layout.push({ i: 'rebalancer', x: 0, y, w: 6, h: 4, minW: 4, minH: 3 });
 
   return layout;
 }

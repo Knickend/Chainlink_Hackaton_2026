@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat, Lock, Unlock } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat, Lock, Unlock, LayoutGrid, RotateCcw } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -45,6 +45,10 @@ import { UpcomingExpensesCard } from '@/components/UpcomingExpensesCard';
 import { DashboardGrid } from '@/components/DashboardGrid';
 import { DashboardSettingsPanel } from '@/components/DashboardSettingsPanel';
 import { useDashboardLayout } from '@/hooks/useDashboardLayout';
+import { RebalanceCard } from '@/components/RebalanceCard';
+import { InvestmentPreferencesDialog } from '@/components/InvestmentPreferencesDialog';
+import { useRebalancer } from '@/hooks/useRebalancer';
+import { useInvestmentPreferences } from '@/hooks/useInvestmentPreferences';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -80,6 +84,8 @@ const IndexContent = () => {
     resetLayout,
     cardRegistry,
   } = useDashboardLayout();
+
+
   // Show Pro during tutorial OR in demo mode so users see all features
   const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
   const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
@@ -175,6 +181,19 @@ const IndexContent = () => {
   // Calculate P&L data
   const pnlData = useProfitLoss(assets, transactions);
 
+  // Investment preferences for rebalancer
+  const {
+    preferences,
+    savePreferences,
+    hasPreferences,
+    goalAnalysis,
+  } = useInvestmentPreferences(
+    (metrics?.totalIncome || 0) - (metrics?.totalExpenses || 0) - (monthlyPayments || 0),
+    isDemo ? mockGoals : goals
+  );
+  const rebalancer = useRebalancer(assets, preferences, prices);
+  const [showPreferencesDialog, setShowPreferencesDialog] = useState(false);
+
   if (authLoading || (!isDemo && (dataLoading || debtsLoading || goalsLoading || subscriptionLoading))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -241,118 +260,138 @@ const IndexContent = () => {
           onSubscribe={(tier, billingPeriod) => upgradeTo(tier, billingPeriod || 'monthly')}
         />
 
-        {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
-        >
-          {/* Left section: Logo + Description */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                <span className="gradient-text">In</span>
-                <span className="text-foreground">Control</span>
-              </h1>
-              {isPro && <ProBadge />}
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pb-4">
+          <motion.header
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-4"
+          >
+            {/* Left section: Logo + Description */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                  <span className="gradient-text">In</span>
+                  <span className="text-foreground">Control</span>
+                </h1>
+                {isPro && <ProBadge />}
+              </div>
+              <p className="text-muted-foreground whitespace-nowrap hidden xl:block">
+                Track your assets across all markets
+              </p>
             </div>
-    <p className="text-muted-foreground whitespace-nowrap hidden xl:block">
-      Track your assets across all markets
-    </p>
-          </div>
-          
-          {/* Right section: Controls - all aligned in a row */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <PriceIndicator
-              isLoading={pricesLoading}
-              lastUpdated={lastUpdated}
-              error={pricesError}
-              isCached={isCached}
-              forexTimestamp={prices.forexTimestamp}
-              prices={prices}
-              onRefresh={refetchPrices}
-            />
-            <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
-            <ThemeToggle />
-            {hasCompletedTutorial && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={startTutorial}
-                className="gap-2"
-                title="Restart tutorial"
-              >
-                <HelpCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Tour</span>
-              </Button>
-            )}
-            {!isDemo && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/dca')}
-                className="rounded-full"
-                title="DCA Strategies"
-              >
-                <Repeat className="w-4 h-4" />
-                DCA
-              </Button>
-            )}
-            {!isDemo && (
-              <Button
-                variant={isEditMode ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setIsEditMode(!isEditMode)}
-                className="gap-2"
-                title={isEditMode ? "Lock Dashboard" : "Edit Dashboard"}
-              >
-                {isEditMode ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-                <span className="hidden sm:inline">{isEditMode ? 'Lock' : 'Edit'}</span>
-              </Button>
-            )}
-            {isEditMode && (
-              <DashboardSettingsPanel
-                cardRegistry={cardRegistry}
-                hiddenCards={hiddenCards}
-                onShowCard={showCard}
-                onHideCard={hideCard}
-                onReset={resetLayout}
+            
+            {/* Right section: Controls */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <PriceIndicator
+                isLoading={pricesLoading}
+                lastUpdated={lastUpdated}
+                error={pricesError}
+                isCached={isCached}
+                forexTimestamp={prices.forexTimestamp}
+                prices={prices}
+                onRefresh={refetchPrices}
               />
-            )}
-            {!isDemo && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/settings')}
-                className="rounded-full"
-                title="Settings"
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-            )}
-            {isDemo ? (
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={() => navigate('/auth')}
-                className="gap-2"
-              >
-                <LogIn className="w-4 h-4" />
-                Sign in
-              </Button>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={signOut}
-                className="gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign out
+              <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+              <ThemeToggle />
+              {hasCompletedTutorial && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={startTutorial}
+                  className="gap-2"
+                  title="Restart tutorial"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tour</span>
+                </Button>
+              )}
+              {!isDemo && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/dca')}
+                  className="rounded-full"
+                  title="DCA Strategies"
+                >
+                  <Repeat className="w-4 h-4" />
+                  DCA
+                </Button>
+              )}
+              {!isDemo && !isEditMode && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditMode(true)}
+                  className="gap-2"
+                  title="Edit Dashboard"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+              )}
+              {!isDemo && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate('/settings')}
+                  className="rounded-full"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </Button>
+              )}
+              {isDemo ? (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => navigate('/auth')}
+                  className="gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={signOut}
+                  className="gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
               </Button>
             )}
           </div>
-        </motion.header>
+          </motion.header>
+
+          {/* Edit Mode Toolbar */}
+          {isEditMode && (
+            <div className="flex items-center justify-between gap-3 py-2 px-4 mt-2 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex items-center gap-2 text-sm text-primary font-medium">
+                <LayoutGrid className="w-4 h-4" />
+                <span>Editing Dashboard — drag, resize, or hide cards</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DashboardSettingsPanel
+                  cardRegistry={cardRegistry}
+                  hiddenCards={hiddenCards}
+                  onShowCard={showCard}
+                  onHideCard={hideCard}
+                  onReset={resetLayout}
+                />
+                <Button variant="ghost" size="sm" onClick={resetLayout} className="gap-1">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset
+                </Button>
+                <Button variant="default" size="sm" onClick={() => setIsEditMode(false)} className="gap-1">
+                  <Lock className="w-3.5 h-3.5" />
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8" data-tutorial="key-metrics">
@@ -436,10 +475,6 @@ const IndexContent = () => {
                       currentNetWorth={adjustedNetWorth} 
                       formatValue={formatValue}
                       formatDisplayUnitValue={formatDisplayUnitValue}
-                      assets={assets}
-                      freeMonthlyIncome={netCashFlow}
-                      goals={demoGoals}
-                      livePrices={prices}
                       delay={0.2}
                     />
                   </div>
@@ -592,6 +627,22 @@ const IndexContent = () => {
                     delay={0.3}
                   />
                 )
+              ) : null
+            ),
+            'rebalancer': (
+              isPro && rebalancer.shouldShow && hasPreferences ? (
+                <RebalanceCard
+                  driftData={rebalancer.driftData}
+                  tradeSuggestions={rebalancer.tradeSuggestions}
+                  maxDrift={rebalancer.maxDrift}
+                  threshold={rebalancer.threshold}
+                  alerts={rebalancer.alerts}
+                  onDismiss={(alertId) => {
+                    if (alertId) rebalancer.dismissAlert(alertId);
+                  }}
+                  formatValue={formatValue}
+                  onEdit={() => setShowPreferencesDialog(true)}
+                />
               ) : null
             ),
           }}
@@ -853,6 +904,16 @@ const IndexContent = () => {
         
         {/* Feedback Button */}
         <FeedbackButton />
+
+        {/* Investment Preferences Dialog for Rebalancer */}
+        <InvestmentPreferencesDialog
+          open={showPreferencesDialog}
+          onOpenChange={setShowPreferencesDialog}
+          currentPreferences={preferences}
+          onSave={savePreferences}
+          goals={isDemo ? mockGoals : goals}
+          goalAnalysis={goalAnalysis}
+        />
       </div>
     </>
   );
