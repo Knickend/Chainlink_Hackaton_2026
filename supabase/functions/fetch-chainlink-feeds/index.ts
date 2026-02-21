@@ -102,10 +102,15 @@ async function backgroundRefresh(
     // Update in-memory cache
     cachedResponse = { data: results, timestamp: Date.now() };
 
-    // Upsert to price_cache
+    // Upsert to price_cache (use network:pair as symbol, store errors with price=-1)
     const toUpsert = results
-      .filter((r: any) => r && r.pair && r.answer !== undefined)
-      .map((r: any) => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
+      .filter((r: any) => r && r.pair)
+      .map((r: any) => ({
+        symbol: `${r.network}:${r.pair}`,
+        price: r.error ? -1 : r.answer,
+        asset_type: 'chainlink',
+        updated_at: new Date().toISOString(),
+      }));
 
     if (toUpsert.length > 0) {
       for (const u of toUpsert) {
@@ -161,13 +166,20 @@ serve(async (req) => {
 
       if (dbCached && dbCached.length > 0) {
         console.log('fetch-chainlink-feeds: returning DB cached result, refreshing in background');
-        const dbResults = dbCached.map((row: any) => ({
-          pair: row.symbol,
-          network: '', // not stored in cache, will be filled on next live fetch
-          address: '',
-          answer: Number(row.price),
-          updatedAt: row.updated_at,
-        }));
+        const dbResults = dbCached.map((row: any) => {
+          const sym = row.symbol as string;
+          const colonIdx = sym.indexOf(':');
+          const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
+          const pair = colonIdx > -1 ? sym.substring(colonIdx + 1) : sym;
+          const price = Number(row.price);
+          return {
+            pair,
+            network,
+            address: '',
+            ...(price === -1 ? { error: 'All RPCs failed' } : { answer: price }),
+            updatedAt: row.updated_at,
+          };
+        });
 
         // Fire-and-forget background refresh
         backgroundRefresh(feeds, supabase).catch(console.error);
@@ -193,8 +205,13 @@ serve(async (req) => {
     // Upsert to price_cache
     try {
       const toUpsert = results
-        .filter((r: any) => r && r.pair && r.answer !== undefined)
-        .map((r: any) => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
+        .filter((r: any) => r && r.pair)
+        .map((r: any) => ({
+          symbol: `${r.network}:${r.pair}`,
+          price: r.error ? -1 : r.answer,
+          asset_type: 'chainlink',
+          updated_at: new Date().toISOString(),
+        }));
 
       if (toUpsert.length > 0) {
         for (const u of toUpsert) {
