@@ -13,11 +13,17 @@ const corsHeaders = {
 const CACHE_TTL_MS = 30_000; // 30 seconds
 let cachedResponse: { data: any[]; timestamp: number } | null = null;
 
-// Fallback public RPC (no API key needed)
-const FALLBACK_RPCS = [
-  'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-  'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-];
+// Network-aware fallback RPCs
+const FALLBACK_RPCS_BY_NETWORK: Record<string, string[]> = {
+  sepolia: [
+    'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+    'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+  ],
+  base: [
+    'https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
+    'https://site2.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
+  ],
+};
 
 const ABI = [
   'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
@@ -68,8 +74,9 @@ async function fetchFeed(
     console.warn(`Primary RPC failed for ${f.pair}:`, String(primaryErr));
   }
 
-  // Fallback RPCs
-  for (const rpc of FALLBACK_RPCS) {
+  // Fallback RPCs (network-aware)
+  const fallbacks = FALLBACK_RPCS_BY_NETWORK[f.network] || [];
+  for (const rpc of fallbacks) {
     try {
       console.log(`Retrying ${f.pair} with fallback ${rpc}`);
       return await queryProvider(getProvider(rpc));
