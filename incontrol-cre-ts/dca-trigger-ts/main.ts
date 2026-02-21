@@ -39,6 +39,16 @@ interface ExecutionResult {
 }
 
 /**
+ * Map token symbols to their Chainlink price_cache identifiers.
+ * The price_cache table stores prices with "network:pair" format.
+ */
+const CHAINLINK_SYMBOL_MAP: Record<string, string> = {
+  cbBTC: "base:cbBTC/USD",
+  ETH:   "base:ETH/USD",
+  WETH:  "base:ETH/USD", // WETH tracks ETH price
+};
+
+/**
  * Filter strategies that are due for execution based on their frequency.
  */
 function filterDueStrategies(strategies: DCAStrategy[], now: Date): DCAStrategy[] {
@@ -119,8 +129,50 @@ export default cre.Handler(
         let tokenPriceUsd: number | null = null;
         let executionAmount = strategy.amount_per_execution;
 
-        // Fetch current price for dip-buying logic
-        if (config.priceApiUrl) {
+        // Fetch current price — prefer Chainlink on-chain feed via price_cache
+        const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[strategy.to_token];
+
+        if (chainlinkSymbol) {
+          try {
+            const priceData = await runtime.runInNodeMode(
+              (nodeRuntime: cre.NodeRuntime) => {
+                const httpClient = new cre.capabilities.HTTPClient();
+                const encodedSymbol = encodeURIComponent(chainlinkSymbol);
+                const url = `${config.supabaseUrl}/rest/v1/price_cache?symbol=eq.${encodedSymbol}&select=price&limit=1`;
+
+                const response = httpClient.sendRequest(nodeRuntime, {
+                  url,
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    apikey: config.supabaseServiceRoleKey,
+                    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+                  },
+                  timeout: 10000,
+                }).result();
+
+                if (response.statusCode !== 200) {
+                  throw new Error(`price_cache query returned ${response.statusCode}`);
+                }
+
+                const text = new TextDecoder().decode(response.body);
+                const rows = JSON.parse(text) as Array<{ price: number }>;
+                return rows.length > 0 ? { price: rows[0].price } : { price: undefined };
+              },
+              cre.consensusMedianAggregation(),
+            )(config);
+
+            tokenPriceUsd = priceData?.price ?? null;
+            if (tokenPriceUsd && tokenPriceUsd > 0) {
+              runtime.log(`[DCA] Chainlink price for ${strategy.to_token} (${chainlinkSymbol}): $${tokenPriceUsd}`);
+            } else {
+              runtime.log(`[DCA] Chainlink price not available for ${chainlinkSymbol}`);
+            }
+          } catch (priceErr) {
+            runtime.log(`[DCA] Chainlink price fetch failed for ${strategy.to_token}: ${priceErr}`);
+          }
+        } else if (config.priceApiUrl) {
+          // Fallback for tokens without a Chainlink mapping
           try {
             const priceData = await runtime.runInNodeMode(
               (nodeRuntime: cre.NodeRuntime) => {
@@ -146,8 +198,11 @@ export default cre.Handler(
             )(config);
 
             tokenPriceUsd = priceData?.price ?? null;
+            if (tokenPriceUsd) {
+              runtime.log(`[DCA] Fallback price for ${strategy.to_token}: $${tokenPriceUsd}`);
+            }
           } catch (priceErr) {
-            runtime.log(`[DCA] Price fetch failed for ${strategy.to_token}: ${priceErr}`);
+            runtime.log(`[DCA] Fallback price fetch failed for ${strategy.to_token}: ${priceErr}`);
           }
         }
 
