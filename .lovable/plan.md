@@ -1,45 +1,32 @@
 
 
-# Fix: Apply New Default Layout Order
+# Make All Assets Visible & Full-Width Rebalancer
 
-## Problem
+## Changes
 
-The default layout code (`generateDefaultLayout()`) has the correct order, but your browser is loading a **previously saved layout** from the database. Since the layout was saved before the reorder, it still shows the old card positions (Rebalancer above P&L, Asset Categories at the bottom).
+### 1. Remove scroll constraint on asset cards
+**`src/components/AssetCategoryCard.tsx`** (line 114): Remove `max-h-[240px] overflow-y-auto pr-1` from the asset list container so all individual assets are always visible without scrolling.
 
-## Solution
-
-Add a **layout version** check so that when the default layout changes, existing saved layouts that are outdated get replaced with the new defaults automatically.
-
-### Changes
-
+### 2. Update rebalancer default size to full width
 **`src/hooks/useDashboardLayout.ts`**:
-1. Add a `LAYOUT_VERSION` constant (e.g., `2`) at the top of the file
-2. Update the `LayoutConfig` interface to include an optional `version` field
-3. In the load function: when the saved config has no `version` or a version lower than `LAYOUT_VERSION`, discard it and use the new defaults instead
-4. In the save function: always include `version: LAYOUT_VERSION` in the saved config
+- Change the rebalancer registry entry from `defaultW: 6` to `defaultW: 12` (line 24)
+- Change the rebalancer in `generateDefaultLayout()` from `w: 6` to `w: 12` (line 52)
+- Increase `asset-categories` default height from `h: 4` to `h: 6` in the layout (line 48) and registry (line 23) to accommodate showing all assets without scroll
+- Bump `LAYOUT_VERSION` from `2` to `3` (line 7) so existing users get the updated defaults
 
-This ensures:
-- Existing users automatically get the corrected layout order
-- Future layout changes can bump the version again
-- Users who customize after the update keep their new preferences
+### 3. Adjust Y offsets
+Update the Y positions in `generateDefaultLayout()` to account for the taller asset categories card:
+- Asset Categories: y=7, h=6 (was h=4)
+- Rebalancer: y=13, w=12 (was y=11, w=6)
+- Goals: y=17 (was y=15)
+- Investment Strategy: y=20 (was y=18)
+- Income/Expenses/Debt: y=23 (was y=21)
+- Debt Payoff: y=27 (was y=25)
 
-### No other file changes needed
-The `generateDefaultLayout()` function and the `cardRenderers` in `Index.tsx` are already correct. This is purely a data migration issue with stale saved layouts.
+## Files modified
 
-## Technical Detail
-
-```text
-LayoutConfig {
-  layouts: ResponsiveLayouts;
-  hiddenCards: string[];
-  version?: number;          // <-- new field
-}
-
-LAYOUT_VERSION = 2;          // bump whenever defaults change
-
-// On load:
-if (!config.version || config.version < LAYOUT_VERSION) {
-  // Ignore saved layout, use generateDefaultLayout()
-}
-```
+| File | Change |
+|------|--------|
+| `src/components/AssetCategoryCard.tsx` | Remove `max-h-[240px] overflow-y-auto pr-1` from asset list |
+| `src/hooks/useDashboardLayout.ts` | Bump version to 3, rebalancer to 12w, asset-categories to h=6, adjust Y offsets |
 
