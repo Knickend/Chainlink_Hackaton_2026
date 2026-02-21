@@ -8,11 +8,13 @@ import { DCAStrategyForm } from '@/components/DCAStrategyForm';
 import { DCAProgressCard } from '@/components/DCAProgressCard';
 import { DCAExecutionHistory } from '@/components/DCAExecutionHistory';
 import { EditDCAStrategyDialog } from '@/components/EditDCAStrategyDialog';
+import { CREArchitectureCard } from '@/components/CREArchitectureCard';
+import { DCAWorkflowDemo } from '@/components/DCAWorkflowDemo';
 
 export default function DCA() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { strategies, executions, isLoading, createStrategy, updateStrategy, toggleStrategy, deleteStrategy } = useDCAStrategies();
+  const { strategies, executions, isLoading, createStrategy, updateStrategy, toggleStrategy, deleteStrategy, refetch } = useDCAStrategies();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<DCAStrategy | null>(null);
 
@@ -43,7 +45,11 @@ export default function DCA() {
           </div>
         </div>
 
+        <CREArchitectureCard />
+
         <DCAStrategyForm onSubmit={handleCreate} isSubmitting={isSubmitting} />
+
+        <DCAWorkflowDemo refetch={refetch} />
 
         {isLoading ? (
           <p className="text-center text-muted-foreground py-8">Loading strategies…</p>
