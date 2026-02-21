@@ -70,12 +70,14 @@ export function ExchangeRatesDialog({
   const chainlinkFetchedRef = useRef(false);
 
   // Lazy-load Chainlink feeds when tab is first selected
+  // If cached data exists from DB load, show it immediately but still refresh in background
   useEffect(() => {
-    if (activeTab === 'chainlink' && !chainlinkFetchedRef.current && !livePrices?.chainlinkForex?.length) {
+    if (activeTab === 'chainlink' && !chainlinkFetchedRef.current) {
       chainlinkFetchedRef.current = true;
+      // Always trigger a background refresh for fresh on-chain data
       fetchChainlinkFeeds();
     }
-  }, [activeTab, livePrices?.chainlinkForex, fetchChainlinkFeeds]);
+  }, [activeTab, fetchChainlinkFeeds]);
 
   const handleRefresh = () => {
     if (refreshCooldown) return;

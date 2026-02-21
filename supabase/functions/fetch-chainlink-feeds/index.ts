@@ -88,15 +88,45 @@ async function fetchFeed(
   return { pair: f.pair, network: f.network, address: f.address, error: 'All RPCs failed' };
 }
 
+// ── Background refresh: fetch on-chain and upsert to DB ────────────────
+async function backgroundRefresh(
+  feeds: Array<{ pair: string; network: string; rpc: string; address: string }>,
+  supabase: any
+) {
+  try {
+    const settled = await Promise.allSettled(feeds.map(fetchFeed));
+    const results = settled.map((s) =>
+      s.status === 'fulfilled' ? s.value : { error: String((s as PromiseRejectedResult).reason) }
+    );
+
+    // Update in-memory cache
+    cachedResponse = { data: results, timestamp: Date.now() };
+
+    // Upsert to price_cache
+    const toUpsert = results
+      .filter((r: any) => r && r.pair && r.answer !== undefined)
+      .map((r: any) => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
+
+    if (toUpsert.length > 0) {
+      for (const u of toUpsert) {
+        await supabase.from('price_cache').upsert({ ...u }, { onConflict: 'symbol' });
+      }
+    }
+    console.log('Background chainlink refresh complete:', toUpsert.length, 'feeds updated');
+  } catch (err) {
+    console.error('Background chainlink refresh error:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     console.log('fetch-chainlink-feeds: start');
 
-    // ── Return cached response if still fresh ──────────────────────────
+    // ── Return in-memory cached response if still fresh ────────────────
     if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
-      console.log('fetch-chainlink-feeds: returning cached result');
+      console.log('fetch-chainlink-feeds: returning in-memory cached result');
       return new Response(JSON.stringify({ success: true, data: cachedResponse.data, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -122,7 +152,36 @@ serve(async (req) => {
       });
     }
 
-    // ── Fetch all feeds concurrently ───────────────────────────────────
+    // ── Try DB cache first for fast response ───────────────────────────
+    try {
+      const { data: dbCached } = await supabase
+        .from('price_cache')
+        .select('symbol, price, updated_at')
+        .eq('asset_type', 'chainlink');
+
+      if (dbCached && dbCached.length > 0) {
+        console.log('fetch-chainlink-feeds: returning DB cached result, refreshing in background');
+        const dbResults = dbCached.map((row: any) => ({
+          pair: row.symbol,
+          network: '', // not stored in cache, will be filled on next live fetch
+          address: '',
+          answer: Number(row.price),
+          updatedAt: row.updated_at,
+        }));
+
+        // Fire-and-forget background refresh
+        backgroundRefresh(feeds, supabase).catch(console.error);
+
+        return new Response(JSON.stringify({ success: true, data: dbResults, cached: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch (dbErr) {
+      console.warn('DB cache read failed, falling back to RPC:', dbErr);
+    }
+
+    // ── No DB cache (first ever call) — blocking RPC fetch ─────────────
+    console.log('fetch-chainlink-feeds: no DB cache, doing blocking RPC fetch');
     const settled = await Promise.allSettled(feeds.map(fetchFeed));
     const results = settled.map((s) =>
       s.status === 'fulfilled' ? s.value : { error: String((s as PromiseRejectedResult).reason) }
