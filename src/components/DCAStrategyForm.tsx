@@ -11,6 +11,7 @@ import type { CreateStrategyInput } from '@/hooks/useDCAStrategies';
 interface DCAStrategyFormProps {
   onSubmit: (input: CreateStrategyInput) => Promise<void>;
   isSubmitting?: boolean;
+  walletBalance?: number | null;
 }
 
 const TOKEN_OPTIONS = [
@@ -27,7 +28,7 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
 ];
 
-export function DCAStrategyForm({ onSubmit, isSubmitting }: DCAStrategyFormProps) {
+export function DCAStrategyForm({ onSubmit, isSubmitting, walletBalance }: DCAStrategyFormProps) {
   const [toToken, setToToken] = useState('WETH');
   const [frequency, setFrequency] = useState('daily');
   const [amount, setAmount] = useState('10');
@@ -88,6 +89,11 @@ export function DCAStrategyForm({ onSubmit, isSubmitting }: DCAStrategyFormProps
           <div className="space-y-2">
             <Label>Amount per execution (USDC)</Label>
             <Input type="number" min="1" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required />
+            {walletBalance !== null && walletBalance !== undefined && parseFloat(amount) > walletBalance && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Insufficient balance: ${walletBalance.toFixed(2)} USDC available
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
