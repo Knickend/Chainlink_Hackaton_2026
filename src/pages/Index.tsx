@@ -274,12 +274,13 @@ const IndexContent = () => {
             {!isDemo && (
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 onClick={() => navigate('/dca')}
                 className="rounded-full"
                 title="DCA Strategies"
               >
-                <Repeat className="w-5 h-5" />
+                <Repeat className="w-4 h-4" />
+                DCA
               </Button>
             )}
             {!isDemo && (
