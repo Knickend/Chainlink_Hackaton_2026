@@ -1,10 +1,12 @@
 /**
  * DCA Trigger CRE Workflow
  *
- * Runs hourly via Chainlink CRE. For each active DCA strategy that is due:
- *   1. Fetches the current token price
- *   2. Applies dip-buying logic (increase amount if price dropped beyond threshold)
- *   3. Calls the execute-dca-order edge function
+ * Runs every 5 minutes via Chainlink CRE. On each tick:
+ *   1. Regular pass: executes strategies whose schedule frequency is due
+ *   2. Dip-detection pass: for strategies with dip_threshold_pct > 0 that
+ *      are NOT already in the regular batch, compares current price against
+ *      last execution price. If price dropped >= threshold, triggers a
+ *      dip-buy with the multiplied amount.
  */
 
 import * as cre from "@chainlink/cre-sdk";
@@ -38,14 +40,20 @@ interface ExecutionResult {
   [key: string]: unknown;
 }
 
+/** Tracks a strategy that should execute, with optional dip-buy metadata */
+interface PendingExecution {
+  strategy: DCAStrategy;
+  triggerType: "scheduled" | "dip_buy";
+  executionAmount: number;
+}
+
 /**
  * Map token symbols to their Chainlink price_cache identifiers.
- * The price_cache table stores prices with "network:pair" format.
  */
 const CHAINLINK_SYMBOL_MAP: Record<string, string> = {
   cbBTC: "base:cbBTC/USD",
   ETH:   "base:ETH/USD",
-  WETH:  "base:ETH/USD", // WETH tracks ETH price
+  WETH:  "base:ETH/USD",
 };
 
 /**
@@ -53,7 +61,7 @@ const CHAINLINK_SYMBOL_MAP: Record<string, string> = {
  */
 function filterDueStrategies(strategies: DCAStrategy[], now: Date): DCAStrategy[] {
   return strategies.filter((s) => {
-    if (!s.last_executed_at) return true; // Never executed → due
+    if (!s.last_executed_at) return true;
 
     const lastExec = new Date(s.last_executed_at);
     const hoursSince = (now.getTime() - lastExec.getTime()) / (1000 * 60 * 60);
@@ -75,15 +83,103 @@ function filterDueStrategies(strategies: DCAStrategy[], now: Date): DCAStrategy[
   });
 }
 
+/**
+ * Fetch the current price for a token from price_cache via HTTPClient.
+ */
+async function fetchCurrentPrice(
+  tokenSymbol: string,
+  config: DCAConfig,
+  runtime: cre.Runtime,
+): Promise<number | null> {
+  const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[tokenSymbol];
+  if (!chainlinkSymbol) return null;
+
+  try {
+    const priceData = await runtime.runInNodeMode(
+      (nodeRuntime: cre.NodeRuntime) => {
+        const httpClient = new cre.capabilities.HTTPClient();
+        const encodedSymbol = encodeURIComponent(chainlinkSymbol);
+        const url = `${config.supabaseUrl}/rest/v1/price_cache?symbol=eq.${encodedSymbol}&select=price&limit=1`;
+
+        const response = httpClient.sendRequest(nodeRuntime, {
+          url,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: config.supabaseServiceRoleKey,
+            Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+          },
+          timeout: 10000,
+        }).result();
+
+        if (response.statusCode !== 200) {
+          throw new Error(`price_cache query returned ${response.statusCode}`);
+        }
+
+        const text = new TextDecoder().decode(response.body);
+        const rows = JSON.parse(text) as Array<{ price: number }>;
+        return rows.length > 0 ? { price: rows[0].price } : { price: undefined };
+      },
+      cre.consensusMedianAggregation(),
+    )(config);
+
+    return priceData?.price ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the last completed execution price for a strategy from dca_executions.
+ */
+async function fetchLastExecutionPrice(
+  strategyId: string,
+  config: DCAConfig,
+  runtime: cre.Runtime,
+): Promise<number | null> {
+  try {
+    const data = await runtime.runInNodeMode(
+      (nodeRuntime: cre.NodeRuntime) => {
+        const httpClient = new cre.capabilities.HTTPClient();
+        const url = `${config.supabaseUrl}/rest/v1/dca_executions?strategy_id=eq.${strategyId}&status=eq.completed&token_price_usd=not.is.null&order=created_at.desc&limit=1&select=token_price_usd`;
+
+        const response = httpClient.sendRequest(nodeRuntime, {
+          url,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: config.supabaseServiceRoleKey,
+            Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+          },
+          timeout: 10000,
+        }).result();
+
+        if (response.statusCode !== 200) {
+          throw new Error(`dca_executions query returned ${response.statusCode}`);
+        }
+
+        const text = new TextDecoder().decode(response.body);
+        const rows = JSON.parse(text) as Array<{ token_price_usd: number }>;
+        return rows.length > 0 ? { price: rows[0].token_price_usd } : { price: undefined };
+      },
+      cre.consensusMedianAggregation(),
+    )(config);
+
+    return data?.price ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default cre.Handler(
   new cre.capabilities.CronCapability().trigger({
-    schedule: "0 0 */1 * * *", // every hour
+    schedule: "0 */5 * * * *", // every 5 minutes
   }),
 
   async (config: DCAConfig, runtime: cre.Runtime): Promise<ExecutionResult[]> => {
-    runtime.log("[DCA] Starting DCA Trigger Workflow");
+    runtime.log("[DCA] Starting DCA Trigger Workflow (5-min tick)");
 
-    // ── 1. Fetch active strategies via HTTPClient with consensus ──
+    // ── 1. Fetch active strategies ──
     const strategies = await runtime.runInNodeMode(
       (nodeRuntime: cre.NodeRuntime) => {
         const httpClient = new cre.capabilities.HTTPClient();
@@ -112,109 +208,100 @@ export default cre.Handler(
 
     runtime.log(`[DCA] Found ${strategies.length} active strategies`);
 
-    // ── 2. Filter strategies that are due ──
+    // ── 2. Regular pass: filter by schedule frequency ──
     const now = new Date();
     const dueStrategies = filterDueStrategies(strategies, now);
-    runtime.log(`[DCA] ${dueStrategies.length} strategies are due for execution`);
+    runtime.log(`[DCA] ${dueStrategies.length} strategies due by schedule`);
 
-    if (dueStrategies.length === 0) {
+    // Build pending executions from regular pass
+    const pendingExecutions: PendingExecution[] = dueStrategies.map((s) => ({
+      strategy: s,
+      triggerType: "scheduled" as const,
+      executionAmount: s.amount_per_execution,
+    }));
+
+    // ── 3. Dip-detection pass ──
+    const dipCandidates = strategies.filter(
+      (s) =>
+        s.dip_threshold_pct > 0 &&
+        s.dip_multiplier > 1 &&
+        !dueStrategies.some((d) => d.id === s.id),
+    );
+
+    if (dipCandidates.length > 0) {
+      runtime.log(`[DCA] Checking ${dipCandidates.length} strategies for dip-buy opportunities`);
+
+      for (const candidate of dipCandidates) {
+        const currentPrice = await fetchCurrentPrice(candidate.to_token, config, runtime);
+        if (!currentPrice || currentPrice <= 0) {
+          runtime.log(`[DCA] Dip check skipped for ${candidate.to_token}: no current price`);
+          continue;
+        }
+
+        const lastPrice = await fetchLastExecutionPrice(candidate.id, config, runtime);
+        if (!lastPrice || lastPrice <= 0) {
+          runtime.log(`[DCA] Dip check skipped for strategy ${candidate.id}: no previous execution price`);
+          continue;
+        }
+
+        const pctDrop = ((lastPrice - currentPrice) / lastPrice) * 100;
+
+        if (pctDrop >= candidate.dip_threshold_pct) {
+          const dipAmount = candidate.amount_per_execution * candidate.dip_multiplier;
+          runtime.log(
+            `[DCA] Dip detected for ${candidate.to_token}: -${pctDrop.toFixed(1)}% (threshold: ${candidate.dip_threshold_pct}%), buying ${dipAmount} USDC (${candidate.dip_multiplier}x)`,
+          );
+          pendingExecutions.push({
+            strategy: candidate,
+            triggerType: "dip_buy",
+            executionAmount: dipAmount,
+          });
+        } else {
+          runtime.log(
+            `[DCA] No dip for ${candidate.to_token}: ${pctDrop > 0 ? `-${pctDrop.toFixed(1)}%` : `+${Math.abs(pctDrop).toFixed(1)}%`} (threshold: ${candidate.dip_threshold_pct}%)`,
+          );
+        }
+      }
+    }
+
+    runtime.log(`[DCA] ${pendingExecutions.length} total executions to process`);
+
+    if (pendingExecutions.length === 0) {
       return [];
     }
 
-    // ── 3. Execute each due strategy ──
+    // ── 4. Execute combined list ──
     const results: ExecutionResult[] = [];
 
-    for (const strategy of dueStrategies) {
+    for (const pending of pendingExecutions) {
+      const strategy = pending.strategy;
+      let executionAmount = pending.executionAmount;
+
       try {
+        // Fetch price for scheduled strategies (dip-buys already have it)
         let tokenPriceUsd: number | null = null;
-        let executionAmount = strategy.amount_per_execution;
+        if (pending.triggerType === "scheduled") {
+          tokenPriceUsd = await fetchCurrentPrice(strategy.to_token, config, runtime);
+          if (tokenPriceUsd && tokenPriceUsd > 0) {
+            runtime.log(`[DCA] Price for ${strategy.to_token}: $${tokenPriceUsd}`);
 
-        // Fetch current price — prefer Chainlink on-chain feed via price_cache
-        const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[strategy.to_token];
-
-        if (chainlinkSymbol) {
-          try {
-            const priceData = await runtime.runInNodeMode(
-              (nodeRuntime: cre.NodeRuntime) => {
-                const httpClient = new cre.capabilities.HTTPClient();
-                const encodedSymbol = encodeURIComponent(chainlinkSymbol);
-                const url = `${config.supabaseUrl}/rest/v1/price_cache?symbol=eq.${encodedSymbol}&select=price&limit=1`;
-
-                const response = httpClient.sendRequest(nodeRuntime, {
-                  url,
-                  method: "GET",
-                  headers: {
-                    "Content-Type": "application/json",
-                    apikey: config.supabaseServiceRoleKey,
-                    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
-                  },
-                  timeout: 10000,
-                }).result();
-
-                if (response.statusCode !== 200) {
-                  throw new Error(`price_cache query returned ${response.statusCode}`);
+            // Apply dip logic for scheduled strategies that also have dip settings
+            if (strategy.dip_threshold_pct > 0 && strategy.dip_multiplier > 1) {
+              const lastPrice = await fetchLastExecutionPrice(strategy.id, config, runtime);
+              if (lastPrice && lastPrice > 0) {
+                const pctDrop = ((lastPrice - tokenPriceUsd) / lastPrice) * 100;
+                if (pctDrop >= strategy.dip_threshold_pct) {
+                  executionAmount = strategy.amount_per_execution * strategy.dip_multiplier;
+                  runtime.log(
+                    `[DCA] Dip detected on scheduled run: -${pctDrop.toFixed(1)}%, multiplying to ${executionAmount} USDC`,
+                  );
                 }
-
-                const text = new TextDecoder().decode(response.body);
-                const rows = JSON.parse(text) as Array<{ price: number }>;
-                return rows.length > 0 ? { price: rows[0].price } : { price: undefined };
-              },
-              cre.consensusMedianAggregation(),
-            )(config);
-
-            tokenPriceUsd = priceData?.price ?? null;
-            if (tokenPriceUsd && tokenPriceUsd > 0) {
-              runtime.log(`[DCA] Chainlink price for ${strategy.to_token} (${chainlinkSymbol}): $${tokenPriceUsd}`);
-            } else {
-              runtime.log(`[DCA] Chainlink price not available for ${chainlinkSymbol}`);
+              }
             }
-          } catch (priceErr) {
-            runtime.log(`[DCA] Chainlink price fetch failed for ${strategy.to_token}: ${priceErr}`);
           }
-        } else if (config.priceApiUrl) {
-          // Fallback for tokens without a Chainlink mapping
-          try {
-            const priceData = await runtime.runInNodeMode(
-              (nodeRuntime: cre.NodeRuntime) => {
-                const httpClient = new cre.capabilities.HTTPClient();
-                const response = httpClient.sendRequest(nodeRuntime, {
-                  url: `${config.priceApiUrl}?symbol=${strategy.to_token}`,
-                  method: "GET",
-                  headers: {
-                    apikey: config.supabaseServiceRoleKey,
-                    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
-                  },
-                  timeout: 10000,
-                }).result();
-
-                if (response.statusCode !== 200) {
-                  throw new Error(`Price API returned ${response.statusCode}`);
-                }
-
-                const text = new TextDecoder().decode(response.body);
-                return JSON.parse(text) as { price?: number };
-              },
-              cre.consensusMedianAggregation(),
-            )(config);
-
-            tokenPriceUsd = priceData?.price ?? null;
-            if (tokenPriceUsd) {
-              runtime.log(`[DCA] Fallback price for ${strategy.to_token}: $${tokenPriceUsd}`);
-            }
-          } catch (priceErr) {
-            runtime.log(`[DCA] Fallback price fetch failed for ${strategy.to_token}: ${priceErr}`);
-          }
-        }
-
-        // Dip-buying: placeholder check (real impl would compare against previous price)
-        if (
-          tokenPriceUsd &&
-          strategy.dip_threshold_pct > 0 &&
-          strategy.dip_multiplier > 1
-        ) {
-          runtime.log(
-            `[DCA] Dip check: threshold=${strategy.dip_threshold_pct}%, multiplier=${strategy.dip_multiplier}`,
-          );
+        } else {
+          // For dip-buy triggers, fetch the price for the execution record
+          tokenPriceUsd = await fetchCurrentPrice(strategy.to_token, config, runtime);
         }
 
         // Check budget remaining
@@ -237,10 +324,7 @@ export default cre.Handler(
               from_token: strategy.from_token,
               to_token: strategy.to_token,
               amount_usd: executionAmount,
-              trigger_type:
-                executionAmount > strategy.amount_per_execution
-                  ? "dip_buy"
-                  : "scheduled",
+              trigger_type: pending.triggerType,
               token_price_usd: tokenPriceUsd,
             });
 
@@ -272,7 +356,7 @@ export default cre.Handler(
         });
 
         runtime.log(
-          `[DCA] Strategy ${strategy.id}: ${execResult.ok ? "OK" : "FAILED"} — ${JSON.stringify(execResult).slice(0, 200)}`,
+          `[DCA] Strategy ${strategy.id} (${pending.triggerType}): ${execResult.ok ? "OK" : "FAILED"} — ${JSON.stringify(execResult).slice(0, 200)}`,
         );
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";

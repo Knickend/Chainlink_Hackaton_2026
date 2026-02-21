@@ -102,9 +102,9 @@ export function DCAStrategyForm({ onSubmit, isSubmitting }: DCAStrategyFormProps
           </div>
 
           <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
+          <div>
               <p className="font-medium text-sm">Dip Buying</p>
-              <p className="text-xs text-muted-foreground">Buy more when the price drops</p>
+              <p className="text-xs text-muted-foreground">Buy more when the price drops — monitored every 5 minutes</p>
             </div>
             <Switch checked={enableDip} onCheckedChange={setEnableDip} />
           </div>

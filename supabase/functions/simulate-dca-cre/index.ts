@@ -59,9 +59,8 @@ serve(async (req) => {
   const results: ExecutionResult[] = [];
 
   try {
-    addStep(steps, 'cron_trigger', '⏰ CRE Cron Trigger fired — starting DCA workflow simulation');
+    addStep(steps, 'cron_trigger', '⏰ CRE Cron Trigger fired (every 5 min) — starting DCA workflow simulation');
 
-    // Auth: user JWT
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -107,23 +106,108 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Filter due
+    // Filter due (regular pass)
     addStep(steps, 'filter_due', force
       ? '🔓 Force mode enabled — skipping schedule filter, executing ALL strategies'
       : '🔍 Filtering strategies by schedule frequency');
 
     const dueStrategies = force ? strategies : strategies.filter(isStrategyDue);
-    const skipped = strategies.length - dueStrategies.length;
+    const skippedBySchedule = strategies.length - dueStrategies.length;
 
-    addStep(steps, 'filter_due', `${dueStrategies.length} strategies due for execution (${skipped} skipped)`);
+    addStep(steps, 'filter_due', `${dueStrategies.length} strategies due by schedule (${skippedBySchedule} not yet due)`);
 
-    if (dueStrategies.length === 0) {
+    // ── Dip-detection pass ──
+    const dipCandidates = force ? [] : strategies.filter(
+      (s: any) =>
+        s.dip_threshold_pct > 0 &&
+        s.dip_multiplier > 1 &&
+        !dueStrategies.some((d: any) => d.id === s.id)
+    );
+
+    interface PendingExec {
+      strategy: any;
+      triggerType: 'scheduled' | 'dip_buy';
+      executionAmount: number;
+    }
+
+    const pendingExecutions: PendingExec[] = dueStrategies.map((s: any) => ({
+      strategy: s,
+      triggerType: 'scheduled' as const,
+      executionAmount: s.amount_per_execution,
+    }));
+
+    if (dipCandidates.length > 0) {
+      addStep(steps, 'dip_check', `🔎 Checking ${dipCandidates.length} strategies for dip-buy opportunities`);
+
+      for (const candidate of dipCandidates) {
+        const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[candidate.to_token];
+        let currentPrice: number | null = null;
+
+        if (chainlinkSymbol) {
+          const { data: priceRows } = await serviceClient
+            .from('price_cache')
+            .select('price')
+            .eq('symbol', chainlinkSymbol)
+            .limit(1);
+
+          currentPrice = priceRows && priceRows.length > 0 ? priceRows[0].price : null;
+        }
+
+        if (!currentPrice || currentPrice <= 0) {
+          addStep(steps, 'dip_check', `⏭️ ${candidate.to_token}: No current price available — skipping dip check`);
+          continue;
+        }
+
+        // Fetch last completed execution price
+        const { data: execRows } = await serviceClient
+          .from('dca_executions')
+          .select('token_price_usd')
+          .eq('strategy_id', candidate.id)
+          .eq('status', 'completed')
+          .not('token_price_usd', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const lastPrice = execRows && execRows.length > 0 ? execRows[0].token_price_usd : null;
+
+        if (!lastPrice || lastPrice <= 0) {
+          addStep(steps, 'dip_check', `⏭️ ${candidate.to_token}: No previous execution price — skipping dip check`);
+          continue;
+        }
+
+        const pctDrop = ((lastPrice - currentPrice) / lastPrice) * 100;
+
+        if (pctDrop >= candidate.dip_threshold_pct) {
+          const dipAmount = candidate.amount_per_execution * candidate.dip_multiplier;
+          addStep(steps, 'dip_check',
+            `🔻 Dip detected: ${candidate.to_token} dropped ${pctDrop.toFixed(1)}% (threshold: ${candidate.dip_threshold_pct}%) — triggering dip buy at ${candidate.dip_multiplier}x ($${dipAmount})`
+          );
+          pendingExecutions.push({
+            strategy: candidate,
+            triggerType: 'dip_buy',
+            executionAmount: dipAmount,
+          });
+        } else {
+          addStep(steps, 'dip_check',
+            `✅ ${candidate.to_token}: ${pctDrop > 0 ? `-${pctDrop.toFixed(1)}%` : `+${Math.abs(pctDrop).toFixed(1)}%`} (threshold: ${candidate.dip_threshold_pct}%) — no dip`
+          );
+        }
+      }
+    } else if (!force && dipCandidates.length === 0 && dueStrategies.length === 0) {
+      addStep(steps, 'dip_check', '⏭️ No dip-eligible strategies to check');
+    }
+
+    // Handle case where nothing to execute
+    if (pendingExecutions.length === 0) {
       addStep(steps, 'price_check', '⏭️ No strategies due — skipping price check');
       addStep(steps, 'execute_order', '⏭️ No strategies due — skipping execution');
     }
 
-    // Process each
-    for (const strategy of dueStrategies) {
+    // Process each pending execution
+    for (const pending of pendingExecutions) {
+      const strategy = pending.strategy;
+      let executionAmount = pending.executionAmount;
+
       // Budget check
       if (strategy.total_budget_usd && strategy.total_spent_usd >= strategy.total_budget_usd) {
         addStep(steps, 'price_check', `⏭️ ${strategy.to_token}: Budget exhausted ($${strategy.total_spent_usd}/$${strategy.total_budget_usd})`);
@@ -136,7 +220,13 @@ serve(async (req) => {
         continue;
       }
 
-      // Price fetch
+      // Budget cap
+      if (strategy.total_budget_usd) {
+        const remaining = strategy.total_budget_usd - (strategy.total_spent_usd || 0);
+        executionAmount = Math.min(executionAmount, remaining);
+      }
+
+      // Price fetch for scheduled strategies
       const chainlinkSymbol = CHAINLINK_SYMBOL_MAP[strategy.to_token];
       let tokenPriceUsd: number | null = null;
 
@@ -159,8 +249,32 @@ serve(async (req) => {
         addStep(steps, 'price_check', `⚠️ No Chainlink mapping for ${strategy.to_token}, proceeding without price`);
       }
 
+      // For scheduled strategies with dip settings, check for dip on the scheduled run too
+      if (pending.triggerType === 'scheduled' && tokenPriceUsd && strategy.dip_threshold_pct > 0 && strategy.dip_multiplier > 1) {
+        const { data: execRows } = await serviceClient
+          .from('dca_executions')
+          .select('token_price_usd')
+          .eq('strategy_id', strategy.id)
+          .eq('status', 'completed')
+          .not('token_price_usd', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const lastPrice = execRows && execRows.length > 0 ? execRows[0].token_price_usd : null;
+        if (lastPrice && lastPrice > 0) {
+          const pctDrop = ((lastPrice - tokenPriceUsd) / lastPrice) * 100;
+          if (pctDrop >= strategy.dip_threshold_pct) {
+            executionAmount = strategy.amount_per_execution * strategy.dip_multiplier;
+            addStep(steps, 'price_check',
+              `🔻 Dip on scheduled run: ${strategy.to_token} dropped ${pctDrop.toFixed(1)}% — multiplying to $${executionAmount}`
+            );
+          }
+        }
+      }
+
       // Execute order
-      addStep(steps, 'execute_order', `🚀 Calling execute-dca-order for ${strategy.from_token} → ${strategy.to_token} ($${strategy.amount_per_execution})`);
+      const triggerLabel = pending.triggerType === 'dip_buy' ? '(dip buy) ' : '';
+      addStep(steps, 'execute_order', `🚀 ${triggerLabel}Calling execute-dca-order for ${strategy.from_token} → ${strategy.to_token} ($${executionAmount})`);
 
       try {
         const execResp = await fetch(`${supabaseUrl}/functions/v1/execute-dca-order`, {
@@ -174,8 +288,8 @@ serve(async (req) => {
             user_id: user.id,
             from_token: strategy.from_token,
             to_token: strategy.to_token,
-            amount_usd: strategy.amount_per_execution,
-            trigger_type: 'simulated',
+            amount_usd: executionAmount,
+            trigger_type: pending.triggerType,
             token_price_usd: tokenPriceUsd,
           }),
         });
@@ -199,6 +313,7 @@ serve(async (req) => {
 
     const succeeded = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
+    const skipped = strategies.length - pendingExecutions.length;
 
     addStep(steps, 'summary', `🏁 Simulation complete: ${succeeded} succeeded, ${failed} failed, ${skipped} skipped`);
 
