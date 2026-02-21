@@ -1,50 +1,59 @@
 
-
-# Speed Up Chainlink Price Feed Loading with DB Cache
+# Fix Missing Network Names and Error Feeds in Chainlink Tab
 
 ## Problem
 
-When opening the Chainlink tab, it calls the edge function which makes live RPC calls to 8 contracts across 2 networks. This takes several seconds. The 30s in-memory cache only helps on repeat calls within the same edge function isolate.
+1. **Network column is empty**: When Chainlink data is served from the database cache, the `network` field is not stored in `price_cache`, so it shows blank.
+2. **Error feeds are hidden**: Feeds that fail RPC calls are not stored in `price_cache`, so they disappear when cached data is returned.
 
-## Solution: Instant load from database, refresh in background
+## Solution
 
-The edge function already upserts results to `price_cache` (with `asset_type = 'chainlink'`). The fix is to serve cached DB results immediately, then refresh on-chain data in the background.
-
-## Changes
-
-### 1. Edge function: return DB cache first, refresh async
+### 1. Store network info in price_cache
 
 **`supabase/functions/fetch-chainlink-feeds/index.ts`**
 
-- When the in-memory cache is stale, immediately query `price_cache` for `asset_type = 'chainlink'` rows and return them with `cached: true`
-- Then kick off the on-chain RPC fetches and upsert fresh results to `price_cache` (the response has already been sent, so this happens "fire-and-forget" style within the same request by returning the DB cache early)
-- If no DB cache exists (first ever call), fall back to the current blocking behavior
+Add a `metadata` or encode the network into the cache. Since `price_cache` likely doesn't have a metadata column, the simplest approach is to store the network as part of a composite key or add it to the symbol (e.g. keep `symbol` as the pair but add a new approach).
 
-### 2. Frontend: load chainlink from price_cache on mount
+Better approach: use the existing `price_cache` table and store network in a way that's retrievable. Two options:
+- Option A: Store as `symbol = "base:cbBTC/USD"` (prefix with network)
+- Option B: Add a `network` column to `price_cache`
 
-**`src/hooks/useLivePrices.ts`**
+Option A is simpler and avoids a migration. The edge function will store `network:pair` as the symbol, and the frontend will parse it back.
 
-- In the existing `loadCachedPrices` function (which already reads `price_cache`), also load rows where `asset_type = 'chainlink'` and populate `chainlinkForex` from them
-- This means chainlink data appears instantly when the tab is opened (from the last successful fetch), removing the need to wait for the edge function
+Actually, even simpler: the edge function already knows the feed config. Instead of relying on DB cache to carry network info, we can **map the network from the CHAINLINK_FEEDS config** when building DB cache results. But the frontend doesn't have the config.
 
-### 3. ExchangeRatesDialog: show cached data, auto-refresh
+Simplest fix: **Store network in the symbol field** as `"network:pair"` format in the edge function, then parse it in the frontend.
 
-**`src/components/ExchangeRatesDialog.tsx`**
+### 2. Store error feeds too
 
-- When switching to the Chainlink tab, if cached data already exists from the DB load, show it immediately
-- Still trigger a background `fetchChainlinkFeeds()` to get fresh on-chain prices, but the user sees data instantly
+In the edge function's DB upsert, also store feeds that errored (with `price = 0` or a sentinel) so they appear in the cached response with an error indicator.
+
+### Changes
+
+**File: `supabase/functions/fetch-chainlink-feeds/index.ts`**
+
+- When upserting to `price_cache`, use `symbol = "network:pair"` format (e.g. `"base:cbBTC/USD"`) instead of just the pair name
+- Also upsert error feeds with `price = -1` as a sentinel value
+- When reading DB cache, reconstruct the full feed objects including network (parsed from symbol) and error status (from price = -1)
+
+**File: `src/hooks/useLivePrices.ts`**
+
+- Update the `loadCachedPrices` chainlink mapping (around line 271) to parse `"network:pair"` format from the symbol field
+- Detect error feeds (price = -1) and set the `error` field accordingly
+
+**File: `src/components/ExchangeRatesDialog.tsx`**
+
+- No changes needed -- it already displays `feed.network` and handles `feed.error`; it will work once the data is correct
 
 ## Technical details
 
 | File | Change |
 |------|--------|
-| `supabase/functions/fetch-chainlink-feeds/index.ts` | Read `price_cache` as fast fallback before RPC calls |
-| `src/hooks/useLivePrices.ts` | Populate `chainlinkForex` from `price_cache` during initial cache load |
-| `src/components/ExchangeRatesDialog.tsx` | Show cached chainlink data immediately, refresh in background |
+| `supabase/functions/fetch-chainlink-feeds/index.ts` | Store symbol as `"network:pair"`, store error feeds with price=-1, parse network when reading DB cache |
+| `src/hooks/useLivePrices.ts` | Parse `"network:pair"` format and detect error sentinel in cached chainlink data |
 
 ## Result
 
-- First visit: chainlink prices load from DB in ~200ms instead of 3-5s RPC calls
-- Subsequent visits: same fast DB cache, with background refresh for fresh prices
-- Only the very first call ever (empty DB) will be slow
-
+- Network column will show "sepolia" or "base" for all feeds
+- Feeds that failed RPC calls will show with "Error" answer and "Fallback" status badge
+- No database migration needed
