@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 
+export const LAYOUT_VERSION = 2;
+
 export interface CardConfig {
   id: string;
   label: string;
@@ -73,6 +75,7 @@ function generateDefaultLayout(): LayoutItem[] {
 interface LayoutConfig {
   layouts: ResponsiveLayouts;
   hiddenCards: string[];
+  version?: number;
 }
 
 export function useDashboardLayout() {
@@ -100,8 +103,11 @@ export function useDashboardLayout() {
 
       if (data?.layout_config) {
         const config = data.layout_config as unknown as LayoutConfig;
-        if (config.layouts) setLayouts(config.layouts);
-        if (config.hiddenCards) setHiddenCards(config.hiddenCards);
+        if (config.version && config.version >= LAYOUT_VERSION) {
+          if (config.layouts) setLayouts(config.layouts);
+          if (config.hiddenCards) setHiddenCards(config.hiddenCards);
+        }
+        // If version is missing or outdated, keep defaults from generateDefaultLayout()
       }
       setIsLoaded(true);
     };
@@ -112,7 +118,7 @@ export function useDashboardLayout() {
     if (!user || isSaving.current) return;
     isSaving.current = true;
 
-    const config: LayoutConfig = { layouts: newLayouts, hiddenCards: newHidden };
+    const config: LayoutConfig = { layouts: newLayouts, hiddenCards: newHidden, version: LAYOUT_VERSION };
     const jsonConfig = JSON.parse(JSON.stringify(config));
 
     const { data: existing } = await supabase
