@@ -26,7 +26,7 @@ function StatusBadge({ status }: { status: RateStatus }) {
     live: 'bg-success/20 text-success border-success/30',
     cached: 'bg-warning/20 text-warning border-warning/30',
     fallback: 'bg-muted text-muted-foreground border-muted-foreground/30',
-    'on-chain': 'bg-primary/20 text-primary border-primary/30',
+    'on-chain': 'bg-success/20 text-success border-success/30',
   };
 
   const label = status === 'on-chain' ? 'On-chain' : status === 'live' ? 'Live' : status === 'cached' ? 'Cached' : 'Fallback';
