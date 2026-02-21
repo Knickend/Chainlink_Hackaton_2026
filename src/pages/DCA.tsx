@@ -21,7 +21,7 @@ export default function DCA() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<DCAStrategy | null>(null);
 
-  const walletBalance = walletStatus.balance ?? 0;
+  const walletBalance = Number(walletStatus.balance) || 0;
   const totalActiveCommitment = strategies
     .filter(s => s.is_active)
     .reduce((sum, s) => sum + s.amount_per_execution, 0);
