@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat, Lock, Unlock } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -42,6 +42,9 @@ import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
 import { ProfitLossCard } from '@/components/ProfitLossCard';
 import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
 import { UpcomingExpensesCard } from '@/components/UpcomingExpensesCard';
+import { DashboardGrid } from '@/components/DashboardGrid';
+import { DashboardSettingsPanel } from '@/components/DashboardSettingsPanel';
+import { useDashboardLayout } from '@/hooks/useDashboardLayout';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -65,6 +68,18 @@ const IndexContent = () => {
   const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo, hasAgreedToTos, acceptTerms, isLoading: subscriptionLoading } = useSubscription();
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
+  // Dashboard layout customization
+  const {
+    layouts,
+    hiddenCards,
+    isEditMode,
+    setIsEditMode,
+    onLayoutChange,
+    hideCard,
+    showCard,
+    resetLayout,
+    cardRegistry,
+  } = useDashboardLayout();
   // Show Pro during tutorial OR in demo mode so users see all features
   const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
   const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
@@ -285,6 +300,27 @@ const IndexContent = () => {
             )}
             {!isDemo && (
               <Button
+                variant={isEditMode ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setIsEditMode(!isEditMode)}
+                className="gap-2"
+                title={isEditMode ? "Lock Dashboard" : "Edit Dashboard"}
+              >
+                {isEditMode ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                <span className="hidden sm:inline">{isEditMode ? 'Lock' : 'Edit'}</span>
+              </Button>
+            )}
+            {isEditMode && (
+              <DashboardSettingsPanel
+                cardRegistry={cardRegistry}
+                hiddenCards={hiddenCards}
+                onShowCard={showCard}
+                onHideCard={hideCard}
+                onReset={resetLayout}
+              />
+            )}
+            {!isDemo && (
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate('/settings')}
@@ -368,111 +404,201 @@ const IndexContent = () => {
           />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          {/* Main charts - wrapped for tutorial spotlight */}
-          <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
-            <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} currentNetWorth={adjustedNetWorth} />
-            <AllocationChart data={categoryTotals} formatDisplayUnitValue={formatDisplayUnitValue} />
-          </div>
-          {/* Third column - Pro features, excluded from tutorial */}
-          {isPro && !isDemo && (
-            <div data-tutorial="portfolio-history-card">
-              <PortfolioHistoryCard 
-                currentNetWorth={adjustedNetWorth} 
-                formatValue={formatValue}
-                formatDisplayUnitValue={formatDisplayUnitValue}
-                assets={assets}
-                freeMonthlyIncome={netCashFlow}
+        {/* Customizable Dashboard Grid */}
+        <DashboardGrid
+          layouts={layouts}
+          hiddenCards={hiddenCards}
+          isEditMode={isEditMode}
+          onLayoutChange={onLayoutChange}
+          onHideCard={hideCard}
+          cardRenderers={{
+            'net-worth-trend': (
+              <div data-tutorial="charts-section">
+                <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} currentNetWorth={adjustedNetWorth} />
+              </div>
+            ),
+            'allocation-chart': (
+              <AllocationChart data={categoryTotals} formatDisplayUnitValue={formatDisplayUnitValue} />
+            ),
+            'portfolio-history': (
+              isPro ? (
+                isDemo ? (
+                  <div data-tutorial="portfolio-history-card">
+                    <PerformanceCard 
+                      currentNetWorth={metrics.totalNetWorth} 
+                      formatValue={formatValue} 
+                      delay={0.2}
+                    />
+                  </div>
+                ) : (
+                  <div data-tutorial="portfolio-history-card">
+                    <PortfolioHistoryCard 
+                      currentNetWorth={adjustedNetWorth} 
+                      formatValue={formatValue}
+                      formatDisplayUnitValue={formatDisplayUnitValue}
+                      assets={assets}
+                      freeMonthlyIncome={netCashFlow}
+                      goals={demoGoals}
+                      livePrices={prices}
+                      delay={0.2}
+                    />
+                  </div>
+                )
+              ) : !isDemo ? (
+                <PortfolioHistoryTeaser 
+                  onUpgrade={() => setShowSubscriptionDialog(true)}
+                  delay={0.2}
+                />
+              ) : null
+            ),
+            'pnl-overview': (
+              isPro ? (
+                <ProfitLossCard 
+                  pnlData={pnlData}
+                  assets={assets}
+                  formatValue={formatValue} 
+                  delay={0.25}
+                  transactions={transactions}
+                  onEditTransaction={isDemo ? undefined : updateTransaction}
+                  onDeleteTransaction={isDemo ? undefined : deleteTransaction}
+                />
+              ) : !isDemo ? (
+                <ProfitLossTeaser 
+                  onUpgrade={() => setShowSubscriptionDialog(true)} 
+                  delay={0.25}
+                />
+              ) : null
+            ),
+            'goals-overview': (
+              <GoalsOverviewCard
                 goals={demoGoals}
-                livePrices={prices}
-                delay={0.2}
-              />
-            </div>
-          )}
-          {isPro && isDemo && (
-            <div data-tutorial="portfolio-history-card">
-              <PerformanceCard 
-                currentNetWorth={metrics.totalNetWorth} 
-                formatValue={formatValue} 
-                delay={0.2}
-              />
-            </div>
-          )}
-          {!isPro && !isDemo && (
-            <PortfolioHistoryTeaser 
-              onUpgrade={() => setShowSubscriptionDialog(true)}
-              delay={0.2}
-            />
-          )}
-        </div>
-
-        {/* P&L Overview - Pro Feature */}
-        <div className="mb-8">
-          {isPro ? (
-            <ProfitLossCard 
-              pnlData={pnlData}
-              assets={assets}
-              formatValue={formatValue} 
-              delay={0.25}
-              transactions={transactions}
-              onEditTransaction={isDemo ? undefined : updateTransaction}
-              onDeleteTransaction={isDemo ? undefined : deleteTransaction}
-            />
-          ) : !isDemo && (
-            <ProfitLossTeaser 
-              onUpgrade={() => setShowSubscriptionDialog(true)} 
-              delay={0.25}
-            />
-          )}
-        </div>
-
-        {/* Financial Goals */}
-        <div className="mb-8">
-          <GoalsOverviewCard
-            goals={demoGoals}
-            loading={!isDemo && goalsLoading}
-            calculateProgress={calculateProgress}
-            calculateMonthsToGoal={calculateMonthsToGoal}
-            getGoalStatus={getGoalStatus}
-            getRecommendation={getRecommendation}
-            formatValue={formatValue}
-            onAddGoal={isDemo ? undefined : addGoal}
-            onUpdateGoal={isDemo ? undefined : updateGoal}
-            onDeleteGoal={isDemo ? undefined : deleteGoal}
-            canAddGoal={isDemo ? true : canAddGoal}
-            goalLimit={isDemo ? undefined : goalLimit}
-            onUpgrade={() => setShowSubscriptionDialog(true)}
-            delay={0.25}
-            isDemo={isDemo}
-          />
-        </div>
-
-        {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}
-        {(!isDemo || isPro) && (
-          <div className="mb-8" data-tutorial="investment-strategy-card">
-            {isPro ? (
-              <InvestmentStrategyCard
-                freeMonthlyIncome={netCashFlow}
+                loading={!isDemo && goalsLoading}
+                calculateProgress={calculateProgress}
+                calculateMonthsToGoal={calculateMonthsToGoal}
+                getGoalStatus={getGoalStatus}
+                getRecommendation={getRecommendation}
                 formatValue={formatValue}
-                debts={demoDebts}
-                monthlyPayments={demoMonthlyPayments}
-                goals={demoGoals}
-                delay={0.3}
-              />
-            ) : (
-              <InvestmentStrategyTeaser
-                freeMonthlyIncome={netCashFlow}
-                formatValue={formatValue}
+                onAddGoal={isDemo ? undefined : addGoal}
+                onUpdateGoal={isDemo ? undefined : updateGoal}
+                onDeleteGoal={isDemo ? undefined : deleteGoal}
+                canAddGoal={isDemo ? true : canAddGoal}
+                goalLimit={isDemo ? undefined : goalLimit}
                 onUpgrade={() => setShowSubscriptionDialog(true)}
-                delay={0.3}
+                delay={0.25}
+                isDemo={isDemo}
               />
-            )}
-          </div>
-        )}
+            ),
+            'investment-strategy': (
+              (!isDemo || isPro) ? (
+                isPro ? (
+                  <div data-tutorial="investment-strategy-card">
+                    <InvestmentStrategyCard
+                      freeMonthlyIncome={netCashFlow}
+                      formatValue={formatValue}
+                      debts={demoDebts}
+                      monthlyPayments={demoMonthlyPayments}
+                      goals={demoGoals}
+                      delay={0.3}
+                    />
+                  </div>
+                ) : (
+                  <div data-tutorial="investment-strategy-card">
+                    <InvestmentStrategyTeaser
+                      freeMonthlyIncome={netCashFlow}
+                      formatValue={formatValue}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                      delay={0.3}
+                    />
+                  </div>
+                )
+              ) : null
+            ),
+            'income-card': (
+              <div data-tutorial="income-card">
+                <IncomeExpenseCard
+                  type="income"
+                  items={income}
+                  total={formatValue(metrics.totalIncome)}
+                  formatValue={formatValue}
+                  actionButton={isDemo ? undefined : (
+                    <AddIncomeDropdown
+                      onAddRecurring={(data) => addIncome(data)}
+                      onAddOneTime={(data) => addIncome(data)}
+                      displayUnit={displayUnit}
+                      isPro={isPro}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                    />
+                  )}
+                  displayUnit={displayUnit}
+                  onUpdateIncome={isDemo ? undefined : updateIncome}
+                  onDeleteIncome={isDemo ? undefined : deleteIncome}
+                />
+              </div>
+            ),
+            'expense-card': (
+              <div data-tutorial="expense-card">
+                <IncomeExpenseCard
+                  type="expense"
+                  items={expenses}
+                  total={formatValue(metrics.totalExpenses)}
+                  formatValue={formatValue}
+                  actionButton={isDemo ? undefined : (
+                    <AddExpenseDropdown
+                      onAddRecurring={(data) => addExpense({ ...data, is_recurring: true })}
+                      onAddOneTime={(data) => addExpense(data)}
+                      isPro={isPro}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                    />
+                  )}
+                  onUpdateExpense={isDemo ? undefined : updateExpense}
+                  onDeleteExpense={isDemo ? undefined : deleteExpense}
+                  displayUnit={displayUnit}
+                  allExpenses={expenses}
+                />
+              </div>
+            ),
+            'debt-card': (
+              <div data-tutorial="debt-card">
+                <DebtOverviewCard
+                  debts={demoDebts}
+                  totalDebt={demoTotalDebt}
+                  monthlyPayments={demoMonthlyPayments}
+                  monthlyInterest={demoMonthlyInterest}
+                  formatValue={formatValue}
+                  onUpdateDebt={isDemo ? undefined : updateDebt}
+                  onDeleteDebt={isDemo ? undefined : deleteDebt}
+                  actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number; currency: string }) => addDebt(data)} />}
+                  delay={0.2}
+                  displayUnit={displayUnit}
+                />
+              </div>
+            ),
+            'debt-payoff': (
+              demoDebts.length > 0 ? (
+                isPro ? (
+                  <div data-tutorial="debt-payoff-calculator">
+                    <DebtPayoffCalculator
+                      debts={demoDebts}
+                      displayUnit={displayUnit}
+                      convertFromCurrency={convertFromCurrency}
+                      formatCurrencyValue={formatCurrencyValue}
+                      delay={0.3}
+                    />
+                  </div>
+                ) : (
+                  <DebtPayoffTeaser
+                    debtCount={demoDebts.length}
+                    onUpgrade={() => setShowSubscriptionDialog(true)}
+                    delay={0.3}
+                  />
+                )
+              ) : null
+            ),
+          }}
+        />
 
         {/* Asset Categories */}
-        <div className="mb-8">
+        <div className="mb-8 mt-8">
           <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
             <h2 className="text-xl font-semibold">Assets by Category</h2>
             <div className="flex items-center gap-2">
@@ -485,7 +611,6 @@ const IndexContent = () => {
                   const asset = assets.find(a => a.id === assetId);
                   if (!asset) return;
                   
-                  // Record the transaction
                   await addTransaction({
                     asset_id: assetId,
                     transaction_type: 'sell',
@@ -500,14 +625,11 @@ const IndexContent = () => {
                     notes: data.notes,
                   });
                   
-                  // Update or delete the asset
                   const remainingQty = (asset.quantity || 0) - data.quantity;
                   
                   if (remainingQty <= 0) {
-                    // Full sale - delete asset
                     await deleteAsset(assetId);
                   } else {
-                    // Partial sale - reduce quantity and cost basis proportionally
                     const originalQty = asset.quantity || 0;
                     const newCostBasis = asset.cost_basis 
                       ? asset.cost_basis * (remainingQty / originalQty)
@@ -546,7 +668,6 @@ const IndexContent = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(() => {
-                // Calculate total in display unit for percentage calculation
                 const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
                 return categoryTotals.map((cat, index) => (
                   <AssetCategoryCard
@@ -565,17 +686,14 @@ const IndexContent = () => {
                     const asset = assets.find(a => a.id === assetId);
                     if (!asset) return;
                     
-                    // Validate source balance if linked mode
                     if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
                       const sourceAsset = assets.find(a => a.id === data.source_asset_id);
                       if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
-                        // Insufficient balance - this should have been caught in UI
                         console.error('Insufficient source balance');
                         return;
                       }
                     }
                     
-                    // Record buy transaction
                     await addTransaction({
                       asset_id: assetId,
                       transaction_type: 'buy',
@@ -586,7 +704,6 @@ const IndexContent = () => {
                       price_per_unit: data.price_per_unit,
                       total_value: data.quantity * data.price_per_unit,
                       transaction_date: data.transaction_date,
-                      // Fund flow fields
                       fund_flow_mode: data.fund_flow_mode,
                       source_asset_id: data.source_asset_id,
                       source_label: data.source_label,
@@ -594,7 +711,6 @@ const IndexContent = () => {
                       source_amount: data.source_amount,
                     });
                     
-                    // Update asset with new quantity and cost basis
                     const newQuantity = (asset.quantity || 0) + data.quantity;
                     const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
                     
@@ -604,7 +720,6 @@ const IndexContent = () => {
                       purchase_price_per_unit: newCostBasis / newQuantity,
                     });
                     
-                    // Auto-update source asset if linked mode
                     if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
                       const sourceAsset = assets.find(a => a.id === data.source_asset_id);
                       if (sourceAsset) {
@@ -612,7 +727,6 @@ const IndexContent = () => {
                         if (newSourceQty <= 0) {
                           await deleteAsset(data.source_asset_id);
                         } else {
-                          // For banking assets, also update value using forex rate
                           const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
                           
                           if (sourceAsset.category === 'banking') {
@@ -632,7 +746,6 @@ const IndexContent = () => {
                     const asset = assets.find(a => a.id === assetId);
                     if (!asset) return;
                     
-                    // Record the transaction
                     await addTransaction({
                       asset_id: assetId,
                       transaction_type: 'sell',
@@ -645,7 +758,6 @@ const IndexContent = () => {
                       realized_pnl: data.realized_pnl,
                       transaction_date: data.transaction_date,
                       notes: data.notes,
-                      // Fund flow fields
                       fund_flow_mode: data.fund_flow_mode,
                       destination_asset_id: data.destination_asset_id,
                       destination_label: data.destination_label,
@@ -653,14 +765,11 @@ const IndexContent = () => {
                       destination_amount: data.destination_amount,
                     });
                     
-                    // Update or delete the asset
                     const remainingQty = (asset.quantity || 0) - data.quantity;
                     
                     if (remainingQty <= 0) {
-                      // Full sale - delete asset
                       await deleteAsset(assetId);
                     } else {
-                      // Partial sale - reduce quantity and cost basis proportionally
                       const originalQty = asset.quantity || 0;
                       const newCostBasis = asset.cost_basis 
                         ? asset.cost_basis * (remainingQty / originalQty)
@@ -672,13 +781,11 @@ const IndexContent = () => {
                       });
                     }
                     
-                    // Auto-update destination asset if linked mode
                     if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
                       const destAsset = assets.find(a => a.id === data.destination_asset_id);
                       if (destAsset) {
                         const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
                         
-                        // For banking assets, also update value using forex rate
                         const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
                         
                         if (destAsset.category === 'banking') {
@@ -702,85 +809,6 @@ const IndexContent = () => {
             </div>
           )}
         </div>
-
-        {/* Income, Expenses & Debt */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div data-tutorial="income-card">
-            <IncomeExpenseCard
-              type="income"
-              items={income}
-              total={formatValue(metrics.totalIncome)}
-              formatValue={formatValue}
-              actionButton={isDemo ? undefined : (
-                <AddIncomeDropdown
-                  onAddRecurring={(data) => addIncome(data)}
-                  onAddOneTime={(data) => addIncome(data)}
-                  displayUnit={displayUnit}
-                  isPro={isPro}
-                  onUpgrade={() => setShowSubscriptionDialog(true)}
-                />
-              )}
-              displayUnit={displayUnit}
-              onUpdateIncome={isDemo ? undefined : updateIncome}
-              onDeleteIncome={isDemo ? undefined : deleteIncome}
-            />
-          </div>
-          <div data-tutorial="expense-card">
-            <IncomeExpenseCard
-              type="expense"
-              items={expenses}
-              total={formatValue(metrics.totalExpenses)}
-              formatValue={formatValue}
-              actionButton={isDemo ? undefined : (
-                <AddExpenseDropdown
-                  onAddRecurring={(data) => addExpense({ ...data, is_recurring: true })}
-                  onAddOneTime={(data) => addExpense(data)}
-                  isPro={isPro}
-                  onUpgrade={() => setShowSubscriptionDialog(true)}
-                />
-              )}
-              onUpdateExpense={isDemo ? undefined : updateExpense}
-              onDeleteExpense={isDemo ? undefined : deleteExpense}
-              displayUnit={displayUnit}
-              allExpenses={expenses}
-            />
-          </div>
-          <div data-tutorial="debt-card">
-            <DebtOverviewCard
-              debts={demoDebts}
-              totalDebt={demoTotalDebt}
-              monthlyPayments={demoMonthlyPayments}
-              monthlyInterest={demoMonthlyInterest}
-              formatValue={formatValue}
-              onUpdateDebt={isDemo ? undefined : updateDebt}
-              onDeleteDebt={isDemo ? undefined : deleteDebt}
-              actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number; currency: string }) => addDebt(data)} />}
-              delay={0.2}
-              displayUnit={displayUnit}
-            />
-          </div>
-        </div>
-
-        {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
-        {demoDebts.length > 0 && (
-          <div className="mt-8" data-tutorial="debt-payoff-calculator">
-            {isPro ? (
-              <DebtPayoffCalculator
-                debts={demoDebts}
-                displayUnit={displayUnit}
-                convertFromCurrency={convertFromCurrency}
-                formatCurrencyValue={formatCurrencyValue}
-                delay={0.3}
-              />
-            ) : (
-              <DebtPayoffTeaser
-                debtCount={demoDebts.length}
-                onUpgrade={() => setShowSubscriptionDialog(true)}
-                delay={0.3}
-              />
-            )}
-          </div>
-        )}
 
         {/* Footer */}
         <motion.footer
