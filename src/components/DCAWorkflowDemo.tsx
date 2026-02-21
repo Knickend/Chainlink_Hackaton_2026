@@ -98,22 +98,34 @@ export function DCAWorkflowDemo({ refetch }: Props) {
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
           {PIPELINE_STEPS.map((step, i) => (
             <div key={step.key} className="flex items-center">
-              <div
-                className={`
-                  rounded-lg border px-3 py-2 text-xs font-medium whitespace-nowrap transition-all duration-300
-                  ${activeStep === step.key
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)] scale-105'
-                    : logs.some(l => l.step === step.key)
-                      ? 'border-green-500/50 bg-green-500/10 text-green-400'
-                      : 'border-border text-muted-foreground'
-                  }
-                `}
-              >
-                {step.label}
-              </div>
-              {i < PIPELINE_STEPS.length - 1 && (
-                <div className={`mx-1 h-px w-4 ${logs.some(l => l.step === PIPELINE_STEPS[i + 1].key) ? 'bg-green-500/50' : 'bg-border'}`} />
-              )}
+              {(() => {
+                const stepLogs = logs.filter(l => l.step === step.key);
+                const hasLogs = stepLogs.length > 0;
+                const allSkipped = hasLogs && stepLogs.every(l => l.message.includes('skipping') || l.message.includes('⏭️'));
+                return (
+                  <div
+                    className={`
+                      rounded-lg border px-3 py-2 text-xs font-medium whitespace-nowrap transition-all duration-300
+                      ${activeStep === step.key
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)] scale-105'
+                        : allSkipped
+                          ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400'
+                          : hasLogs
+                            ? 'border-green-500/50 bg-green-500/10 text-green-400'
+                            : 'border-border text-muted-foreground'
+                      }
+                    `}
+                  >
+                    {step.label}
+                  </div>
+                );
+              })()}
+              {i < PIPELINE_STEPS.length - 1 && (() => {
+                const nextLogs = logs.filter(l => l.step === PIPELINE_STEPS[i + 1].key);
+                const nextHasLogs = nextLogs.length > 0;
+                const nextAllSkipped = nextHasLogs && nextLogs.every(l => l.message.includes('skipping') || l.message.includes('⏭️'));
+                return <div className={`mx-1 h-px w-4 ${nextAllSkipped ? 'bg-yellow-500/50' : nextHasLogs ? 'bg-green-500/50' : 'bg-border'}`} />;
+              })()}
             </div>
           ))}
         </div>

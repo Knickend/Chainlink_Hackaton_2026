@@ -117,6 +117,11 @@ serve(async (req) => {
 
     addStep(steps, 'filter_due', `${dueStrategies.length} strategies due for execution (${skipped} skipped)`);
 
+    if (dueStrategies.length === 0) {
+      addStep(steps, 'price_check', '⏭️ No strategies due — skipping price check');
+      addStep(steps, 'execute_order', '⏭️ No strategies due — skipping execution');
+    }
+
     // Process each
     for (const strategy of dueStrategies) {
       // Budget check
@@ -195,7 +200,7 @@ serve(async (req) => {
     const succeeded = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
 
-    addStep(steps, 'execute_order', `🏁 Simulation complete: ${succeeded} succeeded, ${failed} failed, ${skipped} skipped`);
+    addStep(steps, 'summary', `🏁 Simulation complete: ${succeeded} succeeded, ${failed} failed, ${skipped} skipped`);
 
     return new Response(JSON.stringify({
       steps,
