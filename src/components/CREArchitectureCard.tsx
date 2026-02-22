@@ -6,7 +6,7 @@ import { ChevronDown, Clock, Globe, BarChart3, Zap } from 'lucide-react';
 import chainlinkLogo from '@/assets/chainlink-logo.png';
 
 const HOW_IT_WORKS = [
-  { icon: Clock, title: 'CronCapability', desc: 'Triggers the workflow every hour on a schedule' },
+  { icon: Clock, title: 'CronCapability', desc: 'Triggers the workflow every 5 minutes on a schedule' },
   { icon: Globe, title: 'HTTPClient + Consensus', desc: 'Fetches strategies from the database across multiple nodes' },
   { icon: BarChart3, title: 'Chainlink Price Feeds', desc: 'Retrieves on-chain prices from price_cache (e.g. base:cbBTC/USD)' },
   { icon: Zap, title: 'Execute Order', desc: 'Calls execute-dca-order to trade via the agent wallet' },
