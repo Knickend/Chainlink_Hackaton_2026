@@ -573,6 +573,19 @@ curl -X GET "${SUPABASE_URL}/functions/v1/cre-verified-data?type=crypto&symbols=
                       critical for AI agents making financial decisions that require trust and auditability.
                     </p>
                   </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Architecture Note</h4>
+                    <p className="text-sm text-muted-foreground">
+                      This edge function is an <strong>x402-gated HTTP proxy</strong> to the CRE-verified data pipeline — it does not perform 
+                      consensus itself. Actual multi-node consensus verification runs in the CRE workflow (<code className="bg-muted-foreground/10 px-1 rounded">x402-cre-verified-ts/main.ts</code>), 
+                      which uses Chainlink's <code className="bg-muted-foreground/10 px-1 rounded">HTTPClient</code> with <code className="bg-muted-foreground/10 px-1 rounded">consensusMedianAggregation</code> across 
+                      independent oracle nodes. In the response:
+                    </p>
+                    <ul className="text-sm text-muted-foreground list-disc list-inside mt-1 space-y-1">
+                      <li><code className="bg-muted-foreground/10 px-1 rounded">verified: true</code> — data sourced from Chainlink on-chain feeds via CRE consensus</li>
+                      <li><code className="bg-muted-foreground/10 px-1 rounded">verified: false</code> — cached data not yet verified by CRE consensus</li>
+                    </ul>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

@@ -33,8 +33,7 @@ async function callX402Endpoint(
 }
 
 // Tool 1: Price Feed
-mcpServer.tool({
-  name: "get_price_feed",
+mcpServer.tool("get_price_feed", {
   description:
     "Live crypto, forex, and commodity prices from Chainlink feeds. Returns real-time prices, 24h changes, and market data. Costs $0.005 per call via x402.",
   inputSchema: {
@@ -82,8 +81,7 @@ mcpServer.tool({
 });
 
 // Tool 2: Portfolio Summary
-mcpServer.tool({
-  name: "get_portfolio_summary",
+mcpServer.tool("get_portfolio_summary", {
   description:
     "Aggregated market insights and portfolio category distribution. Returns top assets, category breakdown, and platform-wide trends. Costs $0.01 per call via x402.",
   inputSchema: {
@@ -127,8 +125,7 @@ mcpServer.tool({
 });
 
 // Tool 3: Yield Analysis
-mcpServer.tool({
-  name: "get_yield_analysis",
+mcpServer.tool("get_yield_analysis", {
   description:
     "Yield optimization strategies and staking insights by asset category. Returns yield data, optimization recommendations, and market context. Costs $0.02 per call via x402.",
   inputSchema: {
@@ -171,8 +168,7 @@ mcpServer.tool({
 });
 
 // Tool 4: Debt Strategy
-mcpServer.tool({
-  name: "get_debt_strategy",
+mcpServer.tool("get_debt_strategy", {
   description:
     "Debt payoff recommendations and optimization strategies. Returns debt analysis, payoff strategies (avalanche, snowball), and consolidation opportunities. Costs $0.02 per call via x402.",
   inputSchema: {
@@ -216,8 +212,7 @@ mcpServer.tool({
 });
 
 // Tool 5: DCA Strategies
-mcpServer.tool({
-  name: "get_dca_strategies",
+mcpServer.tool("get_dca_strategies", {
   description:
     "Dollar-cost averaging strategies: active configs, execution history, dip-buy stats, and performance metrics. Returns strategy details, recent executions, and aggregated performance. Costs $0.01 per call via x402.",
   inputSchema: {
@@ -262,12 +257,13 @@ mcpServer.tool({
   },
 });
 
-// Set up Hono app with StreamableHttpTransport
+// Bind transport to MCP server and serve via Hono
 const app = new Hono();
 const transport = new StreamableHttpTransport();
+const httpHandler = transport.bind(mcpServer);
 
 app.all("/*", async (c) => {
-  return await transport.handleRequest(c.req.raw, mcpServer);
+  return await httpHandler(c.req.raw);
 });
 
 Deno.serve(app.fetch);

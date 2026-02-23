@@ -48,7 +48,12 @@ export function createPaymentChallenge(
 
   // Use full resource URL for spec compliance so agents can unambiguously identify the resource
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  const fullResource = resource.startsWith("http") ? resource : `${supabaseUrl}${resource}`;
+  let fullResource = resource;
+  if (!resource.startsWith("http")) {
+    // Ensure the path includes /functions/v1/ prefix for correct resource identification
+    const path = resource.startsWith("/functions/v1/") ? resource : `/functions/v1${resource.startsWith("/") ? "" : "/"}${resource}`;
+    fullResource = `${supabaseUrl}${path}`;
+  }
 
   return {
     x402Version: 1,
