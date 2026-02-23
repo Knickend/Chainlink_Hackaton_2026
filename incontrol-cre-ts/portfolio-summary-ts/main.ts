@@ -1,4 +1,6 @@
 import * as cre from "@chainlink/cre-sdk";
+import { Runner, HTTPClient, consensusMedianAggregation } from "@chainlink/cre-sdk";
+import { CronCapability } from "./node_modules/@chainlink/cre-sdk/dist/generated-sdk/capabilities/scheduler/cron/v1/cron_sdk_gen.js";
 
 // Asset type definitions
 type AssetType = "crypto" | "stock" | "commodity" | "etf" | "bond" | "forex";
@@ -42,25 +44,16 @@ interface PriceData {
   type: AssetType;
 }
 
-interface ApiResponse {
-  success: boolean;
-  data: PriceData[];
-  timestamp: number;
-  source: string;
-  type: AssetType;
-}
-
 interface WorkflowResult {
   success: boolean;
   timestamp: number;
   assetType: AssetType;
   workflowName: string;
-  prices: PriceData[];
+  priceCount: number;
   stats: {
     totalAssets: number;
     successfulFetches: number;
     failedFetches: number;
-    averagePrice: number;
   };
   errors?: string[];
 }
@@ -72,14 +65,10 @@ function isWithinMarketHours(
   if (!marketHours) return true; // 24/7 markets (crypto, forex)
 
   const now = new Date();
-  const timezone = marketHours.timezone;
-  
-  // In production, use proper timezone library
-  // For now, simplified check
   const currentHour = now.getHours();
   const [startHour] = marketHours.start.split(':').map(Number);
   const [endHour] = marketHours.end.split(':').map(Number);
-  
+
   return currentHour >= startHour && currentHour < endHour;
 }
 
@@ -92,172 +81,182 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-// Main workflow handler with multi-asset support
-export default cre.Handler(
-  // Cron trigger - runs on the schedule defined in config
-  new cre.capabilities.CronCapability().trigger({
-    schedule: "0 */5 * * * *" // Base schedule, overridden by config
-  }),
-  
-  // Main callback function
-  async (config: Config, runtime: cre.Runtime): Promise<WorkflowResult[]> => {
-    runtime.log(`🚀 Starting Multi-Asset Price Feed Workflow`);
-    runtime.log(`📊 Total workflows configured: ${config.workflows.length}`);
-    
+/** Parse config from raw WASM input */
+function parseConfig(c: unknown): Config {
+  try {
+    if (typeof c === "string") return JSON.parse(c) as Config;
+    if (c && typeof c === "object" && (c as any).type === "Buffer" && Array.isArray((c as any).data)) {
+      const s = String.fromCharCode(...((c as any).data as number[]));
+      return JSON.parse(s) as Config;
+    }
+    if (Array.isArray(c) && c.every((x) => typeof x === "number")) {
+      const s = String.fromCharCode(...(c as unknown as number[]));
+      return JSON.parse(s) as Config;
+    }
+    try {
+      if (typeof TextDecoder !== "undefined" && c && (c as any).buffer instanceof ArrayBuffer) {
+        return JSON.parse(new TextDecoder().decode(c as unknown as Uint8Array)) as Config;
+      }
+    } catch { /* fallthrough */ }
+    return c as unknown as Config;
+  } catch {
+    return {} as Config;
+  }
+}
+
+const initWorkflow = (rawConfig?: unknown) => {
+  const config = parseConfig(rawConfig);
+
+  const trigger = new CronCapability().trigger({
+    schedule: "0 */5 * * * *",
+  });
+
+  const handler = async (runtime: cre.Runtime) => {
+    runtime.log("[Portfolio] Starting Multi-Asset Price Feed Workflow");
+    runtime.log(`[Portfolio] Total workflows configured: ${config.workflows?.length ?? 0}`);
+
     const allResults: WorkflowResult[] = [];
-    
+
+    if (!config.workflows || config.workflows.length === 0) {
+      runtime.log("[Portfolio] No workflows configured");
+      return allResults;
+    }
+
     // Process each asset type workflow
     for (const workflow of config.workflows) {
       if (!workflow.enabled) {
-        runtime.log(`⏭️  Skipping disabled workflow: ${workflow.name}`);
+        runtime.log(`[Portfolio] Skipping disabled workflow: ${workflow.name}`);
         continue;
       }
-      
+
       // Check market hours for stocks/ETFs
       if (!isWithinMarketHours(workflow.marketHours)) {
-        runtime.log(`🕐 ${workflow.name}: Outside market hours, skipping`);
+        runtime.log(`[Portfolio] ${workflow.name}: Outside market hours, skipping`);
         continue;
       }
-      
-      runtime.log(`\n${'='.repeat(60)}`);
-      runtime.log(`📈 Processing: ${workflow.name.toUpperCase()}`);
-      runtime.log(`   Type: ${workflow.type}`);
-      runtime.log(`   Symbols: ${workflow.symbols.length} assets`);
-      runtime.log(`   Priority: ${workflow.priority}`);
-      runtime.log(`${'='.repeat(60)}\n`);
-      
+
+      runtime.log(`[Portfolio] Processing: ${workflow.name.toUpperCase()} (${workflow.type}, ${workflow.symbols.length} symbols)`);
+
       try {
         // Process symbols in chunks to avoid API limits
         const symbolChunks = chunkArray(workflow.symbols, 10);
-        const allPrices: PriceData[] = [];
+        let successfulFetches = 0;
         const errors: string[] = [];
-        
+
         for (let i = 0; i < symbolChunks.length; i++) {
           const chunk = symbolChunks[i];
-          runtime.log(`  📦 Processing chunk ${i + 1}/${symbolChunks.length}: ${chunk.join(', ')}`);
-          
+          runtime.log(`[Portfolio] Processing chunk ${i + 1}/${symbolChunks.length}: ${chunk.join(', ')}`);
+
           try {
             // Fetch with consensus across oracle nodes
-            const chunkResult = await runtime.runInNodeMode(
+            // Return raw JSON string (simple value for consensus)
+            const chunkRaw = runtime.runInNodeMode(
               (nodeRuntime: cre.NodeRuntime) => {
-                const httpClient = new cre.capabilities.HTTPClient();
-                
+                const httpClient = new HTTPClient();
+
                 // Build query parameters
                 const queryParams = new URLSearchParams({
                   type: workflow.type,
-                  symbols: chunk.join(',')
+                  symbols: chunk.join(','),
                 });
-                
+
                 const fullUrl = `${config.supabaseApiUrl}?${queryParams}`;
-                
+
                 // Make authenticated request
                 const response = httpClient.sendRequest(nodeRuntime, {
                   url: fullUrl,
-                  method: 'GET',
+                  method: "GET",
                   headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': config.supabaseApiKey,
-                    'Authorization': `Bearer ${config.supabaseApiKey}`
+                    "Content-Type": "application/json",
+                    apikey: config.supabaseApiKey,
+                    Authorization: `Bearer ${config.supabaseApiKey}`,
                   },
-                  timeout: config.general.timeout
+                  timeout: "10s",
                 }).result();
-                
-                // Validate response
+
                 if (response.statusCode !== 200) {
-                  throw new Error(
-                    `API returned status ${response.statusCode} for ${workflow.type}`
-                  );
+                  return "0";
                 }
-                
-                // Parse response
+
                 const responseText = new TextDecoder().decode(response.body);
-                const apiResponse: ApiResponse = JSON.parse(responseText);
-                
-                if (!apiResponse.success) {
-                  throw new Error(`API returned success=false for ${workflow.type}`);
-                }
-                
-                return apiResponse;
+                // Return count of prices as simple number for consensus
+                try {
+                  const parsed = JSON.parse(responseText);
+                  if (parsed && parsed.data && Array.isArray(parsed.data)) {
+                    return parsed.data.length;
+                  }
+                } catch { /* fallthrough */ }
+                return 0;
               },
-              // Consensus aggregation
-              cre.consensusMedianAggregation()
-            )(config);
-            
-            // Add prices to collection
-            allPrices.push(...chunkResult.data);
-            
-            runtime.log(`  ✅ Chunk ${i + 1} successful: ${chunkResult.data.length} prices fetched`);
-            
+              consensusMedianAggregation(),
+            )(rawConfig).result();
+
+            const count = typeof chunkRaw === "number" ? chunkRaw : (typeof chunkRaw === "string" ? parseInt(chunkRaw, 10) || 0 : 0);
+            successfulFetches += count;
+
+            runtime.log(`[Portfolio] Chunk ${i + 1} successful: ${count} prices fetched`);
           } catch (error) {
             const errorMsg = `Chunk ${i + 1} failed: ${error}`;
-            runtime.log(`  ❌ ${errorMsg}`);
+            runtime.log(`[Portfolio] ${errorMsg}`);
             errors.push(errorMsg);
           }
         }
-        
+
         // Calculate statistics
-        const successfulFetches = allPrices.length;
         const failedFetches = workflow.symbols.length - successfulFetches;
-        const averagePrice = allPrices.length > 0
-          ? allPrices.reduce((sum, p) => sum + p.price, 0) / allPrices.length
-          : 0;
-        
-        // Log detailed results
-        runtime.log(`\n📊 ${workflow.name} Summary:`);
-        runtime.log(`   ✅ Successful: ${successfulFetches}/${workflow.symbols.length}`);
-        runtime.log(`   ❌ Failed: ${failedFetches}`);
-        runtime.log(`   💰 Average price: $${averagePrice.toFixed(2)}`);
-        
-        // Log top 5 prices
-        if (allPrices.length > 0) {
-          runtime.log(`\n   Top prices:`);
-          allPrices.slice(0, 5).forEach(price => {
-            const change = price.changePercent 
-              ? `(${price.changePercent > 0 ? '+' : ''}${price.changePercent.toFixed(2)}%)`
-              : '';
-            runtime.log(`     • ${price.symbol}: $${price.price.toFixed(2)} ${change}`);
-          });
-        }
-        
+
+        runtime.log(`[Portfolio] ${workflow.name} Summary: ${successfulFetches}/${workflow.symbols.length} successful, ${failedFetches} failed`);
+
         // Create result object
         const result: WorkflowResult = {
           success: successfulFetches > 0,
           timestamp: Date.now(),
           assetType: workflow.type,
           workflowName: workflow.name,
-          prices: allPrices,
+          priceCount: successfulFetches,
           stats: {
             totalAssets: workflow.symbols.length,
             successfulFetches,
             failedFetches,
-            averagePrice
           },
-          errors: errors.length > 0 ? errors : undefined
+          errors: errors.length > 0 ? errors : undefined,
         };
-        
+
         allResults.push(result);
-        
       } catch (error) {
-        runtime.log(`❌ Workflow ${workflow.name} failed: ${error}`);
-        
-        // Add failed result
+        runtime.log(`[Portfolio] Workflow ${workflow.name} failed: ${error}`);
+
         allResults.push({
           success: false,
           timestamp: Date.now(),
           assetType: workflow.type,
           workflowName: workflow.name,
-          prices: [],
+          priceCount: 0,
           stats: {
             totalAssets: workflow.symbols.length,
             successfulFetches: 0,
             failedFetches: workflow.symbols.length,
-            averagePrice: 0
           },
-          errors: [error instanceof Error ? error.message : String(error)]
+          errors: [error instanceof Error ? error.message : String(error)],
         });
       }
     }
-    
+
     // Final summary
-    runtime.log(`\n${'='.repeat(60)}`);
-    runtime.log(`🎯 WORKFLOW EXECUTION COMPLETE`);
+    const totalSuccess = allResults.filter((r) => r.success).length;
+    runtime.log(`[Portfolio] COMPLETE: ${totalSuccess}/${allResults.length} workflows succeeded`);
+
+    return allResults;
+  };
+
+  return [cre.handler(trigger, handler)];
+};
+
+export async function main() {
+  const runner = await Runner.newRunner<Config>({
+    configParser: (c) => parseConfig(c),
+  });
+  await runner.run(initWorkflow);
+}
+
+await main();

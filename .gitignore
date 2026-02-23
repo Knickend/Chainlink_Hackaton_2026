@@ -34,3 +34,7 @@ incontrol-cre-ts/**/secrets*.yaml
 # Ignore local env files
 .env
 supabase/.env
+
+# CRE build artifacts
+**/.cre_build_tmp.js
+**/bun.lock
