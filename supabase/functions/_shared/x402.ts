@@ -46,14 +46,18 @@ export function createPaymentChallenge(
   // $0.01 = 10000 units (0.01 * 1000000)
   const amountInUnits = (priceInCents * 10000).toString();
 
+  // Use full resource URL for spec compliance so agents can unambiguously identify the resource
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const fullResource = resource.startsWith("http") ? resource : `${supabaseUrl}${resource}`;
+
   return {
     x402Version: 1,
     accepts: [
       {
         scheme: "exact",
-        network: "base",
+        network: "base-mainnet",
         maxAmountRequired: amountInUnits,
-        resource: resource,
+        resource: fullResource,
         description: description,
         mimeType: "application/json",
         payTo: walletAddress,

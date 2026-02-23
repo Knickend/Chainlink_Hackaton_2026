@@ -1,0 +1,11 @@
+{
+  "supabaseUrl": "https://edtudwkmswyjxamkdkbu.supabase.co",
+  "supabaseServiceRoleKey": "${SUPABASE_SERVICE_ROLE_KEY}",
+  "feedType": "crypto",
+  "symbols": [
+    "base:cbBTC/USD",
+    "base:ETH/USD",
+    "BTC",
+    "ETH"
+  ]
+}

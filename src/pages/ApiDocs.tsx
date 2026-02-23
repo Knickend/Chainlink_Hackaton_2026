@@ -251,6 +251,9 @@ export default function ApiDocs() {
               <TabsTrigger value="post">POST Example</TabsTrigger>
               <TabsTrigger value="typescript">TypeScript</TabsTrigger>
               <TabsTrigger value="python">Python</TabsTrigger>
+              <TabsTrigger value="dca">DCA Strategy</TabsTrigger>
+              <TabsTrigger value="mcp">MCP (AI Agents)</TabsTrigger>
+              <TabsTrigger value="cre">CRE Verified</TabsTrigger>
             </TabsList>
 
             <TabsContent value="flow" className="mt-4">
@@ -428,6 +431,148 @@ response = client.put(
 
 print(response.json())`}
                   />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="dca" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">DCA Strategy API</CardTitle>
+                  <CardDescription>$0.01 per call — Dollar-cost averaging strategies, execution history, and performance stats</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Endpoint</h4>
+                    <div className="flex items-center gap-2 bg-muted p-2 rounded text-sm font-mono">
+                      <Badge variant="secondary" className="bg-green-500/10 text-green-600 text-xs">GET</Badge>
+                      <span className="text-xs break-all">{SUPABASE_URL}/functions/v1/api-dca-strategy</span>
+                    </div>
+                  </div>
+                  <CodeBlock
+                    code={`# List active strategies with recent executions
+curl -X GET "${SUPABASE_URL}/functions/v1/api-dca-strategy?active=true" \\
+  -H "X-Payment: <payment_proof>"
+
+# Get a specific strategy with full execution history
+curl -X GET "${SUPABASE_URL}/functions/v1/api-dca-strategy?strategyId=<uuid>" \\
+  -H "X-Payment: <payment_proof>"
+
+# Get aggregated DCA performance summary
+curl -X POST "${SUPABASE_URL}/functions/v1/api-dca-strategy" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Payment: <payment_proof>" \\
+  -d '{"action": "summary"}'
+
+# Response shape:
+# {
+#   "strategies": [{
+#     "from_token": "USDC", "to_token": "cbBTC",
+#     "frequency": "daily", "amount_per_execution": 50,
+#     "total_spent_usd": 1500, "tokens_accumulated": 0.015,
+#     "dip_threshold_pct": 5, "dip_multiplier": 2,
+#     "recent_executions": [...]
+#   }],
+#   "summary": { "total_invested": 1500, "dip_buys_triggered": 3 }
+# }`}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="mcp" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">MCP Server (AI Agents)</CardTitle>
+                  <CardDescription>Auto-discover InControl tools from Claude, Cursor, or any MCP-compatible agent</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Connect with Claude Desktop</h4>
+                    <CodeBlock
+                      code={`claude mcp add incontrol -t http ${SUPABASE_URL}/functions/v1/mcp-server/mcp`}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Available Tools (5)</h4>
+                    <div className="space-y-2">
+                      {[
+                        { name: "get_price_feed", desc: "Live crypto, forex, commodity prices", price: "$0.005" },
+                        { name: "get_portfolio_summary", desc: "Aggregated market insights", price: "$0.01" },
+                        { name: "get_yield_analysis", desc: "Yield optimization strategies", price: "$0.02" },
+                        { name: "get_debt_strategy", desc: "Debt payoff recommendations", price: "$0.02" },
+                        { name: "get_dca_strategies", desc: "DCA configs, execution history, dip-buy stats", price: "$0.01" },
+                      ].map((tool) => (
+                        <div key={tool.name} className="flex items-center justify-between bg-muted p-2 rounded text-sm">
+                          <div>
+                            <code className="font-mono text-xs">{tool.name}</code>
+                            <span className="text-muted-foreground ml-2 text-xs">{tool.desc}</span>
+                          </div>
+                          <Badge variant="outline" className="font-mono text-xs">{tool.price}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">How It Works</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Agents discover tools via MCP protocol. Each tool call hits the corresponding x402 endpoint. 
+                      The agent pays USDC on Base per call — no API keys, no subscriptions. Include the <code className="bg-muted-foreground/10 px-1 rounded">X-Payment</code> header 
+                      for paid access, or call without payment to discover pricing.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="cre" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">CRE Verified Data</CardTitle>
+                  <CardDescription>$0.05 per call — Consensus-verified prices with Chainlink attestation</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Endpoint</h4>
+                    <div className="flex items-center gap-2 bg-muted p-2 rounded text-sm font-mono">
+                      <Badge variant="secondary" className="bg-green-500/10 text-green-600 text-xs">GET</Badge>
+                      <span className="text-xs break-all">{SUPABASE_URL}/functions/v1/cre-verified-data</span>
+                    </div>
+                  </div>
+                  <CodeBlock
+                    code={`# Get consensus-verified crypto prices
+curl -X GET "${SUPABASE_URL}/functions/v1/cre-verified-data?type=crypto&symbols=BTC,ETH" \\
+  -H "X-Payment: <payment_proof>"
+
+# Response includes attestation proof:
+# {
+#   "attestation": {
+#     "method": "consensusMedianAggregation",
+#     "nodeCount": 3,
+#     "source": "chainlink-cre"
+#   },
+#   "prices": [{
+#     "symbol": "base:cbBTC/USD",
+#     "price": 98000,
+#     "attestation": {
+#       "method": "consensusMedianAggregation",
+#       "nodeCount": 3,
+#       "source": "chainlink-cre",
+#       "feedOrigin": "base:cbBTC/USD",
+#       "verified": true
+#     }
+#   }]
+# }`}
+                  />
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Why CRE Verified?</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Standard price APIs return data from a single source. CRE-verified data is fetched across multiple 
+                      independent Chainlink oracle nodes using <code className="bg-muted-foreground/10 px-1 rounded">consensusMedianAggregation</code>. 
+                      The attestation object proves the data came from on-chain feeds with multi-node agreement — 
+                      critical for AI agents making financial decisions that require trust and auditability.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
