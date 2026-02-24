@@ -480,11 +480,44 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
         const portfolioContext = buildPortfolioSummary(assets, income, expenses, debts, goals);
         const assistantContent = await streamChat(text, newMessages, memories, portfolioContext);
 
+        // Parse action tags from AI response
+        if (assistantContent) {
+          const actionMatch = assistantContent.match(/<!--ACTION:(.*?)-->/);
+          if (actionMatch) {
+            try {
+              const actionPayload = JSON.parse(actionMatch[1]) as VoiceAction;
+              // Strip action tag from visible message
+              const cleanContent = assistantContent.replace(/<!--ACTION:.*?-->/g, '').trim();
+              setMessages(prev =>
+                prev.map((m, i) =>
+                  i === prev.length - 1 ? { ...m, content: cleanContent } : m
+                )
+              );
+
+              // For DELETE actions, show confirmation; otherwise execute immediately
+              if (actionPayload.action.startsWith('DELETE_')) {
+                setPendingAction({ action: actionPayload.action, data: actionPayload.data });
+              } else {
+                const result = await executeAction(actionPayload);
+                if (result.needsConfirmation) {
+                  setPendingAction({ action: actionPayload.action, data: actionPayload.data });
+                } else if (result.success) {
+                  toast({ title: result.message });
+                } else {
+                  toast({ title: result.message, variant: 'destructive' });
+                }
+              }
+            } catch (e) {
+              console.error('[Chat] Failed to parse action tag:', e);
+            }
+          }
+        }
+
         if (isPro && assistantContent) {
-          storeConversationTurn(text, assistantContent);
+          storeConversationTurn(text, assistantContent.replace(/<!--ACTION:.*?-->/g, '').trim());
         }
         if (voiceMode && !skipVoicePlayback && assistantContent) {
-          const plainText = assistantContent.replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
+          const plainText = assistantContent.replace(/<!--ACTION:.*?-->/g, '').replace(/[#*`_~\[\]]/g, '').substring(0, 1000);
           await playResponse(plainText, messages.length);
         }
       }
