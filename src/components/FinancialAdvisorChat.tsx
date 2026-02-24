@@ -469,6 +469,15 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       try {
         const parsed = await parseVoiceCommand(text, contacts);
         if (parsed.action && parsed.action !== 'QUESTION' && parsed.action !== 'CLARIFY') {
+          // Safety net: if user text has a temporal reference but parser missed the date, fall back to AI CFO
+          const isExpenseOrIncome = ['ADD_EXPENSE', 'UPDATE_EXPENSE', 'ADD_INCOME', 'UPDATE_INCOME'].includes(parsed.action);
+          const dateField = parsed.action.includes('EXPENSE') ? 'expense_date' : 'income_date';
+          const hasDateInPayload = parsed.data?.[dateField];
+          const textHasTimeRef = /\b(today|yesterday|tomorrow|\d+\s*days?\s*ago|\d+\s*weeks?\s*ago|last\s+week|last\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i.test(text);
+          if (isExpenseOrIncome && textHasTimeRef && !hasDateInPayload) {
+            console.log('[sendMessage] Parser missed date, falling back to AI CFO');
+            throw new Error('date_fallback');
+          }
           // It's an actionable command — route through executeAction
           const result = await executeAction(parsed);
           if (result.needsConfirmation) {
