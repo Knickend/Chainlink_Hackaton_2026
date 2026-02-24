@@ -1,72 +1,76 @@
 
 
-# Fix: Stabilize `useComposedRefs` to Break the Infinite Loop
+# Fix: Force Vite to Re-bundle Dependencies with Patched Code
 
-## Root Cause
+## Problem
 
-The `useComposedRefs` function in our Radix patch (`src/lib/radix-compose-refs-patch.ts`) has a critical memoization bug:
+The source file `src/lib/radix-compose-refs-patch.ts` has the correct fix, but Vite's dependency pre-bundling cache (`.vite/deps/`) is serving a **stale version** of the patch. The cached chunk `chunk-H7AAVJOF.js` still contains:
 
-```typescript
-function useComposedRefs<T>(...refs: PossibleRef<T>[]) {
-  return useCallback(composeRefs(...refs), refs);
-  //                                      ^^^^ NEW array every render!
-}
+1. `composeRefs` with a cleanup return (causes React 19 to null all refs on ref identity change)
+2. `useComposedRefs` with `refs` as dependency array (new array every render, so `useCallback` never memoizes)
+
+This means our patch edits have had **zero runtime effect** because the old pre-bundled code keeps getting served.
+
+## Root Cause Chain
+
+```text
+Vite dep cache serves old patch code
+  -> useComposedRefs returns new function every render (broken useCallback deps)
+  -> React 19 detects new ref callback
+  -> Calls old callback cleanup (the stale composeRefs cleanup return)
+  -> Cleanup nulls all refs -> triggers setState in Presence
+  -> Re-render -> new useComposedRefs -> new function -> INFINITE LOOP
 ```
-
-`refs` is a JavaScript rest parameter, which creates a **new array on every function call**. Since `useCallback` does a shallow comparison of its dependency array, it sees a different array reference each render and **never memoizes**. This means a brand-new composed ref callback is returned on every render.
-
-In React 19, when React detects a new ref callback:
-1. It calls the **old** callback's cleanup (which sets all refs to `null`)
-2. Setting a ref to `null` calls `setNode(null)` inside Radix's `usePresence` -- a `setState`
-3. The `setState` triggers a re-render
-4. The re-render creates yet another new composed ref (because memoization is broken)
-5. React sees another new ref, calls old cleanup again... **infinite loop**
-
-This specifically crashes the Admin page because it uses `Tabs` with `TabsContent`, which uses `Presence` internally, which uses `useComposedRefs`.
 
 ## Solution
 
-Rewrite `useComposedRefs` to use a **stable ref callback pattern**:
-- Store the list of refs in a `useRef` (updated every render, no re-render)
-- Return a single stable callback via `useCallback(fn, [])` that reads from the ref
-- The callback never changes identity, so React 19 never triggers cleanup/re-attach cycles
+### 1. Force Vite to re-optimize dependencies
 
-## Changes
-
-### File: `src/lib/radix-compose-refs-patch.ts`
-
-Replace the `useComposedRefs` function with:
+Add `optimizeDeps.force: true` to `vite.config.ts`. This tells Vite to discard the cached pre-bundled deps and rebuild them, picking up the latest version of our patch file.
 
 ```typescript
-function useComposedRefs<T>(...refs: PossibleRef<T>[]) {
-  const refsRef = useRef(refs);
-  // Update the stored refs on every render (no re-render triggered)
-  refsRef.current = refs;
-
-  // Return a STABLE callback that never changes identity
-  return useCallback((node: T) => {
-    refsRef.current.forEach((ref) => setRef(ref, node));
-  }, []);
-}
+// vite.config.ts
+export default defineConfig(({ mode }) => ({
+  server: { ... },
+  plugins: [...],
+  optimizeDeps: {
+    force: true,  // Force re-optimization to pick up patched compose-refs
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "@radix-ui/react-compose-refs": path.resolve(__dirname, "./src/lib/radix-compose-refs-patch.ts"),
+    },
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
+  },
+}));
 ```
 
-Also add `useRef` to the import from React.
+### 2. Verify the patch file is correct (it already is)
 
-This is a single-file change. No other files need modification.
+The current `src/lib/radix-compose-refs-patch.ts` already has:
+- `setRef` that discards return values
+- `composeRefs` that does NOT return a cleanup
+- `useComposedRefs` that uses `useRef` + stable `useCallback(fn, [])`
+
+No changes needed to this file.
+
+## Files to Change
+
+| File | Change |
+|---|---|
+| `vite.config.ts` | Add `optimizeDeps: { force: true }` |
+
+This is a single-line addition. No other files need to change.
 
 ## Why This Works
 
-- The returned callback has a **stable identity** (empty deps array) so React 19 never cycles cleanup/re-attach
-- The `refsRef` is updated every render so it always points to the latest refs, but updating a ref doesn't trigger a re-render
-- `setRef` still discards return values from ref callbacks, preventing cleanup leakage
-- The `composeRefs` standalone function (used outside hooks) remains unchanged since it doesn't have the memoization issue
+- `optimizeDeps.force: true` tells Vite to re-run esbuild on all dependencies, discarding the stale `.vite/deps/` cache
+- When re-bundled, Radix packages that import `@radix-ui/react-compose-refs` will resolve to our patch file (via the alias)
+- The re-bundled `chunk-H7AAVJOF.js` will contain our fixed code with stable callbacks and no cleanup returns
+- The infinite loop breaks because React 19 never sees a new ref callback identity
 
-## Technical Details
+## Note on framer-motion
 
-| Aspect | Before (Broken) | After (Fixed) |
-|---|---|---|
-| Deps array | `refs` (new array each render) | `[]` (never changes) |
-| Callback identity | New function every render | Stable across renders |
-| React 19 cleanup cycle | Triggered every render | Never triggered |
-| Ref freshness | Always current (inline) | Always current (via useRef) |
+`framer-motion` bundles its own copy of `composeRefs`/`useComposedRefs` with the same broken pattern. However, it only uses it in `LayoutGroup` which is not currently triggering the crash. If it becomes a problem later, we can address it separately by patching framer-motion's exports or avoiding layout animations.
 
