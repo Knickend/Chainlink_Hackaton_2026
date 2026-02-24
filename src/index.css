@@ -166,18 +166,3 @@
     @apply text-sm text-muted-foreground font-medium;
   }
 }
-
-/* Dashboard grid layout overrides */
-.react-grid-item {
-  overflow: auto;
-}
-
-.react-grid-item > div {
-  height: 100%;
-}
-
-.react-grid-placeholder {
-  background: hsl(var(--primary) / 0.2) !important;
-  border: 2px dashed hsl(var(--primary) / 0.5) !important;
-  border-radius: 0.5rem;
-}

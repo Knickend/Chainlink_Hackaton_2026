@@ -177,8 +177,8 @@ export function CancellationFeedback() {
                       cx="50%"
                       cy="50%"
                       outerRadius={80}
-                      label={(props: any) => 
-                        `${props.label} (${(props.percent * 100).toFixed(0)}%)`
+                      label={({ label, percent }) => 
+                        `${label} (${(percent * 100).toFixed(0)}%)`
                       }
                       labelLine={false}
                     >

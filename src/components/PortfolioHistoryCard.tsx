@@ -5,16 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
+import { useRebalancer } from '@/hooks/useRebalancer';
+import { useInvestmentPreferences } from '@/hooks/useInvestmentPreferences';
 import { MonthComparisonDialog } from './MonthComparisonDialog';
 import { SnapshotDetailView } from './SnapshotDetailView';
+import { RebalanceCard } from './RebalanceCard';
+import { InvestmentPreferencesDialog } from './InvestmentPreferencesDialog';
 import { cn } from '@/lib/utils';
 import { ProBadge } from './ProBadge';
+import { Asset, Goal } from '@/lib/types';
+import { LivePrices } from '@/hooks/useLivePrices';
 
 interface PortfolioHistoryCardProps {
   currentNetWorth: number;
   formatValue: (value: number, showDecimals?: boolean) => string;
   formatDisplayUnitValue: (value: number, showDecimals?: boolean) => string;
   delay?: number;
+  assets?: Asset[];
+  freeMonthlyIncome?: number;
+  goals?: Goal[];
+  livePrices?: LivePrices | null;
 }
 
 // Helper to check if a snapshot is from the current month
@@ -23,7 +33,7 @@ const isCurrentMonthSnapshot = (snapshotMonth: string) => {
   return snapshotMonth.startsWith(currentMonth);
 };
 
-export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDisplayUnitValue, delay = 0 }: PortfolioHistoryCardProps) {
+export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDisplayUnitValue, delay = 0, assets = [], freeMonthlyIncome = 0, goals = [], livePrices }: PortfolioHistoryCardProps) {
   const {
     snapshots,
     isLoading,
@@ -41,8 +51,20 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDispl
     canCompare,
   } = usePortfolioHistory();
 
+  // Investment preferences for rebalancer
+  const {
+    preferences,
+    savePreferences,
+    hasPreferences,
+    goalAnalysis,
+  } = useInvestmentPreferences(freeMonthlyIncome, goals);
+
+  // Rebalancer hook
+  const rebalancer = useRebalancer(assets, preferences, livePrices);
+
   const [showComparison, setShowComparison] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showPreferencesDialog, setShowPreferencesDialog] = useState(false);
 
   // Get the last 12 snapshots for the chart
   const chartData = snapshots.slice(0, 12).reverse();
@@ -242,6 +264,23 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDispl
               </>
             )}
 
+            {/* Embedded Rebalancer */}
+            {rebalancer.shouldShow && hasPreferences && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <RebalanceCard
+                  driftData={rebalancer.driftData}
+                  tradeSuggestions={rebalancer.tradeSuggestions}
+                  maxDrift={rebalancer.maxDrift}
+                  threshold={rebalancer.threshold}
+                  alerts={rebalancer.alerts}
+                  onDismiss={(alertId) => {
+                    if (alertId) rebalancer.dismissAlert(alertId);
+                  }}
+                  formatValue={formatValue}
+                  onEdit={() => setShowPreferencesDialog(true)}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -263,6 +302,16 @@ export function PortfolioHistoryCard({ currentNetWorth, formatValue, formatDispl
         currentNetWorth={currentNetWorth}
         onDelete={deleteSnapshot}
         isDeleting={isDeleting}
+      />
+
+      {/* Investment Preferences Dialog for Rebalance Settings */}
+      <InvestmentPreferencesDialog
+        open={showPreferencesDialog}
+        onOpenChange={setShowPreferencesDialog}
+        currentPreferences={preferences}
+        onSave={savePreferences}
+        goals={goals}
+        goalAnalysis={goalAnalysis}
       />
     </>
   );

@@ -111,7 +111,7 @@ export function AssetCategoryCard({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
         {assets.map((asset) => {
           // For banking and real estate assets, show the original currency amount
           const hasForexCurrency = (category === 'banking' || category === 'realestate') && 
