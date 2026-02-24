@@ -251,6 +251,12 @@ export function usePortfolioData() {
       if (incomeData.currency) {
         updatePayload.currency = incomeData.currency;
       }
+      if ((incomeData as any).income_date !== undefined) {
+        updatePayload.income_date = (incomeData as any).income_date;
+      }
+      if ((incomeData as any).is_recurring !== undefined) {
+        updatePayload.is_recurring = (incomeData as any).is_recurring;
+      }
       
       const { error } = await supabase.from('income').update(updatePayload).eq('id', id);
 
@@ -343,6 +349,12 @@ export function usePortfolioData() {
       };
       if (expenseData.currency) {
         updatePayload.currency = expenseData.currency;
+      }
+      if ((expenseData as any).expense_date !== undefined) {
+        updatePayload.expense_date = (expenseData as any).expense_date;
+      }
+      if ((expenseData as any).is_recurring !== undefined) {
+        updatePayload.is_recurring = (expenseData as any).is_recurring;
       }
       
       const { error } = await supabase.from('expenses').update(updatePayload).eq('id', id);
