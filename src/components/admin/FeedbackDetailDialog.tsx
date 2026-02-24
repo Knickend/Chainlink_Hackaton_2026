@@ -73,7 +73,8 @@ export function FeedbackDetailDialog({
     if (open && feedback) {
       loadAttachments();
     }
-  }, [feedback, open, getAttachmentUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedback?.id, open]);
 
   // Reset form when feedback changes
   const handleOpenChange = (isOpen: boolean) => {

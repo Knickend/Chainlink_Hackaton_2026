@@ -217,6 +217,7 @@ export function CronJobMonitor() {
         <CardContent>
           {logs && logs.length > 0 ? (
             <div className="rounded-md border">
+              <TooltipProvider>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -245,7 +246,6 @@ export function CronJobMonitor() {
                         <span className="text-destructive">{log.failed_count}</span>
                       </TableCell>
                       <TableCell>
-                        <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger className="text-muted-foreground text-sm">
                               {formatDistanceToNow(new Date(log.execution_time), { addSuffix: true })}
@@ -254,12 +254,12 @@ export function CronJobMonitor() {
                               {format(new Date(log.execution_time), 'PPpp')}
                             </TooltipContent>
                           </Tooltip>
-                        </TooltipProvider>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </TooltipProvider>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">

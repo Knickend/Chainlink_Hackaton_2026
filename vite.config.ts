@@ -13,9 +13,15 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  optimizeDeps: {
+    force: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Patch @radix-ui/react-compose-refs to fix React 19 infinite loop
+      // See: https://github.com/radix-ui/primitives/issues/3799
+      "@radix-ui/react-compose-refs": path.resolve(__dirname, "./src/lib/radix-compose-refs-patch.ts"),
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },

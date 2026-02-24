@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -99,14 +100,14 @@ export function useFeedback(filters?: FeedbackFilters, isAdmin = false) {
   };
 
   // Get signed URL for viewing attachment
-  const getAttachmentUrl = async (path: string): Promise<string> => {
+  const getAttachmentUrl = useCallback(async (path: string): Promise<string> => {
     const { data, error } = await supabase.storage
       .from('feedback-attachments')
       .createSignedUrl(path, 3600); // 1 hour expiry
 
     if (error) throw error;
     return data.signedUrl;
-  };
+  }, []);
 
   // Submit new feedback
   const submitMutation = useMutation({
