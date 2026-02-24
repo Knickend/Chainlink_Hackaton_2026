@@ -500,8 +500,6 @@ const APPROVE_PERMIT2_CALLDATA =
   '000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3' +
   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
-const CBBTC_BASE = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf';
-
 const TOKEN_MAP: Record<string, string> = {
   'USDC': USDC_BASE,
   'usdc': USDC_BASE,
@@ -509,9 +507,6 @@ const TOKEN_MAP: Record<string, string> = {
   'weth': WETH_BASE,
   'ETH': ETH_BASE,
   'eth': ETH_BASE,
-  'cbBTC': CBBTC_BASE,
-  'cbbtc': CBBTC_BASE,
-  'CBBTC': CBBTC_BASE,
 };
 
 // For swaps, CDP requires WETH address instead of native ETH placeholder
@@ -522,9 +517,6 @@ const SWAP_TOKEN_MAP: Record<string, string> = {
   'weth': WETH_BASE,
   'ETH': WETH_BASE,  // Swap API needs WETH, not native ETH address
   'eth': WETH_BASE,
-  'cbBTC': CBBTC_BASE,
-  'cbbtc': CBBTC_BASE,
-  'CBBTC': CBBTC_BASE,
 };
 
 // --- Main Handler ---
@@ -542,47 +534,30 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // --- Service-role bypass for DCA orchestrator ---
-    const isServiceCall = authHeader === `Bearer ${supabaseServiceKey}`;
-    const overrideUserId = req.headers.get('x-user-id');
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) throw new Error('Unauthorized');
 
-    let userId: string;
-    // userClient: for service-role calls use serviceClient so RLS is bypassed
-    let userClient: ReturnType<typeof createClient>;
+    const { data: sub } = await userClient
+      .from('user_subscriptions')
+      .select('tier')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-    if (isServiceCall && overrideUserId) {
-      // Trusted service-role call (e.g. execute-dca-order). Skip JWT auth + subscription check.
-      userId = overrideUserId;
-      userClient = serviceClient;
-      console.log(`[AgentWallet] Service-role bypass for user: ${userId}`);
-    } else {
-      // Normal user JWT auth flow
-      userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
-
-      const { data: { user }, error: authError } = await userClient.auth.getUser();
-      if (authError || !user) throw new Error('Unauthorized');
-      userId = user.id;
-
-      const { data: sub } = await userClient
-        .from('user_subscriptions')
-        .select('tier')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!sub || sub.tier !== 'pro') {
-        return new Response(
-          JSON.stringify({ error: 'Pro subscription required for Agent features' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (!sub || sub.tier !== 'pro') {
+      return new Response(
+        JSON.stringify({ error: 'Pro subscription required for Agent features' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const { action, ...params } = await req.json();
-    console.log(`[AgentWallet] Action: ${action}, User: ${userId}`);
+    console.log(`[AgentWallet] Action: ${action}, User: ${user.id}`);
 
     switch (action) {
       // ===== WALLET CREATION =====
@@ -590,7 +565,7 @@ serve(async (req) => {
         const { email } = params;
         if (!email) throw new Error('Email is required');
 
-        const accountName = `incontrol-${userId.slice(0, 8)}`;
+        const accountName = `incontrol-${user.id.slice(0, 8)}`;
 
         // Always POST -- CDP uses `name` as idempotency key and returns
         // the existing account if one with that name already exists.
@@ -605,7 +580,7 @@ serve(async (req) => {
 
         // Persist address AND the CDP account id (needed for send-transaction paths)
         await userClient.from('agent_wallets').upsert({
-          user_id: userId,
+          user_id: user.id,
           wallet_email: email,
           wallet_address: created.address,
           cdp_account_id: created.id ?? null,
@@ -633,7 +608,7 @@ serve(async (req) => {
         await userClient
           .from('agent_wallets')
           .update({ is_authenticated: false })
-          .eq('user_id', userId);
+          .eq('user_id', user.id);
 
         return new Response(
           JSON.stringify({ success: true, message: 'Wallet disconnected' }),
@@ -646,7 +621,7 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         let balance: string | null = null;
@@ -655,7 +630,7 @@ serve(async (req) => {
         // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
         if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
           try {
-            await resolveCdpAccountId(wallet as any, userId, serviceClient);
+            await resolveCdpAccountId(wallet as any, user.id, serviceClient);
           } catch (e) {
             console.error('[AgentWallet] Failed to backfill cdp_account_id:', e);
           }
@@ -739,7 +714,7 @@ serve(async (req) => {
         await userClient
           .from('agent_wallets')
           .update({ enabled_skills: filtered })
-          .eq('user_id', userId);
+          .eq('user_id', user.id);
 
         return new Response(
           JSON.stringify({ success: true, enabled_skills: filtered }),
@@ -756,7 +731,7 @@ serve(async (req) => {
         await userClient
           .from('agent_wallets')
           .update(updates)
-          .eq('user_id', userId);
+          .eq('user_id', user.id);
 
         return new Response(
           JSON.stringify({ success: true, ...updates }),
@@ -773,7 +748,7 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
@@ -781,7 +756,7 @@ serve(async (req) => {
         if (amount > wallet.spending_limit_per_tx) throw new Error(`Amount exceeds per-transaction limit of $${wallet.spending_limit_per_tx}`);
 
         // Auto-heal CDP account ID if missing
-        const cdpAccountId = await resolveCdpAccountId(wallet as any, userId, serviceClient);
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
         const now = new Date();
         let dailySpent = wallet.daily_spent || 0;
@@ -795,7 +770,7 @@ serve(async (req) => {
         const { data: logEntry } = await serviceClient
           .from('agent_actions_log')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             action_type: 'send',
             params: { amount, recipient, token: 'USDC', network: 'base' },
             status: 'pending',
@@ -833,7 +808,7 @@ serve(async (req) => {
               daily_spent: dailySpent + amount,
               daily_reset_at: new Date(now.toISOString().split('T')[0] + 'T00:00:00Z').toISOString(),
             })
-            .eq('user_id', userId);
+            .eq('user_id', user.id);
 
           // Send transaction email notification
           if (wallet.notify_transactions && wallet.wallet_email) {
@@ -873,7 +848,7 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
@@ -921,14 +896,14 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
         if (!wallet.enabled_skills?.includes('trade')) throw new Error('Trade skill is disabled');
         if (amount > wallet.spending_limit_per_tx) throw new Error(`Amount exceeds per-transaction limit of $${wallet.spending_limit_per_tx}`);
 
-        const cdpAccountId = await resolveCdpAccountId(wallet as any, userId, serviceClient);
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
         const fromAddress = SWAP_TOKEN_MAP[from_token] || SWAP_TOKEN_MAP[from_token.toUpperCase()];
         const toAddress = SWAP_TOKEN_MAP[to_token] || SWAP_TOKEN_MAP[to_token.toUpperCase()];
@@ -939,7 +914,7 @@ serve(async (req) => {
         const { data: logEntry } = await serviceClient
           .from('agent_actions_log')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             action_type: 'trade',
             params: { amount, from_token, to_token, network: 'base' },
             status: 'pending',
@@ -1125,7 +1100,7 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
@@ -1134,7 +1109,7 @@ serve(async (req) => {
         const { data: logEntry } = await serviceClient
           .from('agent_actions_log')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             action_type: 'fund',
             params: { amount, method: 'coinbase-onramp', wallet_address: wallet.wallet_address },
             status: 'pending',
@@ -1205,17 +1180,17 @@ serve(async (req) => {
         const { data: wallet } = await userClient
           .from('agent_wallets')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
 
-        const cdpAccountId = await resolveCdpAccountId(wallet as any, userId, serviceClient);
+        const cdpAccountId = await resolveCdpAccountId(wallet as any, user.id, serviceClient);
 
         const { data: logEntry } = await serviceClient
           .from('agent_actions_log')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             action_type: 'send-eth',
             params: { amount, recipient, token: 'ETH', network: 'base' },
             status: 'pending',
@@ -1278,7 +1253,7 @@ serve(async (req) => {
         const { data: logs } = await userClient
           .from('agent_actions_log')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -1294,7 +1269,7 @@ serve(async (req) => {
         await userClient
           .from('agent_wallets')
           .update({ notify_transactions: !!notify_transactions })
-          .eq('user_id', userId);
+          .eq('user_id', user.id);
 
         return new Response(
           JSON.stringify({ success: true, notify_transactions: !!notify_transactions }),

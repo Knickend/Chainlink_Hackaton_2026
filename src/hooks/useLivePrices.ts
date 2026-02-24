@@ -265,25 +265,6 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
             ? Math.min(...forexPrices.map(p => new Date(p.updated_at).getTime()))
             : oldestUpdate;
 
-          // Load chainlink cached data (symbol stored as "network:pair")
-          const chainlinkPrices = cachedPrices.filter(p => p.asset_type === 'chainlink');
-          const chainlinkForexData = chainlinkPrices.length > 0
-            ? chainlinkPrices.map(p => {
-                const sym = p.symbol;
-                const colonIdx = sym.indexOf(':');
-                const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
-                const pair = colonIdx > -1 ? sym.substring(colonIdx + 1) : sym;
-                const price = Number(p.price);
-                return {
-                  pair,
-                  network,
-                  answer: price === -1 ? 0 : price,
-                  error: price === -1 ? 'All RPCs failed' : undefined,
-                  updatedAt: p.updated_at,
-                };
-              })
-            : undefined;
-
           setPrices({
             btc: btcPrice ? Number(btcPrice.price) : DEFAULT_PRICES.btc,
             eth: ethPrice ? Number(ethPrice.price) : DEFAULT_PRICES.eth,
@@ -296,7 +277,6 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
             commodities: commoditiesMap,
             forex: Object.keys(forexMap).length > 0 ? forexMap : { USD: 1 },
             forexTimestamp: new Date(forexUpdate).toISOString(),
-            chainlinkForex: chainlinkForexData,
           });
           setLastUpdated(new Date(oldestUpdate));
           setIsCached(true);

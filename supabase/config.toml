@@ -62,15 +62,3 @@ verify_jwt = false
 
 [functions.delete-account]
 verify_jwt = false
-
-[functions.simulate-dca-cre]
-verify_jwt = false
-
-[functions.mcp-server]
-verify_jwt = false
-
-[functions.api-dca-strategy]
-verify_jwt = false
-
-[functions.cre-verified-data]
-verify_jwt = false

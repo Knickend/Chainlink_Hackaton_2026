@@ -35,9 +35,6 @@ SEND_USDC: { action: "SEND_USDC", data: { amount: number, recipient: string } }
 TRADE_TOKENS: { action: "TRADE_TOKENS", data: { amount: number, from_token: string, to_token: string } }
 FUND_WALLET: { action: "FUND_WALLET", data: { amount: number } }
 
-CREATE_DCA: { action: "CREATE_DCA", data: { to_token: "WETH"|"ETH"|"cbBTC", frequency: "daily"|"weekly"|"biweekly"|"monthly", amount_per_execution: number, total_budget_usd?: number, dip_threshold_pct?: number, dip_multiplier?: number } }
-// For DCA setup commands like "Set up a weekly DCA of $50 into ETH" or "Create a daily DCA buying $25 of cbBTC with a $5000 budget"
-
 QUESTION: { action: "QUESTION", data: { question: string } } // For general questions about finances
 
 CLARIFY: { action: "CLARIFY", data: { message: string } } // When command is unclear

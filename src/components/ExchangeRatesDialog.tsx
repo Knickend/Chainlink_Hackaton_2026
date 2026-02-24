@@ -5,7 +5,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, DollarSign, Bitcoin, Gem } from 'lucide-react';
-import chainlinkLogo from '@/assets/chainlink-logo.png';
 import { motion } from 'framer-motion';
 import { LivePrices, useLivePrices } from '@/hooks/useLivePrices';
 import { BANKING_CURRENCIES, FOREX_RATES_TO_USD, BankingCurrency } from '@/lib/types';
@@ -27,7 +26,7 @@ function StatusBadge({ status }: { status: RateStatus }) {
     live: 'bg-success/20 text-success border-success/30',
     cached: 'bg-warning/20 text-warning border-warning/30',
     fallback: 'bg-muted text-muted-foreground border-muted-foreground/30',
-    'on-chain': 'bg-success/20 text-success border-success/30',
+    'on-chain': 'bg-primary/20 text-primary border-primary/30',
   };
 
   const label = status === 'on-chain' ? 'On-chain' : status === 'live' ? 'Live' : status === 'cached' ? 'Cached' : 'Fallback';
@@ -71,14 +70,12 @@ export function ExchangeRatesDialog({
   const chainlinkFetchedRef = useRef(false);
 
   // Lazy-load Chainlink feeds when tab is first selected
-  // If cached data exists from DB load, show it immediately but still refresh in background
   useEffect(() => {
-    if (activeTab === 'chainlink' && !chainlinkFetchedRef.current) {
+    if (activeTab === 'chainlink' && !chainlinkFetchedRef.current && !livePrices?.chainlinkForex?.length) {
       chainlinkFetchedRef.current = true;
-      // Always trigger a background refresh for fresh on-chain data
       fetchChainlinkFeeds();
     }
-  }, [activeTab, fetchChainlinkFeeds]);
+  }, [activeTab, livePrices?.chainlinkForex, fetchChainlinkFeeds]);
 
   const handleRefresh = () => {
     if (refreshCooldown) return;
@@ -180,7 +177,7 @@ export function ExchangeRatesDialog({
               Commodities
             </TabsTrigger>
             <TabsTrigger value="chainlink" className="gap-2">
-              <img src={chainlinkLogo} alt="Chainlink" className="w-4 h-4" />
+              <span className="w-4 h-4 inline-block font-mono">CL</span>
               Chainlink
             </TabsTrigger>
           </TabsList>
