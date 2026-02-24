@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Repeat, Lock, Unlock, LayoutGrid, RotateCcw } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -42,6 +42,13 @@ import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
 import { ProfitLossCard } from '@/components/ProfitLossCard';
 import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
 import { UpcomingExpensesCard } from '@/components/UpcomingExpensesCard';
+import { DashboardGrid } from '@/components/DashboardGrid';
+import { DashboardSettingsPanel } from '@/components/DashboardSettingsPanel';
+import { useDashboardLayout } from '@/hooks/useDashboardLayout';
+import { RebalanceCard } from '@/components/RebalanceCard';
+import { InvestmentPreferencesDialog } from '@/components/InvestmentPreferencesDialog';
+import { useRebalancer } from '@/hooks/useRebalancer';
+import { useInvestmentPreferences } from '@/hooks/useInvestmentPreferences';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -65,6 +72,21 @@ const IndexContent = () => {
   const { tier: subscriptionTier, isPro: subscriptionIsPro, isSubscribed: subscriptionIsSubscribed, upgradeTo, hasAgreedToTos, acceptTerms, isLoading: subscriptionLoading } = useSubscription();
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   
+  // Dashboard layout customization
+  const {
+    layouts,
+    hiddenCards,
+    isEditMode,
+    setIsEditMode,
+    onLayoutChange,
+    onUserLayoutChange,
+    hideCard,
+    showCard,
+    resetLayout,
+    cardRegistry,
+  } = useDashboardLayout();
+
+
   // Show Pro during tutorial OR in demo mode so users see all features
   const effectiveSubscriptionTier = (isDemo || isTutorialActive) ? 'pro' : subscriptionTier;
   const isPro = (isDemo || isTutorialActive) ? true : subscriptionIsPro;
@@ -160,6 +182,19 @@ const IndexContent = () => {
   // Calculate P&L data
   const pnlData = useProfitLoss(assets, transactions);
 
+  // Investment preferences for rebalancer
+  const {
+    preferences,
+    savePreferences,
+    hasPreferences,
+    goalAnalysis,
+  } = useInvestmentPreferences(
+    (metrics?.totalIncome || 0) - (metrics?.totalExpenses || 0) - (monthlyPayments || 0),
+    isDemo ? mockGoals : goals
+  );
+  const rebalancer = useRebalancer(assets, preferences, prices);
+  const [showPreferencesDialog, setShowPreferencesDialog] = useState(false);
+
   if (authLoading || (!isDemo && (dataLoading || debtsLoading || goalsLoading || subscriptionLoading))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -226,85 +261,138 @@ const IndexContent = () => {
           onSubscribe={(tier, billingPeriod) => upgradeTo(tier, billingPeriod || 'monthly')}
         />
 
-        {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8"
-        >
-          {/* Left section: Logo + Description */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                <span className="gradient-text">In</span>
-                <span className="text-foreground">Control</span>
-              </h1>
-              {isPro && <ProBadge />}
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pb-4">
+          <motion.header
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-4"
+          >
+            {/* Left section: Logo + Description */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                  <span className="gradient-text">In</span>
+                  <span className="text-foreground">Control</span>
+                </h1>
+                {isPro && <ProBadge />}
+              </div>
+              <p className="text-muted-foreground whitespace-nowrap hidden xl:block">
+                Track your assets across all markets
+              </p>
             </div>
-    <p className="text-muted-foreground whitespace-nowrap hidden xl:block">
-      Track your assets across all markets
-    </p>
+            
+            {/* Right section: Controls */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <PriceIndicator
+                isLoading={pricesLoading}
+                lastUpdated={lastUpdated}
+                error={pricesError}
+                isCached={isCached}
+                forexTimestamp={prices.forexTimestamp}
+                prices={prices}
+                onRefresh={refetchPrices}
+              />
+              <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
+              <ThemeToggle />
+              {hasCompletedTutorial && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={startTutorial}
+                  className="gap-2"
+                  title="Restart tutorial"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tour</span>
+                </Button>
+              )}
+              {!isDemo && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/dca')}
+                  className="rounded-full"
+                  title="DCA Strategies"
+                >
+                  <Repeat className="w-4 h-4" />
+                  DCA
+                </Button>
+              )}
+              {!isDemo && !isEditMode && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditMode(true)}
+                  className="gap-2"
+                  title="Edit Dashboard"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+              )}
+              {!isDemo && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate('/settings')}
+                  className="rounded-full"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </Button>
+              )}
+              {isDemo ? (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => navigate('/auth')}
+                  className="gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={signOut}
+                  className="gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
+              </Button>
+            )}
           </div>
-          
-          {/* Right section: Controls - all aligned in a row */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <PriceIndicator
-              isLoading={pricesLoading}
-              lastUpdated={lastUpdated}
-              error={pricesError}
-              isCached={isCached}
-              forexTimestamp={prices.forexTimestamp}
-              prices={prices}
-              onRefresh={refetchPrices}
-            />
-            <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
-            <ThemeToggle />
-            {hasCompletedTutorial && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={startTutorial}
-                className="gap-2"
-                title="Restart tutorial"
-              >
-                <HelpCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Tour</span>
-              </Button>
-            )}
-            {!isDemo && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/settings')}
-                className="rounded-full"
-                title="Settings"
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-            )}
-            {isDemo ? (
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={() => navigate('/auth')}
-                className="gap-2"
-              >
-                <LogIn className="w-4 h-4" />
-                Sign in
-              </Button>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={signOut}
-                className="gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign out
-              </Button>
-            )}
-          </div>
-        </motion.header>
+          </motion.header>
+
+          {/* Edit Mode Toolbar */}
+          {isEditMode && (
+            <div className="flex items-center justify-between gap-3 py-2 px-4 mt-2 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex items-center gap-2 text-sm text-primary font-medium">
+                <LayoutGrid className="w-4 h-4" />
+                <span>Editing Dashboard — drag, resize, or hide cards</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DashboardSettingsPanel
+                  cardRegistry={cardRegistry}
+                  hiddenCards={hiddenCards}
+                  onShowCard={showCard}
+                  onHideCard={hideCard}
+                  onReset={resetLayout}
+                />
+                <Button variant="ghost" size="sm" onClick={resetLayout} className="gap-1">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset
+                </Button>
+                <Button variant="default" size="sm" onClick={() => setIsEditMode(false)} className="gap-1">
+                  <Lock className="w-3.5 h-3.5" />
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8" data-tutorial="key-metrics">
@@ -356,419 +444,424 @@ const IndexContent = () => {
           />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          {/* Main charts - wrapped for tutorial spotlight */}
-          <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
-            <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} currentNetWorth={adjustedNetWorth} />
-            <AllocationChart data={categoryTotals} formatDisplayUnitValue={formatDisplayUnitValue} />
-          </div>
-          {/* Third column - Pro features, excluded from tutorial */}
-          {isPro && !isDemo && (
-            <div data-tutorial="portfolio-history-card">
-              <PortfolioHistoryCard 
-                currentNetWorth={adjustedNetWorth} 
-                formatValue={formatValue}
-                formatDisplayUnitValue={formatDisplayUnitValue}
-                assets={assets}
-                freeMonthlyIncome={netCashFlow}
-                goals={demoGoals}
-                livePrices={prices}
-                delay={0.2}
-              />
-            </div>
-          )}
-          {isPro && isDemo && (
-            <div data-tutorial="portfolio-history-card">
-              <PerformanceCard 
-                currentNetWorth={metrics.totalNetWorth} 
-                formatValue={formatValue} 
-                delay={0.2}
-              />
-            </div>
-          )}
-          {!isPro && !isDemo && (
-            <PortfolioHistoryTeaser 
-              onUpgrade={() => setShowSubscriptionDialog(true)}
-              delay={0.2}
-            />
-          )}
-        </div>
-
-        {/* P&L Overview - Pro Feature */}
-        <div className="mb-8">
-          {isPro ? (
-            <ProfitLossCard 
-              pnlData={pnlData}
-              assets={assets}
-              formatValue={formatValue} 
-              delay={0.25}
-              transactions={transactions}
-              onEditTransaction={isDemo ? undefined : updateTransaction}
-              onDeleteTransaction={isDemo ? undefined : deleteTransaction}
-            />
-          ) : !isDemo && (
-            <ProfitLossTeaser 
-              onUpgrade={() => setShowSubscriptionDialog(true)} 
-              delay={0.25}
-            />
-          )}
-        </div>
-
-        {/* Financial Goals */}
-        <div className="mb-8">
-          <GoalsOverviewCard
-            goals={demoGoals}
-            loading={!isDemo && goalsLoading}
-            calculateProgress={calculateProgress}
-            calculateMonthsToGoal={calculateMonthsToGoal}
-            getGoalStatus={getGoalStatus}
-            getRecommendation={getRecommendation}
-            formatValue={formatValue}
-            onAddGoal={isDemo ? undefined : addGoal}
-            onUpdateGoal={isDemo ? undefined : updateGoal}
-            onDeleteGoal={isDemo ? undefined : deleteGoal}
-            canAddGoal={isDemo ? true : canAddGoal}
-            goalLimit={isDemo ? undefined : goalLimit}
-            onUpgrade={() => setShowSubscriptionDialog(true)}
-            delay={0.25}
-            isDemo={isDemo}
-          />
-        </div>
-
-        {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}
-        {(!isDemo || isPro) && (
-          <div className="mb-8" data-tutorial="investment-strategy-card">
-            {isPro ? (
-              <InvestmentStrategyCard
-                freeMonthlyIncome={netCashFlow}
-                formatValue={formatValue}
-                debts={demoDebts}
-                monthlyPayments={demoMonthlyPayments}
-                goals={demoGoals}
-                delay={0.3}
-              />
-            ) : (
-              <InvestmentStrategyTeaser
-                freeMonthlyIncome={netCashFlow}
-                formatValue={formatValue}
-                onUpgrade={() => setShowSubscriptionDialog(true)}
-                delay={0.3}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Asset Categories */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
-            <h2 className="text-xl font-semibold">Assets by Category</h2>
-            <div className="flex items-center gap-2">
-              <ViewAllAssetsDialog
-                assets={Object.values(assetsByCategory).flat()}
-                formatValue={formatValue}
-                onUpdateAsset={isDemo ? undefined : updateAsset}
-                onDeleteAsset={isDemo ? undefined : deleteAsset}
-                onSellAsset={isDemo ? undefined : async (assetId, data) => {
-                  const asset = assets.find(a => a.id === assetId);
-                  if (!asset) return;
-                  
-                  // Record the transaction
-                  await addTransaction({
-                    asset_id: assetId,
-                    transaction_type: 'sell',
-                    symbol: asset.symbol || asset.name,
-                    asset_name: asset.name,
-                    category: asset.category,
-                    quantity: data.quantity,
-                    price_per_unit: data.price_per_unit,
-                    total_value: data.total_value,
-                    realized_pnl: data.realized_pnl,
-                    transaction_date: data.transaction_date,
-                    notes: data.notes,
-                  });
-                  
-                  // Update or delete the asset
-                  const remainingQty = (asset.quantity || 0) - data.quantity;
-                  
-                  if (remainingQty <= 0) {
-                    // Full sale - delete asset
-                    await deleteAsset(assetId);
-                  } else {
-                    // Partial sale - reduce quantity and cost basis proportionally
-                    const originalQty = asset.quantity || 0;
-                    const newCostBasis = asset.cost_basis 
-                      ? asset.cost_basis * (remainingQty / originalQty)
-                      : undefined;
-                    
-                    await updateAsset(assetId, {
-                      quantity: remainingQty,
-                      cost_basis: newCostBasis,
-                    });
-                  }
-                }}
-                livePrices={prices}
-              />
-              {isDemo ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/auth')}
-                  className="gap-2"
-                  data-tutorial="add-asset-button"
-                >
-                  <PiggyBank className="w-4 h-4" />
-                  Add Asset
-                </Button>
-              ) : (
-                <div data-tutorial="add-asset-button">
-                  <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />
-                </div>
-              )}
-            </div>
-          </div>
-          {categoryTotals.length === 0 ? (
-            <div className="glass-card rounded-xl p-8 text-center">
-              <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(() => {
-                // Calculate total in display unit for percentage calculation
-                const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
-                return categoryTotals.map((cat, index) => (
-                  <AssetCategoryCard
-                    key={cat.category}
-                    category={cat.category as AssetCategory}
-                    assets={assetsByCategory[cat.category] || []}
-                    total={formatDisplayUnitValue(cat.total)}
-                    percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
-                    formatValue={formatValue}
-                    formatDisplayUnitValue={formatDisplayUnitValue}
-                    displayUnit={displayUnit}
-                    conversionRates={conversionRates}
-                    onUpdateAsset={isDemo ? undefined : updateAsset}
-                    onDeleteAsset={isDemo ? undefined : deleteAsset}
-                  onBuyMore={isDemo ? undefined : async (assetId, data) => {
-                    const asset = assets.find(a => a.id === assetId);
-                    if (!asset) return;
-                    
-                    // Validate source balance if linked mode
-                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
-                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
-                      if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
-                        // Insufficient balance - this should have been caught in UI
-                        console.error('Insufficient source balance');
-                        return;
-                      }
-                    }
-                    
-                    // Record buy transaction
-                    await addTransaction({
-                      asset_id: assetId,
-                      transaction_type: 'buy',
-                      symbol: asset.symbol || asset.name,
-                      asset_name: asset.name,
-                      category: asset.category,
-                      quantity: data.quantity,
-                      price_per_unit: data.price_per_unit,
-                      total_value: data.quantity * data.price_per_unit,
-                      transaction_date: data.transaction_date,
-                      // Fund flow fields
-                      fund_flow_mode: data.fund_flow_mode,
-                      source_asset_id: data.source_asset_id,
-                      source_label: data.source_label,
-                      source_currency: data.source_currency,
-                      source_amount: data.source_amount,
-                    });
-                    
-                    // Update asset with new quantity and cost basis
-                    const newQuantity = (asset.quantity || 0) + data.quantity;
-                    const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
-                    
-                    await updateAsset(assetId, {
-                      quantity: newQuantity,
-                      cost_basis: newCostBasis,
-                      purchase_price_per_unit: newCostBasis / newQuantity,
-                    });
-                    
-                    // Auto-update source asset if linked mode
-                    if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
-                      const sourceAsset = assets.find(a => a.id === data.source_asset_id);
-                      if (sourceAsset) {
-                        const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
-                        if (newSourceQty <= 0) {
-                          await deleteAsset(data.source_asset_id);
-                        } else {
-                          // For banking assets, also update value using forex rate
-                          const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
-                          
-                          if (sourceAsset.category === 'banking') {
-                            const forexRate = getForexRateToUSD(
-                              sourceAsset.symbol || 'USD',
-                              prices.forex
-                            );
-                            updateData.value = newSourceQty * forexRate;
-                          }
-                          
-                          await updateAsset(data.source_asset_id, updateData);
-                        }
-                      }
-                    }
-                  }}
-                  onSell={isDemo ? undefined : async (assetId, data) => {
-                    const asset = assets.find(a => a.id === assetId);
-                    if (!asset) return;
-                    
-                    // Record the transaction
-                    await addTransaction({
-                      asset_id: assetId,
-                      transaction_type: 'sell',
-                      symbol: asset.symbol || asset.name,
-                      asset_name: asset.name,
-                      category: asset.category,
-                      quantity: data.quantity,
-                      price_per_unit: data.price_per_unit,
-                      total_value: data.total_value,
-                      realized_pnl: data.realized_pnl,
-                      transaction_date: data.transaction_date,
-                      notes: data.notes,
-                      // Fund flow fields
-                      fund_flow_mode: data.fund_flow_mode,
-                      destination_asset_id: data.destination_asset_id,
-                      destination_label: data.destination_label,
-                      destination_currency: data.destination_currency,
-                      destination_amount: data.destination_amount,
-                    });
-                    
-                    // Update or delete the asset
-                    const remainingQty = (asset.quantity || 0) - data.quantity;
-                    
-                    if (remainingQty <= 0) {
-                      // Full sale - delete asset
-                      await deleteAsset(assetId);
-                    } else {
-                      // Partial sale - reduce quantity and cost basis proportionally
-                      const originalQty = asset.quantity || 0;
-                      const newCostBasis = asset.cost_basis 
-                        ? asset.cost_basis * (remainingQty / originalQty)
-                        : undefined;
-                      
-                      await updateAsset(assetId, {
-                        quantity: remainingQty,
-                        cost_basis: newCostBasis,
-                      });
-                    }
-                    
-                    // Auto-update destination asset if linked mode
-                    if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
-                      const destAsset = assets.find(a => a.id === data.destination_asset_id);
-                      if (destAsset) {
-                        const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
-                        
-                        // For banking assets, also update value using forex rate
-                        const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
-                        
-                        if (destAsset.category === 'banking') {
-                          const forexRate = getForexRateToUSD(
-                            destAsset.symbol || 'USD',
-                            prices.forex
-                          );
-                          updateData.value = newDestQty * forexRate;
-                        }
-                        
-                        await updateAsset(data.destination_asset_id, updateData);
-                      }
-                    }
-                  }}
-                  livePrices={prices}
-                  allAssets={assets}
-                  delay={index * 0.1}
+        {/* Customizable Dashboard Grid */}
+        <DashboardGrid
+          layouts={layouts}
+          hiddenCards={hiddenCards}
+          isEditMode={isEditMode}
+          onLayoutChange={onLayoutChange}
+          onUserLayoutChange={onUserLayoutChange}
+          onHideCard={hideCard}
+          cardRenderers={{
+            'net-worth-trend': (
+              <div data-tutorial="charts-section">
+                <NetWorthChart formatValue={formatValue} formatDisplayUnitValue={formatDisplayUnitValue} displayUnit={displayUnit} conversionRates={conversionRates} currentNetWorth={adjustedNetWorth} />
+              </div>
+            ),
+            'allocation-chart': (
+              <AllocationChart data={categoryTotals} formatDisplayUnitValue={formatDisplayUnitValue} />
+            ),
+            'portfolio-history': (
+              isPro ? (
+                isDemo ? (
+                  <div data-tutorial="portfolio-history-card">
+                    <PerformanceCard 
+                      currentNetWorth={metrics.totalNetWorth} 
+                      formatValue={formatValue} 
+                      delay={0.2}
+                    />
+                  </div>
+                ) : (
+                  <div data-tutorial="portfolio-history-card">
+                    <PortfolioHistoryCard 
+                      currentNetWorth={adjustedNetWorth} 
+                      formatValue={formatValue}
+                      formatDisplayUnitValue={formatDisplayUnitValue}
+                      delay={0.2}
+                    />
+                  </div>
+                )
+              ) : !isDemo ? (
+                <PortfolioHistoryTeaser 
+                  onUpgrade={() => setShowSubscriptionDialog(true)}
+                  delay={0.2}
                 />
-                ));
-              })()}
-            </div>
-          )}
-        </div>
-
-        {/* Income, Expenses & Debt */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div data-tutorial="income-card">
-            <IncomeExpenseCard
-              type="income"
-              items={income}
-              total={formatValue(metrics.totalIncome)}
-              formatValue={formatValue}
-              actionButton={isDemo ? undefined : (
-                <AddIncomeDropdown
-                  onAddRecurring={(data) => addIncome(data)}
-                  onAddOneTime={(data) => addIncome(data)}
+              ) : null
+            ),
+            'pnl-overview': (
+              isPro ? (
+                <ProfitLossCard 
+                  pnlData={pnlData}
+                  assets={assets}
+                  formatValue={formatValue} 
+                  delay={0.25}
+                  transactions={transactions}
+                  onEditTransaction={isDemo ? undefined : updateTransaction}
+                  onDeleteTransaction={isDemo ? undefined : deleteTransaction}
+                />
+              ) : !isDemo ? (
+                <ProfitLossTeaser 
+                  onUpgrade={() => setShowSubscriptionDialog(true)} 
+                  delay={0.25}
+                />
+              ) : null
+            ),
+            'goals-overview': (
+              <GoalsOverviewCard
+                goals={demoGoals}
+                loading={!isDemo && goalsLoading}
+                calculateProgress={calculateProgress}
+                calculateMonthsToGoal={calculateMonthsToGoal}
+                getGoalStatus={getGoalStatus}
+                getRecommendation={getRecommendation}
+                formatValue={formatValue}
+                onAddGoal={isDemo ? undefined : addGoal}
+                onUpdateGoal={isDemo ? undefined : updateGoal}
+                onDeleteGoal={isDemo ? undefined : deleteGoal}
+                canAddGoal={isDemo ? true : canAddGoal}
+                goalLimit={isDemo ? undefined : goalLimit}
+                onUpgrade={() => setShowSubscriptionDialog(true)}
+                delay={0.25}
+                isDemo={isDemo}
+              />
+            ),
+            'investment-strategy': (
+              (!isDemo || isPro) ? (
+                isPro ? (
+                  <div data-tutorial="investment-strategy-card">
+                    <InvestmentStrategyCard
+                      freeMonthlyIncome={netCashFlow}
+                      formatValue={formatValue}
+                      debts={demoDebts}
+                      monthlyPayments={demoMonthlyPayments}
+                      goals={demoGoals}
+                      delay={0.3}
+                    />
+                  </div>
+                ) : (
+                  <div data-tutorial="investment-strategy-card">
+                    <InvestmentStrategyTeaser
+                      freeMonthlyIncome={netCashFlow}
+                      formatValue={formatValue}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                      delay={0.3}
+                    />
+                  </div>
+                )
+              ) : null
+            ),
+            'income-card': (
+              <div data-tutorial="income-card">
+                <IncomeExpenseCard
+                  type="income"
+                  items={income}
+                  total={formatValue(metrics.totalIncome)}
+                  formatValue={formatValue}
+                  actionButton={isDemo ? undefined : (
+                    <AddIncomeDropdown
+                      onAddRecurring={(data) => addIncome(data)}
+                      onAddOneTime={(data) => addIncome(data)}
+                      displayUnit={displayUnit}
+                      isPro={isPro}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                    />
+                  )}
                   displayUnit={displayUnit}
-                  isPro={isPro}
-                  onUpgrade={() => setShowSubscriptionDialog(true)}
+                  onUpdateIncome={isDemo ? undefined : updateIncome}
+                  onDeleteIncome={isDemo ? undefined : deleteIncome}
                 />
-              )}
-              displayUnit={displayUnit}
-              onUpdateIncome={isDemo ? undefined : updateIncome}
-              onDeleteIncome={isDemo ? undefined : deleteIncome}
-            />
-          </div>
-          <div data-tutorial="expense-card">
-            <IncomeExpenseCard
-              type="expense"
-              items={expenses}
-              total={formatValue(metrics.totalExpenses)}
-              formatValue={formatValue}
-              actionButton={isDemo ? undefined : (
-                <AddExpenseDropdown
-                  onAddRecurring={(data) => addExpense({ ...data, is_recurring: true })}
-                  onAddOneTime={(data) => addExpense(data)}
-                  isPro={isPro}
-                  onUpgrade={() => setShowSubscriptionDialog(true)}
+              </div>
+            ),
+            'expense-card': (
+              <div data-tutorial="expense-card">
+                <IncomeExpenseCard
+                  type="expense"
+                  items={expenses}
+                  total={formatValue(metrics.totalExpenses)}
+                  formatValue={formatValue}
+                  actionButton={isDemo ? undefined : (
+                    <AddExpenseDropdown
+                      onAddRecurring={(data) => addExpense({ ...data, is_recurring: true })}
+                      onAddOneTime={(data) => addExpense(data)}
+                      isPro={isPro}
+                      onUpgrade={() => setShowSubscriptionDialog(true)}
+                    />
+                  )}
+                  onUpdateExpense={isDemo ? undefined : updateExpense}
+                  onDeleteExpense={isDemo ? undefined : deleteExpense}
+                  displayUnit={displayUnit}
+                  allExpenses={expenses}
                 />
-              )}
-              onUpdateExpense={isDemo ? undefined : updateExpense}
-              onDeleteExpense={isDemo ? undefined : deleteExpense}
-              displayUnit={displayUnit}
-              allExpenses={expenses}
-            />
-          </div>
-          <div data-tutorial="debt-card">
-            <DebtOverviewCard
-              debts={demoDebts}
-              totalDebt={demoTotalDebt}
-              monthlyPayments={demoMonthlyPayments}
-              monthlyInterest={demoMonthlyInterest}
-              formatValue={formatValue}
-              onUpdateDebt={isDemo ? undefined : updateDebt}
-              onDeleteDebt={isDemo ? undefined : deleteDebt}
-              actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number; currency: string }) => addDebt(data)} />}
-              delay={0.2}
-              displayUnit={displayUnit}
-            />
-          </div>
-        </div>
-
-        {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
-        {demoDebts.length > 0 && (
-          <div className="mt-8" data-tutorial="debt-payoff-calculator">
-            {isPro ? (
-              <DebtPayoffCalculator
-                debts={demoDebts}
-                displayUnit={displayUnit}
-                convertFromCurrency={convertFromCurrency}
-                formatCurrencyValue={formatCurrencyValue}
-                delay={0.3}
-              />
-            ) : (
-              <DebtPayoffTeaser
-                debtCount={demoDebts.length}
-                onUpgrade={() => setShowSubscriptionDialog(true)}
-                delay={0.3}
-              />
-            )}
-          </div>
-        )}
+              </div>
+            ),
+            'debt-card': (
+              <div data-tutorial="debt-card">
+                <DebtOverviewCard
+                  debts={demoDebts}
+                  totalDebt={demoTotalDebt}
+                  monthlyPayments={demoMonthlyPayments}
+                  monthlyInterest={demoMonthlyInterest}
+                  formatValue={formatValue}
+                  onUpdateDebt={isDemo ? undefined : updateDebt}
+                  onDeleteDebt={isDemo ? undefined : deleteDebt}
+                  actionButton={isDemo ? undefined : <AddDebtDialog onAdd={(data: { name: string; debt_type: DebtType; principal_amount: number; interest_rate: number; monthly_payment?: number; currency: string }) => addDebt(data)} />}
+                  delay={0.2}
+                  displayUnit={displayUnit}
+                />
+              </div>
+            ),
+            'debt-payoff': (
+              demoDebts.length > 0 ? (
+                isPro ? (
+                  <div data-tutorial="debt-payoff-calculator">
+                    <DebtPayoffCalculator
+                      debts={demoDebts}
+                      displayUnit={displayUnit}
+                      convertFromCurrency={convertFromCurrency}
+                      formatCurrencyValue={formatCurrencyValue}
+                      delay={0.3}
+                    />
+                  </div>
+                ) : (
+                  <DebtPayoffTeaser
+                    debtCount={demoDebts.length}
+                    onUpgrade={() => setShowSubscriptionDialog(true)}
+                    delay={0.3}
+                  />
+                )
+              ) : null
+            ),
+            'rebalancer': (
+              isPro && rebalancer.shouldShow && hasPreferences ? (
+                <RebalanceCard
+                  driftData={rebalancer.driftData}
+                  tradeSuggestions={rebalancer.tradeSuggestions}
+                  maxDrift={rebalancer.maxDrift}
+                  threshold={rebalancer.threshold}
+                  alerts={rebalancer.alerts}
+                  onDismiss={(alertId) => {
+                    if (alertId) rebalancer.dismissAlert(alertId);
+                  }}
+                  formatValue={formatValue}
+                  onEdit={() => setShowPreferencesDialog(true)}
+                />
+              ) : null
+            ),
+            'asset-categories': (
+              <div>
+                <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
+                  <h2 className="text-xl font-semibold">Assets by Category</h2>
+                  <div className="flex items-center gap-2">
+                    <ViewAllAssetsDialog
+                      assets={Object.values(assetsByCategory).flat()}
+                      formatValue={formatValue}
+                      onUpdateAsset={isDemo ? undefined : updateAsset}
+                      onDeleteAsset={isDemo ? undefined : deleteAsset}
+                      onSellAsset={isDemo ? undefined : async (assetId, data) => {
+                        const asset = assets.find(a => a.id === assetId);
+                        if (!asset) return;
+                        
+                        await addTransaction({
+                          asset_id: assetId,
+                          transaction_type: 'sell',
+                          symbol: asset.symbol || asset.name,
+                          asset_name: asset.name,
+                          category: asset.category,
+                          quantity: data.quantity,
+                          price_per_unit: data.price_per_unit,
+                          total_value: data.total_value,
+                          realized_pnl: data.realized_pnl,
+                          transaction_date: data.transaction_date,
+                          notes: data.notes,
+                        });
+                        
+                        const remainingQty = (asset.quantity || 0) - data.quantity;
+                        
+                        if (remainingQty <= 0) {
+                          await deleteAsset(assetId);
+                        } else {
+                          const originalQty = asset.quantity || 0;
+                          const newCostBasis = asset.cost_basis 
+                            ? asset.cost_basis * (remainingQty / originalQty)
+                            : undefined;
+                          
+                          await updateAsset(assetId, {
+                            quantity: remainingQty,
+                            cost_basis: newCostBasis,
+                          });
+                        }
+                      }}
+                      livePrices={prices}
+                    />
+                    {isDemo ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/auth')}
+                        className="gap-2"
+                        data-tutorial="add-asset-button"
+                      >
+                        <PiggyBank className="w-4 h-4" />
+                        Add Asset
+                      </Button>
+                    ) : (
+                      <div data-tutorial="add-asset-button">
+                        <AddAssetDialog onAdd={addAsset} livePrices={prices} onStockPriceUpdate={addStockPrice} onCryptoPriceUpdate={addStockPrice} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {categoryTotals.length === 0 ? (
+                  <div className="glass-card rounded-xl p-8 text-center">
+                    <p className="text-muted-foreground">No assets yet. Add your first asset to get started!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(() => {
+                      const totalInDisplayUnit = categoryTotals.reduce((sum, c) => sum + c.total, 0);
+                      return categoryTotals.map((cat, index) => (
+                        <AssetCategoryCard
+                          key={cat.category}
+                          category={cat.category as AssetCategory}
+                          assets={assetsByCategory[cat.category] || []}
+                          total={formatDisplayUnitValue(cat.total)}
+                          percentage={totalInDisplayUnit > 0 ? (cat.total / totalInDisplayUnit) * 100 : 0}
+                          formatValue={formatValue}
+                          formatDisplayUnitValue={formatDisplayUnitValue}
+                          displayUnit={displayUnit}
+                          conversionRates={conversionRates}
+                          onUpdateAsset={isDemo ? undefined : updateAsset}
+                          onDeleteAsset={isDemo ? undefined : deleteAsset}
+                          onBuyMore={isDemo ? undefined : async (assetId, data) => {
+                            const asset = assets.find(a => a.id === assetId);
+                            if (!asset) return;
+                            
+                            if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                              const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                              if (sourceAsset && (sourceAsset.quantity || 0) < data.source_amount) {
+                                console.error('Insufficient source balance');
+                                return;
+                              }
+                            }
+                            
+                            await addTransaction({
+                              asset_id: assetId,
+                              transaction_type: 'buy',
+                              symbol: asset.symbol || asset.name,
+                              asset_name: asset.name,
+                              category: asset.category,
+                              quantity: data.quantity,
+                              price_per_unit: data.price_per_unit,
+                              total_value: data.quantity * data.price_per_unit,
+                              transaction_date: data.transaction_date,
+                              fund_flow_mode: data.fund_flow_mode,
+                              source_asset_id: data.source_asset_id,
+                              source_label: data.source_label,
+                              source_currency: data.source_currency,
+                              source_amount: data.source_amount,
+                            });
+                            
+                            const newQuantity = (asset.quantity || 0) + data.quantity;
+                            const newCostBasis = (asset.cost_basis || 0) + (data.quantity * data.price_per_unit);
+                            
+                            await updateAsset(assetId, {
+                              quantity: newQuantity,
+                              cost_basis: newCostBasis,
+                              purchase_price_per_unit: newCostBasis / newQuantity,
+                            });
+                            
+                            if (data.fund_flow_mode === 'linked' && data.source_asset_id && data.source_amount) {
+                              const sourceAsset = assets.find(a => a.id === data.source_asset_id);
+                              if (sourceAsset) {
+                                const newSourceQty = (sourceAsset.quantity || 0) - data.source_amount;
+                                if (newSourceQty <= 0) {
+                                  await deleteAsset(data.source_asset_id);
+                                } else {
+                                  const updateData: Partial<typeof sourceAsset> = { quantity: newSourceQty };
+                                  
+                                  if (sourceAsset.category === 'banking') {
+                                    const forexRate = getForexRateToUSD(
+                                      sourceAsset.symbol || 'USD',
+                                      prices.forex
+                                    );
+                                    updateData.value = newSourceQty * forexRate;
+                                  }
+                                  
+                                  await updateAsset(data.source_asset_id, updateData);
+                                }
+                              }
+                            }
+                          }}
+                          onSell={isDemo ? undefined : async (assetId, data) => {
+                            const asset = assets.find(a => a.id === assetId);
+                            if (!asset) return;
+                            
+                            await addTransaction({
+                              asset_id: assetId,
+                              transaction_type: 'sell',
+                              symbol: asset.symbol || asset.name,
+                              asset_name: asset.name,
+                              category: asset.category,
+                              quantity: data.quantity,
+                              price_per_unit: data.price_per_unit,
+                              total_value: data.total_value,
+                              realized_pnl: data.realized_pnl,
+                              transaction_date: data.transaction_date,
+                              notes: data.notes,
+                              fund_flow_mode: data.fund_flow_mode,
+                              destination_asset_id: data.destination_asset_id,
+                              destination_label: data.destination_label,
+                              destination_currency: data.destination_currency,
+                              destination_amount: data.destination_amount,
+                            });
+                            
+                            const remainingQty = (asset.quantity || 0) - data.quantity;
+                            
+                            if (remainingQty <= 0) {
+                              await deleteAsset(assetId);
+                            } else {
+                              const originalQty = asset.quantity || 0;
+                              const newCostBasis = asset.cost_basis 
+                                ? asset.cost_basis * (remainingQty / originalQty)
+                                : undefined;
+                              
+                              await updateAsset(assetId, {
+                                quantity: remainingQty,
+                                cost_basis: newCostBasis,
+                              });
+                            }
+                            
+                            if (data.fund_flow_mode === 'linked' && data.destination_asset_id && data.destination_amount) {
+                              const destAsset = assets.find(a => a.id === data.destination_asset_id);
+                              if (destAsset) {
+                                const newDestQty = (destAsset.quantity || 0) + data.destination_amount;
+                                
+                                const updateData: Partial<typeof destAsset> = { quantity: newDestQty };
+                                
+                                if (destAsset.category === 'banking') {
+                                  const forexRate = getForexRateToUSD(
+                                    destAsset.symbol || 'USD',
+                                    prices.forex
+                                  );
+                                  updateData.value = newDestQty * forexRate;
+                                }
+                                
+                                await updateAsset(data.destination_asset_id, updateData);
+                              }
+                            }
+                          }}
+                          livePrices={prices}
+                          allAssets={assets}
+                          delay={index * 0.1}
+                        />
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+            ),
+          }}
+        />
 
         {/* Footer */}
         <motion.footer
@@ -813,6 +906,16 @@ const IndexContent = () => {
         
         {/* Feedback Button */}
         <FeedbackButton />
+
+        {/* Investment Preferences Dialog for Rebalancer */}
+        <InvestmentPreferencesDialog
+          open={showPreferencesDialog}
+          onOpenChange={setShowPreferencesDialog}
+          currentPreferences={preferences}
+          onSave={savePreferences}
+          goals={isDemo ? mockGoals : goals}
+          goalAnalysis={goalAnalysis}
+        />
       </div>
     </>
   );

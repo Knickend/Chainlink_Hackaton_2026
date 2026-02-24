@@ -1,0 +1,6 @@
+{
+  "supabaseUrl": "https://edtudwkmswyjxamkdkbu.supabase.co",
+  "supabaseServiceRoleKey": "${SUPABASE_SERVICE_ROLE_KEY}",
+  "cronSecret": "${CRON_SECRET}",
+  "priceApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed-test"
+}

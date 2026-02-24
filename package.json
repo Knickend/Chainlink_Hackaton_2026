@@ -44,6 +44,7 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@supabase/supabase-js": "^2.93.1",
     "@tanstack/react-query": "^5.83.0",
+    "@types/react-grid-layout": "^2.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -56,6 +57,7 @@
     "react": "^19.2.4",
     "react-day-picker": "^9.13.2",
     "react-dom": "^19.2.4",
+    "react-grid-layout": "^2.2.2",
     "react-hook-form": "^7.71.2",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.9",
@@ -89,5 +91,8 @@
     "typescript-eslint": "^8.56.1",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "minimatch": ">=10.2.1"
   }
 }

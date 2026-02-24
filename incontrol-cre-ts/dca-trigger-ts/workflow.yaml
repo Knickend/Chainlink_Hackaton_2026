@@ -1,0 +1,19 @@
+# ==========================================================================
+# DCA Trigger CRE Workflow
+# ==========================================================================
+
+production-settings:
+  user-workflow:
+    workflow-name: "dca-trigger-ts-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""
+
+test-settings:
+  user-workflow:
+    workflow-name: "dca-trigger-ts-test"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.test.json"
+    secrets-path: ""
