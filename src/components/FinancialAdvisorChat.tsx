@@ -104,13 +104,25 @@ function buildPortfolioSummary(
   const recurringStr = groupByCurrency(recurring.map(i => ({ amount: i.amount, currency: i.currency || 'USD' })));
   const oneTimeStr = oneTime.length ? groupByCurrency(oneTime.map(i => ({ amount: i.amount, currency: i.currency || 'USD' }))) : '';
   lines.push(`\nMonthly Income: ${recurringStr} (${recurring.length} recurring)${oneTime.length ? ` + ${oneTimeStr} (${oneTime.length} one-time)` : ''}`);
+  for (const i of income) {
+    const cur = i.currency || 'USD';
+    const recLabel = i.is_recurring ? 'recurring' : 'one-time';
+    const dateStr = (i as any).income_date ? `, date: ${(i as any).income_date}` : '';
+    lines.push(`  - ${i.source} (${fmtCurrency(i.amount, cur)}, ${i.type}, ${recLabel}${dateStr})`);
+  }
 
   // Expenses — group by currency
   const recurringExp = expenses.filter(e => e.is_recurring);
   const oneTimeExp = expenses.filter(e => !e.is_recurring);
   const recurringExpStr = groupByCurrency(recurringExp.map(e => ({ amount: e.amount, currency: e.currency || 'USD' })));
   const oneTimeExpStr = oneTimeExp.length ? groupByCurrency(oneTimeExp.map(e => ({ amount: e.amount, currency: e.currency || 'USD' }))) : '';
-  lines.push(`Monthly Expenses: ${recurringExpStr} (${recurringExp.length} recurring)${oneTimeExp.length ? ` + ${oneTimeExpStr} (${oneTimeExp.length} one-time)` : ''}`);
+  lines.push(`\nMonthly Expenses: ${recurringExpStr} (${recurringExp.length} recurring)${oneTimeExp.length ? ` + ${oneTimeExpStr} (${oneTimeExp.length} one-time)` : ''}`);
+  for (const e of expenses) {
+    const cur = e.currency || 'USD';
+    const recLabel = e.is_recurring ? 'recurring' : 'one-time';
+    const dateStr = (e as any).expense_date ? `, date: ${(e as any).expense_date}` : '';
+    lines.push(`  - ${e.name} (${fmtCurrency(e.amount, cur)}, ${e.category}, ${recLabel}${dateStr})`);
+  }
 
   // Debts — group by currency
   if (debts.length > 0) {
