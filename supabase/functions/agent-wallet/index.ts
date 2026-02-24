@@ -1065,7 +1065,7 @@ serve(async (req) => {
           // Send transaction email notification
           if (wallet.notify_transactions && wallet.wallet_email) {
             await sendTransactionEmail(wallet.wallet_email, 'Trade', {
-              amount, fromToken: from_token, toToken: to_token, txHash,
+              amount, fromToken: from_token, toToken: to_token, txHash: txHash ?? undefined,
             });
           }
 
