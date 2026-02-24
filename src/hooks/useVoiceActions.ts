@@ -167,7 +167,7 @@ export function useVoiceActions(handlers: ActionHandlers) {
             name: data.name,
             amount: data.amount,
             category: data.category || 'Other',
-            is_recurring: data.is_recurring ?? true,
+            is_recurring: data.is_recurring ?? (data.expense_date ? false : true),
             currency: data.currency || 'USD',
           };
           if (data.expense_date) expenseData.expense_date = data.expense_date;
