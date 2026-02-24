@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -141,15 +141,15 @@ export function useDashboardLayout() {
     isSaving.current = false;
   }, 1000);
 
+  const layoutsRef = useRef(layouts);
+  layoutsRef.current = layouts;
+
   const onLayoutChange = useCallback((currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
-    // Only update state if layouts actually changed to prevent infinite re-render loop
-    setLayouts(prev => {
-      const prevStr = JSON.stringify(prev);
-      const nextStr = JSON.stringify(allLayouts);
-      if (prevStr === nextStr) return prev;
-      if (user) saveLayout(allLayouts, hiddenCards);
-      return allLayouts;
-    });
+    const prevStr = JSON.stringify(layoutsRef.current);
+    const nextStr = JSON.stringify(allLayouts);
+    if (prevStr === nextStr) return;
+    setLayouts(allLayouts);
+    if (user) saveLayout(allLayouts, hiddenCards);
   }, [user, hiddenCards, saveLayout]);
 
   const hideCard = useCallback((cardId: string) => {

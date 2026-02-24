@@ -1,4 +1,4 @@
-import { useMemo, ReactNode } from 'react';
+import { useMemo, useRef, ReactNode } from 'react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
@@ -28,6 +28,7 @@ export function DashboardGrid({
     return Object.keys(cardRenderers).filter(id => !hiddenCards.includes(id));
   }, [cardRenderers, hiddenCards]);
 
+  const filteredLayoutsRef = useRef<ResponsiveLayouts>({});
   const filteredLayouts = useMemo(() => {
     const result: ResponsiveLayouts = {};
     for (const [bp, layout] of Object.entries(layouts)) {
@@ -35,6 +36,10 @@ export function DashboardGrid({
         result[bp] = (layout as LayoutItem[]).filter(item => visibleCards.includes(item.i));
       }
     }
+    const newStr = JSON.stringify(result);
+    const prevStr = JSON.stringify(filteredLayoutsRef.current);
+    if (newStr === prevStr) return filteredLayoutsRef.current;
+    filteredLayoutsRef.current = result;
     return result;
   }, [layouts, visibleCards]);
 
