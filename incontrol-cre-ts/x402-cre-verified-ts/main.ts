@@ -1,6 +1,10 @@
 import * as cre from "@chainlink/cre-sdk";
-import { Runner, HTTPClient, consensusMedianAggregation } from "@chainlink/cre-sdk";
-import { CronCapability } from "./node_modules/@chainlink/cre-sdk/dist/generated-sdk/capabilities/scheduler/cron/v1/cron_sdk_gen.js";
+import {
+  Runner,
+  HTTPClient,
+  CronCapability,
+  consensusIdenticalAggregation,
+} from "@chainlink/cre-sdk";
 
 // Configuration interface
 interface Config {
@@ -75,9 +79,7 @@ function parseConfig(c: unknown): Config {
 }
 
 // CRE workflow that fetches price data with multi-node consensus verification
-const initWorkflow = (rawConfig?: unknown) => {
-  const cfg = parseConfig(rawConfig);
-
+const initWorkflow = (cfg: Config) => {
   const trigger = new CronCapability().trigger({
     schedule: "0 */5 * * * *",
   });
@@ -88,7 +90,7 @@ const initWorkflow = (rawConfig?: unknown) => {
     runtime.log(`🔗 Symbols: ${(cfg.symbols || []).join(", ")}`);
 
     try {
-      // Fetch price data with consensus — return raw JSON string (simple value for consensus)
+      // Fetch price data with consensus — returns JSON string, use identical aggregation
       const rawJson = runtime.runInNodeMode(
         (nodeRuntime: cre.NodeRuntime) => {
           const httpClient = new HTTPClient();
@@ -118,8 +120,8 @@ const initWorkflow = (rawConfig?: unknown) => {
           const responseText = new TextDecoder().decode(response.body);
           return responseText;
         },
-        consensusMedianAggregation()
-      )(rawConfig).result();
+        consensusIdenticalAggregation<string>(),
+      )(cfg).result();
 
       // Parse the JSON string outside of consensus
       let verifiedData: PriceCacheRow[] = [];
@@ -201,5 +203,3 @@ export async function main() {
   });
   await runner.run(initWorkflow);
 }
-
-await main();

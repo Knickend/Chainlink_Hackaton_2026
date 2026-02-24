@@ -10,8 +10,13 @@
  */
 
 import * as cre from "@chainlink/cre-sdk";
-import { Runner, HTTPClient, consensusMedianAggregation } from "@chainlink/cre-sdk";
-import { CronCapability } from "./node_modules/@chainlink/cre-sdk/dist/generated-sdk/capabilities/scheduler/cron/v1/cron_sdk_gen.js";
+import {
+  Runner,
+  HTTPClient,
+  CronCapability,
+  consensusMedianAggregation,
+  consensusIdenticalAggregation,
+} from "@chainlink/cre-sdk";
 
 type DCAConfig = {
   supabaseUrl: string;
@@ -110,7 +115,7 @@ function parseConfig(c: unknown): DCAConfig {
 
 /**
  * Fetch the current price for a token from price_cache via HTTPClient.
- * Synchronous callback, returns simple number for consensus.
+ * Returns a number — uses consensusMedianAggregation (correct for numeric values).
  */
 function fetchCurrentPrice(
   tokenSymbol: string,
@@ -158,7 +163,7 @@ function fetchCurrentPrice(
 
 /**
  * Fetch the last completed execution price for a strategy from dca_executions.
- * Synchronous callback, returns simple number for consensus.
+ * Returns a number — uses consensusMedianAggregation (correct for numeric values).
  */
 function fetchLastExecutionPrice(
   strategyId: string,
@@ -200,8 +205,8 @@ function fetchLastExecutionPrice(
   }
 }
 
-const initWorkflow = (rawConfig?: unknown) => {
-  const cfg = parseConfig(rawConfig);
+const initWorkflow = (config: DCAConfig) => {
+  const cfg = config;
 
   const trigger = new CronCapability().trigger({
     schedule: "0 */5 * * * *",
@@ -211,6 +216,7 @@ const initWorkflow = (rawConfig?: unknown) => {
     runtime.log("[DCA] Starting DCA Trigger Workflow (5-min tick)");
 
     // ── 1. Fetch active strategies ──
+    // Returns a JSON string — uses consensusIdenticalAggregation (correct for strings)
     let strategies: DCAStrategy[] = [];
     try {
       const raw = runtime.runInNodeMode(
@@ -236,8 +242,8 @@ const initWorkflow = (rawConfig?: unknown) => {
           const text = new TextDecoder().decode(response.body);
           return text;
         },
-        consensusMedianAggregation(),
-      )(rawConfig).result();
+        consensusIdenticalAggregation<string>(),
+      )(config).result();
 
       strategies = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw)) as DCAStrategy[];
     } catch {
@@ -270,13 +276,13 @@ const initWorkflow = (rawConfig?: unknown) => {
       runtime.log(`[DCA] Checking ${dipCandidates.length} strategies for dip-buy opportunities`);
 
       for (const candidate of dipCandidates) {
-        const currentPrice = fetchCurrentPrice(candidate.to_token, cfg, runtime, rawConfig);
+        const currentPrice = fetchCurrentPrice(candidate.to_token, cfg, runtime, config);
         if (!currentPrice || currentPrice <= 0) {
           runtime.log(`[DCA] Dip check skipped for ${candidate.to_token}: no current price`);
           continue;
         }
 
-        const lastPrice = fetchLastExecutionPrice(candidate.id, cfg, runtime, rawConfig);
+        const lastPrice = fetchLastExecutionPrice(candidate.id, cfg, runtime, config);
         if (!lastPrice || lastPrice <= 0) {
           runtime.log(`[DCA] Dip check skipped for strategy ${candidate.id}: no previous execution price`);
           continue;
@@ -319,13 +325,13 @@ const initWorkflow = (rawConfig?: unknown) => {
         // Fetch price for scheduled strategies
         let tokenPriceUsd: number | null = null;
         if (pending.triggerType === "scheduled") {
-          tokenPriceUsd = fetchCurrentPrice(strategy.to_token, cfg, runtime, rawConfig);
+          tokenPriceUsd = fetchCurrentPrice(strategy.to_token, cfg, runtime, config);
           if (tokenPriceUsd && tokenPriceUsd > 0) {
             runtime.log(`[DCA] Price for ${strategy.to_token}: $${tokenPriceUsd}`);
 
             // Apply dip logic for scheduled strategies that also have dip settings
             if (strategy.dip_threshold_pct > 0 && strategy.dip_multiplier > 1) {
-              const lastPrice = fetchLastExecutionPrice(strategy.id, cfg, runtime, rawConfig);
+              const lastPrice = fetchLastExecutionPrice(strategy.id, cfg, runtime, config);
               if (lastPrice && lastPrice > 0) {
                 const pctDrop = ((lastPrice - tokenPriceUsd) / lastPrice) * 100;
                 if (pctDrop >= strategy.dip_threshold_pct) {
@@ -338,7 +344,7 @@ const initWorkflow = (rawConfig?: unknown) => {
             }
           }
         } else {
-          tokenPriceUsd = fetchCurrentPrice(strategy.to_token, cfg, runtime, rawConfig);
+          tokenPriceUsd = fetchCurrentPrice(strategy.to_token, cfg, runtime, config);
         }
 
         // Check budget remaining
@@ -352,6 +358,7 @@ const initWorkflow = (rawConfig?: unknown) => {
         }
 
         // Call execute-dca-order edge function
+        // Returns 1 or 0 (number) — consensusMedianAggregation is correct
         const execResultRaw = runtime.runInNodeMode(
           (nodeRuntime: cre.NodeRuntime) => {
             const httpClient = new HTTPClient();
@@ -379,7 +386,7 @@ const initWorkflow = (rawConfig?: unknown) => {
             return response.statusCode >= 200 && response.statusCode < 300 ? 1 : 0;
           },
           consensusMedianAggregation(),
-        )(rawConfig).result();
+        )(config).result();
 
         const execOk = (typeof execResultRaw === "number") ? execResultRaw > 0 : false;
 
@@ -418,5 +425,3 @@ export async function main() {
   });
   await runner.run(initWorkflow);
 }
-
-await main();

@@ -390,7 +390,6 @@ export type Database = {
         }
         Relationships: []
       }
-
       dca_executions: {
         Row: {
           amount_usd: number
