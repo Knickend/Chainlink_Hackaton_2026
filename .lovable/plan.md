@@ -1,105 +1,72 @@
 
 
-# Fix: Break the Infinite Re-render Loop in Dashboard Grid
+# Fix: Stabilize `useComposedRefs` to Break the Infinite Loop
 
-## Root Cause Analysis
+## Root Cause
 
-The `react-grid-layout` v2 `ResponsiveGridLayout` component internally compacts the layout on every render and fires `onLayoutChange` with the compacted result. The compacted layout includes additional properties (like `moved`, `static: false`) that differ from the input, meaning a simple `JSON.stringify` comparison will never match. This creates the loop:
+The `useComposedRefs` function in our Radix patch (`src/lib/radix-compose-refs-patch.ts`) has a critical memoization bug:
 
-```text
-layouts prop changes
-  -> ResponsiveGridLayout re-renders
-  -> internally compacts layout (adds properties)
-  -> fires onLayoutChange with compacted layout
-  -> onLayoutChange calls setLayouts (different from prev due to added props)
-  -> layouts state changes
-  -> layouts prop changes (back to step 1)
-  -> INFINITE LOOP
+```typescript
+function useComposedRefs<T>(...refs: PossibleRef<T>[]) {
+  return useCallback(composeRefs(...refs), refs);
+  //                                      ^^^^ NEW array every render!
+}
 ```
+
+`refs` is a JavaScript rest parameter, which creates a **new array on every function call**. Since `useCallback` does a shallow comparison of its dependency array, it sees a different array reference each render and **never memoizes**. This means a brand-new composed ref callback is returned on every render.
+
+In React 19, when React detects a new ref callback:
+1. It calls the **old** callback's cleanup (which sets all refs to `null`)
+2. Setting a ref to `null` calls `setNode(null)` inside Radix's `usePresence` -- a `setState`
+3. The `setState` triggers a re-render
+4. The re-render creates yet another new composed ref (because memoization is broken)
+5. React sees another new ref, calls old cleanup again... **infinite loop**
+
+This specifically crashes the Admin page because it uses `Tabs` with `TabsContent`, which uses `Presence` internally, which uses `useComposedRefs`.
 
 ## Solution
 
-Stop using `onLayoutChange` to update React state entirely. Instead:
-
-1. Store the latest layout in a **ref only** (no `setLayouts` call) from `onLayoutChange`
-2. Only persist to the database via the debounced save (using the ref value)
-3. Use `onDragStop` and `onResizeStop` callbacks to trigger the actual save, since those only fire on user interaction (not on internal compaction)
-4. Remove `setLayouts` from `onLayoutChange` completely -- the grid manages its own internal layout state; we only need to capture it for persistence
+Rewrite `useComposedRefs` to use a **stable ref callback pattern**:
+- Store the list of refs in a `useRef` (updated every render, no re-render)
+- Return a single stable callback via `useCallback(fn, [])` that reads from the ref
+- The callback never changes identity, so React 19 never triggers cleanup/re-attach cycles
 
 ## Changes
 
-### File 1: `src/hooks/useDashboardLayout.ts`
+### File: `src/lib/radix-compose-refs-patch.ts`
 
-- Change `onLayoutChange` to only update a ref (no `setLayouts`)
-- Add `onDragStop` and `onResizeStop` callbacks that read from the ref and persist
-- Export these new callbacks
+Replace the `useComposedRefs` function with:
 
-```
-onLayoutChange:
-  - Before: calls setLayouts(allLayouts) + saveLayout()
-  - After: only updates layoutsRef.current (NO setState)
-
-New onDragStop / onResizeStop:
-  - Read layoutsRef.current
-  - Call setLayouts + saveLayout (only on actual user interaction)
-```
-
-### File 2: `src/components/DashboardGrid.tsx`
-
-- Pass `onDragStop` and `onResizeStop` to `ResponsiveGridLayout`
-- Keep `onLayoutChange` connected but it now only updates the ref (no re-render)
-
-## Technical Details
-
-**`src/hooks/useDashboardLayout.ts`** changes:
-
-The `onLayoutChange` callback becomes:
 ```typescript
-const onLayoutChange = useCallback(
-  (_currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
-    // Only update ref, never setState - avoids the compaction feedback loop
-    layoutsRef.current = allLayouts;
-  },
-  []
-);
-```
+function useComposedRefs<T>(...refs: PossibleRef<T>[]) {
+  const refsRef = useRef(refs);
+  // Update the stored refs on every render (no re-render triggered)
+  refsRef.current = refs;
 
-New callbacks for user-initiated changes:
-```typescript
-const onUserLayoutChange = useCallback(() => {
-  const newLayouts = layoutsRef.current;
-  setLayouts(newLayouts);
-  if (user) saveLayout(newLayouts, hiddenCards);
-}, [user, hiddenCards, saveLayout]);
-```
-
-Return `onUserLayoutChange` for use as `onDragStop` and `onResizeStop`.
-
-**`src/components/DashboardGrid.tsx`** changes:
-
-Add the new props and wire them up:
-```typescript
-interface DashboardGridProps {
-  // ... existing props
-  onUserLayoutChange: () => void; // NEW
+  // Return a STABLE callback that never changes identity
+  return useCallback((node: T) => {
+    refsRef.current.forEach((ref) => setRef(ref, node));
+  }, []);
 }
-
-<ResponsiveGridLayout
-  // ... existing props
-  onDragStop={() => onUserLayoutChange()}
-  onResizeStop={() => onUserLayoutChange()}
->
 ```
 
-**`src/pages/Index.tsx`** changes:
+Also add `useRef` to the import from React.
 
-Pass the new `onUserLayoutChange` prop through to `DashboardGrid`.
+This is a single-file change. No other files need modification.
 
 ## Why This Works
 
-- `onLayoutChange` fires on every compaction but no longer triggers a React state update, so no re-render loop
-- `onDragStop` / `onResizeStop` only fire on actual user interaction (drag or resize), which is the only time we need to persist
-- The grid component manages its own internal layout state perfectly fine without us mirroring it in React state
-- Initial layout from props is still respected (the grid reads `layouts` prop on mount)
-- Saved layouts from the database still load correctly on mount via `setLayouts` in the `useEffect`
+- The returned callback has a **stable identity** (empty deps array) so React 19 never cycles cleanup/re-attach
+- The `refsRef` is updated every render so it always points to the latest refs, but updating a ref doesn't trigger a re-render
+- `setRef` still discards return values from ref callbacks, preventing cleanup leakage
+- The `composeRefs` standalone function (used outside hooks) remains unchanged since it doesn't have the memoization issue
+
+## Technical Details
+
+| Aspect | Before (Broken) | After (Fixed) |
+|---|---|---|
+| Deps array | `refs` (new array each render) | `[]` (never changes) |
+| Callback identity | New function every render | Stable across renders |
+| React 19 cleanup cycle | Triggered every render | Never triggered |
+| Ref freshness | Always current (inline) | Always current (via useRef) |
 
