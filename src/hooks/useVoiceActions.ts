@@ -124,12 +124,14 @@ export function useVoiceActions(handlers: ActionHandlers) {
         
         // ===== INCOME =====
         case 'ADD_INCOME': {
-          await handlers.addIncome({
+          const incomeData: Record<string, any> = {
             source: data.source,
             amount: data.amount,
             type: data.type || 'work',
             currency: data.currency || 'USD',
-          });
+          };
+          if (data.income_date) incomeData.income_date = data.income_date;
+          await handlers.addIncome(incomeData);
           const formatted = formatCurrency(data.amount, data.currency);
           return { success: true, message: `Added ${formatted} income from ${data.source}.` };
         }
@@ -139,9 +141,11 @@ export function useVoiceActions(handlers: ActionHandlers) {
           if (!income) {
             return { success: false, message: `I couldn't find income from "${data.source}".` };
           }
-          await handlers.updateIncome((income as any).id, {
-            amount: data.amount ?? (income as any).amount,
-          });
+          const updateData: Record<string, any> = {};
+          if (data.amount !== undefined) updateData.amount = data.amount;
+          if (data.income_date) updateData.income_date = data.income_date;
+          if (Object.keys(updateData).length === 0) updateData.amount = (income as any).amount;
+          await handlers.updateIncome((income as any).id, updateData);
           return { success: true, message: `Updated income from ${data.source}.` };
         }
         
@@ -159,13 +163,15 @@ export function useVoiceActions(handlers: ActionHandlers) {
         
         // ===== EXPENSES =====
         case 'ADD_EXPENSE': {
-          await handlers.addExpense({
+          const expenseData: Record<string, any> = {
             name: data.name,
             amount: data.amount,
             category: data.category || 'Other',
             is_recurring: data.is_recurring ?? true,
             currency: data.currency || 'USD',
-          });
+          };
+          if (data.expense_date) expenseData.expense_date = data.expense_date;
+          await handlers.addExpense(expenseData);
           const formatted = formatCurrency(data.amount, data.currency);
           const recurring = data.is_recurring ? 'recurring' : 'one-time';
           return { success: true, message: `Added ${data.name} as a ${recurring} ${formatted} expense.` };
@@ -176,9 +182,11 @@ export function useVoiceActions(handlers: ActionHandlers) {
           if (!expense) {
             return { success: false, message: `I couldn't find an expense called "${data.name}".` };
           }
-          await handlers.updateExpense((expense as any).id, {
-            amount: data.amount ?? (expense as any).amount,
-          });
+          const updateData: Record<string, any> = {};
+          if (data.amount !== undefined) updateData.amount = data.amount;
+          if (data.expense_date) updateData.expense_date = data.expense_date;
+          if (Object.keys(updateData).length === 0) updateData.amount = (expense as any).amount;
+          await handlers.updateExpense((expense as any).id, updateData);
           return { success: true, message: `Updated ${data.name} expense.` };
         }
         
