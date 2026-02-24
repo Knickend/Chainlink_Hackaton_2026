@@ -2,19 +2,24 @@ import { useState, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Pencil } from 'lucide-react';
+import { Pencil, CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Income, DisplayUnit, BANKING_CURRENCIES, BITCOIN_CURRENCIES, isBitcoinCurrency } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 const incomeSchema = z.object({
   source: z.string().min(1, 'Source is required').max(100),
   amount: z.number().min(0.00000001, 'Amount must be positive'),
   type: z.enum(['work', 'passive', 'investment', 'mining', 'other'] as const),
   currency: z.string().min(1, 'Currency is required'),
+  income_date: z.date().optional(),
 });
 
 type IncomeFormData = z.infer<typeof incomeSchema>;
@@ -48,6 +53,7 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
       amount: income.amount,
       type: income.type,
       currency: income.currency || 'USD',
+      income_date: income.income_date ? new Date(income.income_date) : undefined,
     },
   });
 
@@ -64,6 +70,8 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
     return '0.01';
   };
 
+  const isOneTime = income.is_recurring === false;
+
   useEffect(() => {
     if (open) {
       form.reset({
@@ -71,12 +79,16 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
         amount: income.amount,
         type: income.type,
         currency: income.currency || 'USD',
+        income_date: income.income_date ? new Date(income.income_date) : undefined,
       });
     }
   }, [open, income, form]);
 
   const onSubmit = (data: IncomeFormData) => {
-    onUpdate(income.id, data);
+    onUpdate(income.id, {
+      ...data,
+      ...(data.income_date ? { income_date: format(data.income_date, 'yyyy-MM-dd') } : {}),
+    } as Partial<Omit<Income, 'id'>>);
     setOpen(false);
   };
 
@@ -188,7 +200,7 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monthly Amount ({currencySymbol})</FormLabel>
+                  <FormLabel>{isOneTime ? 'Amount' : 'Monthly Amount'} ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -202,6 +214,44 @@ export function EditIncomeDialog({ income, onUpdate, displayUnit }: EditIncomeDi
                 </FormItem>
               )}
             />
+
+            {isOneTime && (
+              <FormField
+                control={form.control}
+                name="income_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Date</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full pl-3 text-left font-normal bg-secondary/50",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             </div>
 
