@@ -1,9 +1,39 @@
-import { useMemo, useRef, ReactNode } from 'react';
-import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
+import { useMemo, useRef, useState, useEffect, useCallback, ReactNode } from 'react';
+import { ResponsiveGridLayout } from 'react-grid-layout';
 import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { DashboardCardWrapper } from './DashboardCardWrapper';
+
+/** Stable container width hook using ResizeObserver (avoids react-grid-layout's useContainerWidth loop) */
+function useStableContainerWidth(initialWidth = 1200) {
+  const [width, setWidth] = useState(initialWidth);
+  const ref = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    // Set initial width
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0) setWidth(rect.width);
+
+    observerRef.current = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) setWidth(w);
+      }
+    });
+    observerRef.current.observe(el);
+
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, []);
+
+  return { width, containerRef: ref };
+}
 
 interface DashboardGridProps {
   layouts: ResponsiveLayouts;
@@ -22,7 +52,7 @@ export function DashboardGrid({
   onHideCard,
   cardRenderers,
 }: DashboardGridProps) {
-  const { width, containerRef } = useContainerWidth({ initialWidth: 1200 });
+  const { width, containerRef } = useStableContainerWidth(1200);
 
   const visibleCards = useMemo(() => {
     return Object.keys(cardRenderers).filter(id => !hiddenCards.includes(id));
