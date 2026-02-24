@@ -1,32 +1,46 @@
 
 
-# Fix Coinbase Onramp UX in Preview Environment
+## Fix: Chat Input Becomes Unresponsive After Editing Cards
 
-## Problem
+### Problem
+When you edit an expense, income, or other card (which opens a Radix Dialog), then try to use the AI CFO chat, the chat input stops accepting text. You have to refresh the page to fix it.
 
-Two remaining issues after the previous fix:
+### Root Cause
+The chat panel is rendered as a fixed-position element **inside** the main app DOM tree. When an edit dialog opens, Radix UI's Dialog component marks the rest of the page as `inert` (a browser attribute that disables all interaction). When the dialog closes, a React 19 cleanup timing issue can leave the `inert` attribute stuck, making the chat input permanently unresponsive.
 
-1. **The toast notification shows raw markdown** -- when the fund action succeeds, `toast({ title: result.message })` displays the raw markdown link text `**[Open Coinbase Pay here](https://...)** to complete payment` instead of a clean message. The toast component doesn't render markdown.
+### Solution
+Render the chat panel using a **React Portal** so it lives outside the main DOM tree -- alongside Radix's own dialog portals, not underneath them. This means edit dialogs will never mark the chat panel as `inert`, completely avoiding the conflict.
 
-2. **`window.open` is blocked by the iframe sandbox** -- the Lovable preview runs inside a sandboxed iframe, so `window.open` silently fails. The markdown link in the chat bubble *should* be clickable (ReactMarkdown renders it), but users need to know to click it there, not rely on a new tab opening.
+### Changes
 
-## Solution
+**1. `src/components/FinancialAdvisorChat.tsx`**
+- Import `createPortal` from `react-dom`
+- Wrap the entire chat output (floating button + chat panel) in a portal that renders to `document.body`
+- This ensures the chat is a sibling of Radix Dialog portals, never a child that gets `inert`
 
-### 1. Fix the toast to show a clean message (not markdown)
+**2. (Optional safeguard) Add a `MutationObserver`-based cleanup**
+- As a belt-and-suspenders fix, add a small effect that watches for stale `inert` attributes on the chat container and removes them if detected after dialog close
 
-In `handleConfirmAction` in `FinancialAdvisorChat.tsx`, strip the markdown from the toast message. For FUND_WALLET specifically, show a simple toast like "Onramp session created -- use the link in chat to complete payment."
+### What Won't Change
+- No visual or layout changes -- the chat will look and behave exactly the same
+- No changes to any edit dialogs or cards
+- No changes to the chat's internal state management
 
-### 2. Ensure the markdown link opens in a new tab
+### Technical Details
 
-Add a custom `components` prop to the ReactMarkdown renderer so that all links open with `target="_blank"` and `rel="noopener noreferrer"`, and are visually styled as clickable links (underline, color).
+```text
+Current DOM structure:
+  #root
+    Index page content
+      Cards + Edit Dialogs (portaled)
+      FinancialAdvisorChat (fixed position, z-50)  <-- gets inert
 
-### 3. Keep `window.open` as best-effort (already done)
+Fixed DOM structure:
+  #root
+    Index page content
+      Cards + Edit Dialogs (portaled)
+  [portal] FinancialAdvisorChat (fixed position, z-50)  <-- never inert
+```
 
-The `try { window.open(...) } catch {}` in `useVoiceActions.ts` stays. On the published site it will work; in preview it won't, but the clickable link in chat is the reliable fallback.
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/FinancialAdvisorChat.tsx` | Strip markdown from toast title for fund wallet results; add `target="_blank"` to ReactMarkdown link rendering |
+The fix is minimal: wrapping the return JSX in `createPortal(jsx, document.body)` and adding a focus-recovery effect as a safety net.
 
