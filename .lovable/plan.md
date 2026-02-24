@@ -1,73 +1,105 @@
 
 
-# Fix Critical Gaps: MCP Server Crash, CRE Attestation Clarity, and Resource URL
+# Fix: Break the Infinite Re-render Loop in Dashboard Grid
 
-Three issues to fix, ordered by severity.
+## Root Cause Analysis
 
-## Fix 1: MCP Server Crash (Critical)
+The `react-grid-layout` v2 `ResponsiveGridLayout` component internally compacts the layout on every render and fires `onLayoutChange` with the compacted result. The compacted layout includes additional properties (like `moved`, `static: false`) that differ from the input, meaning a simple `JSON.stringify` comparison will never match. This creates the loop:
 
-The MCP server returns 500 on every request. The root cause is the wrong `tool()` API signature.
-
-**Current (broken):**
 ```text
-mcpServer.tool({
-  name: "get_price_feed",
-  description: "...",
-  inputSchema: { ... },
-  handler: async (args) => { ... }
-})
+layouts prop changes
+  -> ResponsiveGridLayout re-renders
+  -> internally compacts layout (adds properties)
+  -> fires onLayoutChange with compacted layout
+  -> onLayoutChange calls setLayouts (different from prev due to added props)
+  -> layouts state changes
+  -> layouts prop changes (back to step 1)
+  -> INFINITE LOOP
 ```
 
-**Correct mcp-lite API:**
-```text
-mcpServer.tool("get_price_feed", {
-  description: "...",
-  inputSchema: { ... },
-  handler: async (args) => { ... }
-})
+## Solution
+
+Stop using `onLayoutChange` to update React state entirely. Instead:
+
+1. Store the latest layout in a **ref only** (no `setLayouts` call) from `onLayoutChange`
+2. Only persist to the database via the debounced save (using the ref value)
+3. Use `onDragStop` and `onResizeStop` callbacks to trigger the actual save, since those only fire on user interaction (not on internal compaction)
+4. Remove `setLayouts` from `onLayoutChange` completely -- the grid manages its own internal layout state; we only need to capture it for persistence
+
+## Changes
+
+### File 1: `src/hooks/useDashboardLayout.ts`
+
+- Change `onLayoutChange` to only update a ref (no `setLayouts`)
+- Add `onDragStop` and `onResizeStop` callbacks that read from the ref and persist
+- Export these new callbacks
+
+```
+onLayoutChange:
+  - Before: calls setLayouts(allLayouts) + saveLayout()
+  - After: only updates layoutsRef.current (NO setState)
+
+New onDragStop / onResizeStop:
+  - Read layoutsRef.current
+  - Call setLayouts + saveLayout (only on actual user interaction)
 ```
 
-The first argument must be the tool name as a string, second is the options object. This applies to all 5 tool definitions.
+### File 2: `src/components/DashboardGrid.tsx`
 
-**File:** `supabase/functions/mcp-server/index.ts` -- fix all 5 `tool()` calls to use the correct 2-argument signature.
+- Pass `onDragStop` and `onResizeStop` to `ResponsiveGridLayout`
+- Keep `onLayoutChange` connected but it now only updates the ref (no re-render)
 
-## Fix 2: 402 Challenge Resource URL (Important)
+## Technical Details
 
-The 402 challenges currently return truncated resource URLs like:
-```text
-"resource": "https://edtudwkmswyjxamkdkbu.supabase.co/api-dca-strategy"
+**`src/hooks/useDashboardLayout.ts`** changes:
+
+The `onLayoutChange` callback becomes:
+```typescript
+const onLayoutChange = useCallback(
+  (_currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
+    // Only update ref, never setState - avoids the compaction feedback loop
+    layoutsRef.current = allLayouts;
+  },
+  []
+);
 ```
 
-This is missing `/functions/v1/` because the edge function's `url.pathname` is just `/api-dca-strategy`, and `x402.ts` concatenates `SUPABASE_URL + pathname` directly.
+New callbacks for user-initiated changes:
+```typescript
+const onUserLayoutChange = useCallback(() => {
+  const newLayouts = layoutsRef.current;
+  setLayouts(newLayouts);
+  if (user) saveLayout(newLayouts, hiddenCards);
+}, [user, hiddenCards, saveLayout]);
+```
 
-**Fix in each edge function** (`api-dca-strategy`, `cre-verified-data`, and the existing x402 endpoints): pass the full correct resource path `/functions/v1/api-dca-strategy` to `createPaymentChallenge` instead of just `url.pathname`.
+Return `onUserLayoutChange` for use as `onDragStop` and `onResizeStop`.
 
-Alternatively, fix `createPaymentChallenge` in `_shared/x402.ts` to insert `/functions/v1` when constructing the full URL. The simpler fix is to update the `resource` variable in each edge function to include the correct prefix.
+**`src/components/DashboardGrid.tsx`** changes:
 
-**File:** `supabase/functions/_shared/x402.ts` -- update `createPaymentChallenge` to handle the path correctly, ensuring the full resource URL is `SUPABASE_URL/functions/v1/<function-name>`.
+Add the new props and wire them up:
+```typescript
+interface DashboardGridProps {
+  // ... existing props
+  onUserLayoutChange: () => void; // NEW
+}
 
-## Fix 3: CRE Attestation Disclaimer (Documentation)
+<ResponsiveGridLayout
+  // ... existing props
+  onDragStop={() => onUserLayoutChange()}
+  onResizeStop={() => onUserLayoutChange()}
+>
+```
 
-The API Docs "CRE Verified" tab should clarify that the edge function is an HTTP proxy to the CRE pipeline, not a CRE node itself. The actual consensus verification runs in `incontrol-cre-ts/x402-cre-verified-ts/main.ts`.
+**`src/pages/Index.tsx`** changes:
 
-**File:** `src/pages/ApiDocs.tsx` -- add a note in the CRE Verified tab:
-- The edge function serves as an x402-gated HTTP proxy to the CRE-verified data pipeline
-- Actual multi-node consensus runs in the CRE workflow (`x402-cre-verified-ts/main.ts`)
-- The `verified: true` flag in the attestation indicates data sourced from Chainlink on-chain feeds
-- The `verified: false` flag indicates cached data not yet verified by CRE consensus
+Pass the new `onUserLayoutChange` prop through to `DashboardGrid`.
 
-## Files Changed
+## Why This Works
 
-| File | Change |
-|------|--------|
-| `supabase/functions/mcp-server/index.ts` | Fix all 5 `tool()` calls to use correct 2-argument signature |
-| `supabase/functions/_shared/x402.ts` | Fix resource URL to include `/functions/v1/` prefix |
-| `src/pages/ApiDocs.tsx` | Add CRE attestation provenance disclaimer |
-
-## Verification
-
-After fixes, these should pass:
-- `POST /functions/v1/mcp-server/mcp` with MCP initialize request returns 200 with server info
-- `GET /functions/v1/api-dca-strategy` returns 402 with correct `resource` URL including `/functions/v1/`
-- API Docs CRE tab clearly distinguishes edge function proxy from CRE workflow
+- `onLayoutChange` fires on every compaction but no longer triggers a React state update, so no re-render loop
+- `onDragStop` / `onResizeStop` only fire on actual user interaction (drag or resize), which is the only time we need to persist
+- The grid component manages its own internal layout state perfectly fine without us mirroring it in React state
+- Initial layout from props is still respected (the grid reads `layouts` prop on mount)
+- Saved layouts from the database still load correctly on mount via `setLayouts` in the `useEffect`
 
