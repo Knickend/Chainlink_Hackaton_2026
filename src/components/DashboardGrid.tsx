@@ -40,6 +40,7 @@ interface DashboardGridProps {
   hiddenCards: string[];
   isEditMode: boolean;
   onLayoutChange: (currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => void;
+  onUserLayoutChange: () => void;
   onHideCard: (cardId: string) => void;
   cardRenderers: Record<string, ReactNode>;
 }
@@ -49,6 +50,7 @@ export function DashboardGrid({
   hiddenCards,
   isEditMode,
   onLayoutChange,
+  onUserLayoutChange,
   onHideCard,
   cardRenderers,
 }: DashboardGridProps) {
@@ -85,6 +87,8 @@ export function DashboardGrid({
         dragConfig={{ enabled: isEditMode, handle: '.dashboard-drag-handle' }}
         resizeConfig={{ enabled: isEditMode }}
         onLayoutChange={onLayoutChange}
+        onDragStop={onUserLayoutChange}
+        onResizeStop={onUserLayoutChange}
         margin={[16, 16] as const}
       >
         {visibleCards.map((cardId) => (

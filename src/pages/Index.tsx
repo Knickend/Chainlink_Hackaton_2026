@@ -79,6 +79,7 @@ const IndexContent = () => {
     isEditMode,
     setIsEditMode,
     onLayoutChange,
+    onUserLayoutChange,
     hideCard,
     showCard,
     resetLayout,
@@ -449,6 +450,7 @@ const IndexContent = () => {
           hiddenCards={hiddenCards}
           isEditMode={isEditMode}
           onLayoutChange={onLayoutChange}
+          onUserLayoutChange={onUserLayoutChange}
           onHideCard={hideCard}
           cardRenderers={{
             'net-worth-trend': (

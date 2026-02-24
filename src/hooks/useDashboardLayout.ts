@@ -144,12 +144,18 @@ export function useDashboardLayout() {
   const layoutsRef = useRef(layouts);
   layoutsRef.current = layouts;
 
-  const onLayoutChange = useCallback((currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
-    const prevStr = JSON.stringify(layoutsRef.current);
-    const nextStr = JSON.stringify(allLayouts);
-    if (prevStr === nextStr) return;
-    setLayouts(allLayouts);
-    if (user) saveLayout(allLayouts, hiddenCards);
+  const onLayoutChange = useCallback(
+    (_currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
+      // Only update ref, never setState - avoids the compaction feedback loop
+      layoutsRef.current = allLayouts;
+    },
+    []
+  );
+
+  const onUserLayoutChange = useCallback(() => {
+    const newLayouts = layoutsRef.current;
+    setLayouts(newLayouts);
+    if (user) saveLayout(newLayouts, hiddenCards);
   }, [user, hiddenCards, saveLayout]);
 
   const hideCard = useCallback((cardId: string) => {
@@ -177,6 +183,7 @@ export function useDashboardLayout() {
     isEditMode,
     setIsEditMode,
     onLayoutChange,
+    onUserLayoutChange,
     hideCard,
     showCard,
     resetLayout,
