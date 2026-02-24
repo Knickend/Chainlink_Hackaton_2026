@@ -142,8 +142,14 @@ export function useDashboardLayout() {
   }, 1000);
 
   const onLayoutChange = useCallback((currentLayout: readonly LayoutItem[], allLayouts: ResponsiveLayouts) => {
-    setLayouts(allLayouts);
-    if (user) saveLayout(allLayouts, hiddenCards);
+    // Only update state if layouts actually changed to prevent infinite re-render loop
+    setLayouts(prev => {
+      const prevStr = JSON.stringify(prev);
+      const nextStr = JSON.stringify(allLayouts);
+      if (prevStr === nextStr) return prev;
+      if (user) saveLayout(allLayouts, hiddenCards);
+      return allLayouts;
+    });
   }, [user, hiddenCards, saveLayout]);
 
   const hideCard = useCallback((cardId: string) => {
