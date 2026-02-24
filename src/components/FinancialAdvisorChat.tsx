@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles, Mic, MicOff, Volume2, VolumeX, AlertTriangle, Wifi, WifiOff, Brain, ArrowUpRight, Repeat, Wallet, CheckCircle2, XCircle } from 'lucide-react';
@@ -717,7 +718,7 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
     await playResponse(plainText, messageIndex);
   }, [isPlaying, playingMessageId, stopPlayback, playResponse]);
 
-  return (
+  const chatContent = (
     <>
       {/* Floating Button */}
       <motion.div
@@ -1100,4 +1101,6 @@ export function FinancialAdvisorChat({ portfolioData, debtsData, goalsData }: Fi
       </AnimatePresence>
     </>
   );
+
+  return createPortal(chatContent, document.body);
 }
