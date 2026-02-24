@@ -1,6 +1,10 @@
 import * as cre from "@chainlink/cre-sdk";
-import { Runner, HTTPClient, consensusMedianAggregation } from "@chainlink/cre-sdk";
-import { CronCapability } from "./node_modules/@chainlink/cre-sdk/dist/generated-sdk/capabilities/scheduler/cron/v1/cron_sdk_gen.js";
+import {
+  Runner,
+  HTTPClient,
+  CronCapability,
+  consensusMedianAggregation,
+} from "@chainlink/cre-sdk";
 
 // Asset type definitions
 type AssetType = "crypto" | "stock" | "commodity" | "etf" | "bond" | "forex";
@@ -104,9 +108,7 @@ function parseConfig(c: unknown): Config {
   }
 }
 
-const initWorkflow = (rawConfig?: unknown) => {
-  const config = parseConfig(rawConfig);
-
+const initWorkflow = (config: Config) => {
   const trigger = new CronCapability().trigger({
     schedule: "0 */5 * * * *",
   });
@@ -149,7 +151,7 @@ const initWorkflow = (rawConfig?: unknown) => {
 
           try {
             // Fetch with consensus across oracle nodes
-            // Return raw JSON string (simple value for consensus)
+            // Returns a number (count of prices) — consensusMedianAggregation is correct
             const chunkRaw = runtime.runInNodeMode(
               (nodeRuntime: cre.NodeRuntime) => {
                 const httpClient = new HTTPClient();
@@ -175,7 +177,7 @@ const initWorkflow = (rawConfig?: unknown) => {
                 }).result();
 
                 if (response.statusCode !== 200) {
-                  return "0";
+                  return 0;
                 }
 
                 const responseText = new TextDecoder().decode(response.body);
@@ -189,7 +191,7 @@ const initWorkflow = (rawConfig?: unknown) => {
                 return 0;
               },
               consensusMedianAggregation(),
-            )(rawConfig).result();
+            )(config).result();
 
             const count = typeof chunkRaw === "number" ? chunkRaw : (typeof chunkRaw === "string" ? parseInt(chunkRaw, 10) || 0 : 0);
             successfulFetches += count;
@@ -258,5 +260,3 @@ export async function main() {
   });
   await runner.run(initWorkflow);
 }
-
-await main();
