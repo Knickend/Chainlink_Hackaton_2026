@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "InControl-Finance",
+        name: "InControl-Finance-v01",
         description:
           "AI-powered portfolio tracker and wealth management agent. Uses Chainlink CRE for decentralized price feeds across crypto, stocks, forex, and commodities.",
       }),
