@@ -421,7 +421,7 @@ async function sendTransactionEmail(
 
   try {
     const subject = `InControl: ${txType} Transaction Executed`;
-    const baseScanLink = details.txHash ? `https://basescan.org/tx/${details.txHash}` : null;
+    const baseScanLink = details.txHash ? `https://sepolia.basescan.org/tx/${details.txHash}` : null;
     const timestamp = new Date().toUTCString();
 
     let detailsHtml = '';
@@ -461,7 +461,7 @@ async function sendTransactionEmail(
 // --- Sync last_known balances after outgoing tx to prevent cron double-notify ---
 async function syncLastKnownBalances(walletAddress: string, walletId: string, serviceClient: any) {
   try {
-    const balanceResp = await cdpRequest('GET', `/platform/v2/evm/token-balances/base/${walletAddress}`) as Record<string, any>;
+    const balanceResp = await cdpRequest('GET', `/platform/v2/evm/token-balances/base-sepolia/${walletAddress}`) as Record<string, any>;
     const tokenList = (balanceResp?.token_balances ?? balanceResp?.balances ?? []) as Array<Record<string, any>>;
 
     const parseAmt = (entry: Record<string, any> | undefined, defaultDec: number): number => {
@@ -475,7 +475,7 @@ async function syncLastKnownBalances(walletAddress: string, walletId: string, se
       return 0;
     };
 
-    const usdcEntry = tokenList.find((t: any) => (t?.token?.symbol || '').toUpperCase() === 'USDC' || (t?.token?.contractAddress || t?.token?.contract_address || '').toLowerCase() === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913');
+    const usdcEntry = tokenList.find((t: any) => (t?.token?.symbol || '').toUpperCase() === 'USDC' || (t?.token?.contractAddress || t?.token?.contract_address || '').toLowerCase() === '0x036cbd53842c5426634e7929541ec2318f3dcf7e');
     const ethEntry = tokenList.find((t: any) => (t?.token?.symbol || '').toUpperCase() === 'ETH' || (t?.token?.contractAddress || t?.token?.contract_address || '').toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' || (t?.token?.contractAddress || t?.token?.contract_address || '') === '');
 
     await serviceClient.from('agent_wallets').update({
@@ -489,7 +489,7 @@ async function syncLastKnownBalances(walletAddress: string, walletId: string, se
 }
 
 // --- Token Addresses on Base ---
-const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const USDC_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const WETH_BASE = '0x4200000000000000000000000000000000000006';
 const ETH_BASE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
@@ -640,7 +640,7 @@ serve(async (req) => {
           try {
             const balanceResp = await cdpRequest(
               'GET',
-              `/platform/v2/evm/token-balances/base/${wallet.wallet_address}`
+              `/platform/v2/evm/token-balances/base-sepolia/${wallet.wallet_address}`
             ) as Record<string, unknown>;
 
             console.log('[AgentWallet] Raw balance response:', JSON.stringify(balanceResp).slice(0, 2000));
@@ -772,7 +772,7 @@ serve(async (req) => {
           .insert({
             user_id: user.id,
             action_type: 'send',
-            params: { amount, recipient, token: 'USDC', network: 'base' },
+            params: { amount, recipient, token: 'USDC', network: 'base-sepolia' },
             status: 'pending',
           })
           .select()
@@ -785,14 +785,14 @@ serve(async (req) => {
           const calldata = `0xa9059cbb${recipientPadded}${amountHex}`;
 
           // Encode as EIP-1559 RLP string — Base chainId = 8453
-          const rlpTx = encodeEip1559Tx({ chainId: 8453, to: USDC_BASE, value: '0', data: calldata });
+          const rlpTx = encodeEip1559Tx({ chainId: 84532, to: USDC_BASE, value: '0', data: calldata });
           console.log('[AgentWallet] Send TX RLP (first 80 chars):', rlpTx.slice(0, 80));
 
           const txResult = await cdpRequest(
             'POST',
             `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
             {
-              network: 'base',
+              network: 'base-sepolia',
               transaction: rlpTx,
             }
           ) as { transactionHash?: string };
@@ -860,8 +860,8 @@ serve(async (req) => {
         const decimals = from_token.toUpperCase() === 'USDC' ? 6 : 18;
         const rawAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
 
-        const queryParams = new URLSearchParams({
-          network: 'base',
+          const queryParams = new URLSearchParams({
+          network: 'base-sepolia',
           fromToken: fromAddress,
           toToken: toAddress,
           fromAmount: rawAmount.toString(),
@@ -916,7 +916,7 @@ serve(async (req) => {
           .insert({
             user_id: user.id,
             action_type: 'trade',
-            params: { amount, from_token, to_token, network: 'base' },
+            params: { amount, from_token, to_token, network: 'base-sepolia' },
             status: 'pending',
           })
           .select()
@@ -934,7 +934,7 @@ serve(async (req) => {
             taker: wallet.wallet_address,
             signerAddress: wallet.wallet_address,
             slippageBps: 100,
-            network: 'base',
+            network: 'base-sepolia',
           };
           console.log(`[AgentWallet] === SWAP REQUEST ===`);
           console.log(`[AgentWallet] Body:`, JSON.stringify(swapBody, null, 2));
@@ -971,7 +971,7 @@ serve(async (req) => {
             const tokenToApprove = fromAddress;
             console.log(`[AgentWallet] ${from_token} allowance is 0 — sending approve tx for Permit2 on ${tokenToApprove}`);
             const approveTx = encodeEip1559Tx({
-              chainId: 8453,
+              chainId: 84532,
               to: tokenToApprove,
               value: '0',
               data: APPROVE_PERMIT2_CALLDATA,
@@ -979,7 +979,7 @@ serve(async (req) => {
             const approveResult = await cdpRequest(
               'POST',
               `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
-              { network: 'base', transaction: approveTx }
+              { network: 'base-sepolia', transaction: approveTx }
             ) as { transactionHash?: string };
             console.log(`[AgentWallet] Approve tx hash: ${approveResult?.transactionHash}`);
 
@@ -1042,7 +1042,7 @@ serve(async (req) => {
           console.log(`[AgentWallet] Sending swap tx — to: ${swapTx.to}, value: ${swapTx.value}, data length: ${finalTxData.length}`);
 
           const rlpTx = encodeEip1559Tx({
-            chainId: 8453,
+            chainId: 84532,
             to: swapTx.to || '',
             value: swapTx.value || '0',
             data: finalTxData,
@@ -1051,7 +1051,7 @@ serve(async (req) => {
           const txResult = await cdpRequest(
             'POST',
             `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
-            { network: 'base', transaction: rlpTx }
+            { network: 'base-sepolia', transaction: rlpTx }
           ) as { transactionHash?: string };
 
           txHash = txResult?.transactionHash ?? null;
@@ -1122,7 +1122,7 @@ serve(async (req) => {
           console.log('[AgentWallet] Fund amount:', params.amount, '-> paymentAmount (as number):', amount);
           const onrampResult = await cdpRequest('POST', '/platform/v2/onramp/sessions', {
             purchaseCurrency: 'USDC',
-            destinationNetwork: 'base',
+            destinationNetwork: 'base-sepolia',
             destinationAddress: wallet.wallet_address,
             paymentAmount: amount.toFixed(2),
             paymentCurrency: 'USD',
@@ -1192,7 +1192,7 @@ serve(async (req) => {
           .insert({
             user_id: user.id,
             action_type: 'send-eth',
-            params: { amount, recipient, token: 'ETH', network: 'base' },
+            params: { amount, recipient, token: 'ETH', network: 'base-sepolia' },
             status: 'pending',
           })
           .select()
@@ -1203,13 +1203,13 @@ serve(async (req) => {
           const weiAmount = BigInt(Math.round(amount * 1e18));
           const valueHex = weiAmount.toString(16);
 
-          const rlpTx = encodeEip1559Tx({ chainId: 8453, to: recipient, value: valueHex, data: '0x' });
+          const rlpTx = encodeEip1559Tx({ chainId: 84532, to: recipient, value: valueHex, data: '0x' });
           console.log('[AgentWallet] Send ETH TX RLP (first 80 chars):', rlpTx.slice(0, 80));
 
           const txResult = await cdpRequest(
             'POST',
             `/platform/v2/evm/accounts/${wallet.wallet_address}/send/transaction`,
-            { network: 'base', transaction: rlpTx }
+            { network: 'base-sepolia', transaction: rlpTx }
           ) as { transactionHash?: string };
 
           await serviceClient

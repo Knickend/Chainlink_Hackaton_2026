@@ -2,7 +2,7 @@
 // For AI agent micropayment monetization on Base blockchain
 
 // Base Mainnet USDC contract address
-export const USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+export const USDC_BASE_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 // Coinbase x402 facilitator URL for payment verification
 export const FACILITATOR_URL = "https://x402.org/facilitator";
@@ -51,7 +51,7 @@ export function createPaymentChallenge(
     accepts: [
       {
         scheme: "exact",
-        network: "base",
+        network: "base-sepolia",
         maxAmountRequired: amountInUnits,
         resource: resource,
         description: description,
@@ -96,7 +96,7 @@ export async function verifyPayment(
         payment: paymentHeader,
         expectedPayTo: walletAddress,
         expectedAsset: USDC_BASE_ADDRESS,
-        expectedNetwork: "base",
+        expectedNetwork: "base-sepolia",
         expectedResource: expectedResource,
         minAmount: expectedAmountUnits,
       }),

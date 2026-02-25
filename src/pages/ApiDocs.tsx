@@ -166,7 +166,7 @@ export default function ApiDocs() {
               <span className="flex-1 break-all">{WALLET_ADDRESS}</span>
               <CopyButton text={WALLET_ADDRESS} />
               <a
-                href={`https://basescan.org/address/${WALLET_ADDRESS}`}
+                href={`https://sepolia.basescan.org/address/${WALLET_ADDRESS}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -363,7 +363,7 @@ curl -X PUT "${SUPABASE_URL}/functions/v1/api-debt-strategy" \\
                     code={`import { createX402Client } from '@coinbase/x402-client';
 
 const client = createX402Client({
-  network: 'base',
+  network: 'base-sepolia',
   wallet: yourWallet, // ethers.js or viem wallet
 });
 
@@ -404,7 +404,7 @@ console.log(data.prices);`}
                     code={`from x402_client import X402Client
 
 client = X402Client(
-    network="base",
+    network="base-sepolia",
     private_key=your_private_key
 )
 
