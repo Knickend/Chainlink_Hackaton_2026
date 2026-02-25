@@ -2,14 +2,16 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import { EditDCADialog } from '@/components/dca/EditDCADialog';
 import { Clock, Zap, TrendingDown } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import type { DCAStrategy } from '@/hooks/useDCAStrategies';
+import type { DCAStrategy, CreateDCAStrategyInput } from '@/hooks/useDCAStrategies';
 
 interface DCAStrategyCardProps {
   strategy: DCAStrategy;
   onToggle: (id: string, isActive: boolean) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, input: Partial<CreateDCAStrategyInput>) => Promise<void>;
 }
 
 const FREQUENCY_LABELS: Record<string, string> = {
@@ -19,7 +21,7 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: 'Monthly',
 };
 
-export function DCAStrategyCard({ strategy, onToggle, onDelete }: DCAStrategyCardProps) {
+export function DCAStrategyCard({ strategy, onToggle, onDelete, onUpdate }: DCAStrategyCardProps) {
   const dipEnabled = (strategy.dip_threshold_pct ?? 0) > 0;
 
   return (
@@ -28,11 +30,15 @@ export function DCAStrategyCard({ strategy, onToggle, onDelete }: DCAStrategyCar
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-lg font-semibold">{strategy.from_token} → {strategy.to_token}</span>
-            <Badge variant={strategy.is_active ? 'default' : 'secondary'} className="text-xs">
+            <Badge 
+              variant={strategy.is_active ? 'outline' : 'secondary'} 
+              className={`text-xs ${strategy.is_active ? 'bg-green-500/20 text-green-400 border-green-500/30' : ''}`}
+            >
               {strategy.is_active ? 'Active' : 'Paused'}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <EditDCADialog strategy={strategy} onUpdate={onUpdate} />
             <Switch
               checked={strategy.is_active}
               onCheckedChange={(checked) => onToggle(strategy.id, checked)}

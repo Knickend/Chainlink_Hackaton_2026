@@ -16,7 +16,7 @@ const DCA = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { status: walletStatus, isLoading: walletLoading } = useAgentWallet();
-  const { strategies, executions, loading, createStrategy, toggleStrategy, deleteStrategy, totalCommitted } = useDCAStrategies();
+  const { strategies, executions, loading, createStrategy, toggleStrategy, deleteStrategy, updateStrategy, totalCommitted } = useDCAStrategies();
 
   if (authLoading || loading || walletLoading) {
     return (
@@ -85,9 +85,9 @@ const DCA = () => {
 
         {/* Strategies */}
         {strategies.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="grid grid-cols-1 gap-4 mb-8">
             {strategies.map(s => (
-              <DCAStrategyCard key={s.id} strategy={s} onToggle={toggleStrategy} onDelete={deleteStrategy} />
+              <DCAStrategyCard key={s.id} strategy={s} onToggle={toggleStrategy} onDelete={deleteStrategy} onUpdate={updateStrategy} />
             ))}
           </div>
         ) : walletStatus.connected ? (

@@ -116,6 +116,26 @@ export function useDCAStrategies() {
     }
   }, [toast]);
 
+  const updateStrategy = useCallback(async (id: string, input: Partial<CreateDCAStrategyInput>) => {
+    try {
+      const { error } = await supabase
+        .from('dca_strategies')
+        .update({
+          to_token: input.to_token,
+          amount_per_execution: input.amount_per_execution,
+          frequency: input.frequency,
+          dip_threshold_pct: input.dip_threshold_pct ?? 0,
+          dip_multiplier: input.dip_multiplier ?? 1,
+        })
+        .eq('id', id);
+      if (error) throw error;
+      toast({ title: 'Strategy Updated' });
+      await fetchStrategies();
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to update strategy', variant: 'destructive' });
+    }
+  }, [toast, fetchStrategies]);
+
   const totalCommitted = strategies
     .filter(s => s.is_active)
     .reduce((sum, s) => sum + s.amount_per_execution, 0);
@@ -127,6 +147,7 @@ export function useDCAStrategies() {
     createStrategy,
     toggleStrategy,
     deleteStrategy,
+    updateStrategy,
     totalCommitted,
     refetch: () => Promise.all([fetchStrategies(), fetchExecutions()]),
   };
