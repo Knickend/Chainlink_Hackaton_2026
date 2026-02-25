@@ -1,51 +1,48 @@
 
 
-# Add Chainlink CRE Architecture Explainer to DCA Page
+# DCA Strategy Card Improvements
 
-## Overview
-Add a visual "How It Works" architecture explainer section to the DCA page, designed for hackathon judges to quickly understand the Chainlink CRE integration.
+## Changes
 
-## What Will Be Built
+### 1. Add Edit Strategy functionality
+- Create `src/components/dca/EditDCADialog.tsx` -- a dialog pre-filled with the strategy's current values (token, amount, frequency, dip threshold, dip multiplier). On submit, updates the row in `dca_strategies`.
+- Add `updateStrategy` method to `src/hooks/useDCAStrategies.ts` that calls `supabase.from('dca_strategies').update(...)`.
+- Add an edit (Pencil) icon button to `DCAStrategyCard.tsx` next to the toggle and delete buttons.
+- Pass `onEdit` callback from `DCA.tsx` down to each card.
 
-### New Component: `src/components/dca/CREArchitectureExplainer.tsx`
-An accordion-style card (always visible, no strategies required) explaining the tech stack:
+### 2. Green "Active" badge instead of yellow
+- In `DCAStrategyCard.tsx`, change the active badge from `variant="default"` (which renders yellow/primary) to a custom green style using the `className` prop: `bg-green-500/20 text-green-400 border-green-500/30`.
 
-**Section 1 -- "How Chainlink CRE Powers DCA"**
-- Visual flow diagram using styled boxes and arrows (similar to the WorkflowDemo but static/educational)
-- Steps: Cron Trigger (every 5 min) -> Strategy Evaluation -> Chainlink Price Feed -> Dip Detection -> On-chain Execution (Base Sepolia)
-- Each step has a short description of the Chainlink/CRE component involved
+### 3. Full-width strategy cards
+- In `DCA.tsx`, change the strategies grid from `grid-cols-1 md:grid-cols-2` to `grid-cols-1` so each card spans the full width, matching the other cards on the page (Architecture Explainer, Execution History, etc.).
 
-**Section 2 -- "Architecture"**
-- Accordion items explaining:
-  - **Chainlink CRE SDK** -- workflow orchestration, `cre.Handler()` pattern, consensus aggregation
-  - **Chainlink Price Feeds** -- on-chain oracle data for dip detection baseline
-  - **Coinbase CDP Agent Wallet** -- non-custodial execution on Base Sepolia
-  - **Dip-Buying Logic** -- compares current price vs last execution's `token_price_usd`, multiplier when threshold crossed
+## Files
 
-**Section 3 -- "Tech Stack"**
-- Badge/chip list: Chainlink CRE, Chainlink Data Feeds, Base Sepolia, USDC, Coinbase CDP, TypeScript
-
-### Modified File: `src/pages/DCA.tsx`
-- Import and render `CREArchitectureExplainer` below the header, always visible (not gated behind strategies or wallet connection)
+| Action | File |
+|--------|------|
+| Create | `src/components/dca/EditDCADialog.tsx` |
+| Modify | `src/hooks/useDCAStrategies.ts` -- add `updateStrategy` method |
+| Modify | `src/components/dca/DCAStrategyCard.tsx` -- add edit button, green active badge |
+| Modify | `src/pages/DCA.tsx` -- pass `onEdit`, change grid to single column |
 
 ## Technical Details
 
-### Component Structure
+### EditDCADialog
+- Reuses the same form layout as `CreateDCADialog` but pre-populates fields from the existing strategy
+- Accepts `strategy: DCAStrategy` and `onUpdate` callback as props
+- The dialog trigger is a Pencil icon button rendered inside the card
+
+### updateStrategy hook method
 ```text
-CREArchitectureExplainer
-  |-- Card with "How It Works" header
-  |-- Static pipeline visualization (5 colored boxes with arrows)
-  |-- Accordion with 4 expandable sections (Architecture details)
-  |-- Tech stack badge row
+const updateStrategy = async (id: string, input: Partial<CreateDCAStrategyInput>) => {
+  await supabase.from('dca_strategies').update({...fields}).eq('id', id);
+  refetch strategies
+}
 ```
 
-### Styling
-- Uses existing `glass-card`, `Badge`, `Accordion` components
-- Gradient accents matching the app theme
-- Icons from lucide-react (Clock, Link, TrendingDown, Wallet, Cpu)
+### Badge styling
+```text
+Active:  className="bg-green-500/20 text-green-400 border-green-500/30"
+Paused:  variant="secondary" (unchanged)
+```
 
-### Files
-| Action | File |
-|--------|------|
-| Create | `src/components/dca/CREArchitectureExplainer.tsx` |
-| Modify | `src/pages/DCA.tsx` -- import and render the explainer |
