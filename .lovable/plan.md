@@ -1,31 +1,42 @@
 
-
-# Harden moltbook-register Edge Function
+# Switch All Hardcoded Base Mainnet References to Base Sepolia Testnet
 
 ## Overview
-Add rate limiting and input sanitization to prevent abuse and prompt injection attacks on the Moltbook proxy.
+Simple find-and-replace across 4 files to switch from Base mainnet to Base Sepolia testnet for the hackathon.
 
-## Changes (single file: `supabase/functions/moltbook-register/index.ts`)
+## Constants Change Summary
 
-### 1. Rate Limiting
-- In-memory rate limiter (same pattern used in `sales-bot`): 10 requests per minute per IP
-- Return 429 with retry info when exceeded
+| Value | Mainnet | Sepolia |
+|-------|---------|---------|
+| Chain ID | `8453` | `84532` |
+| Network name | `'base'` | `'base-sepolia'` |
+| Block explorer | `basescan.org` | `sepolia.basescan.org` |
+| USDC address | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| WETH address | `0x4200000000000000000000000000000000000006` | unchanged |
 
-### 2. Input Sanitization
-- **Action whitelist**: Only allow known action strings (register, home, status, feed, post, comment, read-comments, dm-requests, verify, skill-version)
-- **String field limits**: Truncate `title` (200 chars), `content` (2000 chars), `submolt_name` (50 chars), `verification_code` (100 chars), `answer` (100 chars)
-- **Field validation**: `post_id` and `parent_id` must match a safe pattern (alphanumeric/hyphens only, max 50 chars)
-- **Strip control characters**: Remove non-printable characters from all string inputs to prevent prompt injection if Moltbook processes them
+## Files to Update
 
-### 3. Security Headers
-- Add rate limit headers to all responses (X-RateLimit-Limit, Remaining, Reset)
+### 1. `supabase/functions/agent-wallet/index.ts`
+- Update `USDC_BASE` constant to Sepolia USDC address
+- Change all `chainId: 8453` to `84532` (~4 occurrences)
+- Change all `network: 'base'` to `'base-sepolia'` in CDP API calls (~8 occurrences)
+- Change `/token-balances/base/` to `/token-balances/base-sepolia/` (2 occurrences)
+- Change `basescan.org` to `sepolia.basescan.org` in email link
+- Update onramp `destinationNetwork` from `'base'` to `'base-sepolia'`
 
-### Technical Details
+### 2. `supabase/functions/check-wallet-balance/index.ts`
+- Update `USDC_BASE` constant to Sepolia address
+- Change `/token-balances/base/` to `/token-balances/base-sepolia/`
+- Change `basescan.org` to `sepolia.basescan.org`
 
-```text
-Request Flow:
-  Client --> CORS check --> Rate limit --> Validate action --> Sanitize inputs --> Proxy to Moltbook API
-```
+### 3. `supabase/functions/_shared/x402.ts`
+- Update `USDC_BASE_ADDRESS` to Sepolia USDC
+- Change `network: "base"` to `"base-sepolia"`
 
-All sanitization happens before any data leaves the function. No changes to the action routing logic itself -- just wrapping inputs through validation before they're forwarded.
+### 4. `src/pages/ApiDocs.tsx`
+- Change `basescan.org` to `sepolia.basescan.org` in explorer links
 
+## Notes
+- WETH address (`0x4200...0006`) is the same on both networks -- no change needed
+- Existing wallets in the database will continue to work since CDP accounts are network-agnostic
+- All changes are easily reversible after the hackathon by swapping the values back
