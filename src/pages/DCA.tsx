@@ -30,7 +30,7 @@ const DCA = () => {
     return null;
   }
 
-  const walletBalance = walletStatus.balance ?? 0;
+  const walletBalance = Number(walletStatus.balance) || 0;
   const showBalanceWarning = walletStatus.connected && totalCommitted > walletBalance;
 
   return (
