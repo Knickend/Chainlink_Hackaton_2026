@@ -1,48 +1,59 @@
 
 
-# DCA Strategy Card Improvements
+# Add "Refresh Balance" Button and Display All Token Balances
+
+## Problem
+The agent wallet backend fetches **all** token balances from Coinbase CDP but only extracts USDC and ETH, discarding other tokens (e.g. WETH, LINK, etc.). The UI similarly only displays those two. There is also no way to manually refresh balances.
 
 ## Changes
 
-### 1. Add Edit Strategy functionality
-- Create `src/components/dca/EditDCADialog.tsx` -- a dialog pre-filled with the strategy's current values (token, amount, frequency, dip threshold, dip multiplier). On submit, updates the row in `dca_strategies`.
-- Add `updateStrategy` method to `src/hooks/useDCAStrategies.ts` that calls `supabase.from('dca_strategies').update(...)`.
-- Add an edit (Pencil) icon button to `DCAStrategyCard.tsx` next to the toggle and delete buttons.
-- Pass `onEdit` callback from `DCA.tsx` down to each card.
+### 1. Edge Function: Return all token balances
+**File:** `supabase/functions/agent-wallet/index.ts`
 
-### 2. Green "Active" badge instead of yellow
-- In `DCAStrategyCard.tsx`, change the active badge from `variant="default"` (which renders yellow/primary) to a custom green style using the `className` prop: `bg-green-500/20 text-green-400 border-green-500/30`.
+In the `status` action handler (~line 620-700), after fetching `tokenList` from CDP, instead of only extracting USDC and ETH:
+- Keep the existing `balance` (USDC) and `eth_balance` (ETH) fields for backward compatibility
+- Add a new `token_balances` array to the response containing **all** tokens from the CDP response, each with `{ symbol, amount, decimals, contractAddress }`
+- Reuse the existing `parseTokenAmount` helper for each entry
 
-### 3. Full-width strategy cards
-- In `DCA.tsx`, change the strategies grid from `grid-cols-1 md:grid-cols-2` to `grid-cols-1` so each card spans the full width, matching the other cards on the page (Architecture Explainer, Execution History, etc.).
+### 2. Hook: Expose token balances
+**File:** `src/hooks/useAgentWallet.ts`
 
-## Files
+- Add `token_balances` to the `AgentWalletStatus` interface as `Array<{ symbol: string; amount: number; contractAddress: string }>` (default `[]`)
+- Map the new field from the status response
 
-| Action | File |
-|--------|------|
-| Create | `src/components/dca/EditDCADialog.tsx` |
-| Modify | `src/hooks/useDCAStrategies.ts` -- add `updateStrategy` method |
-| Modify | `src/components/dca/DCAStrategyCard.tsx` -- add edit button, green active badge |
-| Modify | `src/pages/DCA.tsx` -- pass `onEdit`, change grid to single column |
+### 3. UI: Display all tokens + Refresh button
+**File:** `src/components/settings/AgentSection.tsx`
+
+- Replace the hardcoded USDC/ETH display (lines ~115-130) with a dynamic list that iterates over `status.token_balances`
+- Fall back to showing USDC and ETH from the existing fields if `token_balances` is empty (backward compat)
+- Add a "Refresh" icon button next to the wallet info card header that calls `refetch()` from the hook
+
+### 4. DCA page: No changes needed
+The DCA page only uses `walletStatus.balance` (USDC) for budget checks, which remains unchanged.
 
 ## Technical Details
 
-### EditDCADialog
-- Reuses the same form layout as `CreateDCADialog` but pre-populates fields from the existing strategy
-- Accepts `strategy: DCAStrategy` and `onUpdate` callback as props
-- The dialog trigger is a Pencil icon button rendered inside the card
-
-### updateStrategy hook method
+### Edge function status response (new shape)
 ```text
-const updateStrategy = async (id: string, input: Partial<CreateDCAStrategyInput>) => {
-  await supabase.from('dca_strategies').update({...fields}).eq('id', id);
-  refetch strategies
+{
+  connected, wallet_address, wallet_email,
+  balance,        // USDC string (kept for backward compat)
+  eth_balance,    // ETH string (kept for backward compat)
+  token_balances: [
+    { symbol: "USDC", amount: 12.50, contractAddress: "0x036..." },
+    { symbol: "ETH",  amount: 0.045, contractAddress: "0xeee..." },
+    { symbol: "LINK", amount: 100.0, contractAddress: "0xabc..." },
+    ...
+  ],
+  ...existing fields
 }
 ```
 
-### Badge styling
-```text
-Active:  className="bg-green-500/20 text-green-400 border-green-500/30"
-Paused:  variant="secondary" (unchanged)
-```
+### Token balance parsing
+Each CDP token entry is parsed using the existing `parseTokenAmount` helper. The symbol comes from `t.token.symbol`, decimals from `t.token.decimals` (fallback 18), and contract address from `t.token.contractAddress`.
+
+### UI layout
+- Each token gets a row: symbol on the left, formatted amount on the right
+- Amounts formatted to 2 decimals for stablecoins (USDC, USDT, DAI), 6 for ETH/WETH, 4 for others
+- A small `RefreshCw` icon button in the wallet card header triggers `refetch()`
 
