@@ -62,11 +62,21 @@ Deno.serve(async (req) => {
         break;
 
       case "post": {
-        const { submolt, title, content } = body;
+        const { submolt_name, title, content } = body;
         res = await fetch(`${MOLTBOOK_BASE}/posts`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ submolt: submolt || "general", title, content }),
+          body: JSON.stringify({ submolt_name: submolt_name || "general", title, content }),
+        });
+        break;
+      }
+
+      case "verify": {
+        const { verification_code, answer } = body;
+        res = await fetch(`${MOLTBOOK_BASE}/verify`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ verification_code, answer }),
         });
         break;
       }
