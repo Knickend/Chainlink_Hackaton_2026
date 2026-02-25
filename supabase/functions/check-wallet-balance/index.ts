@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const CDP_API_BASE = 'https://api.cdp.coinbase.com';
-const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const USDC_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const ETH_BASE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
 // --- Minimal CDP JWT (Ed25519) for GET requests ---
@@ -107,7 +107,7 @@ function parseTokenAmount(entry: Record<string, any>, defaultDecimals: number): 
 async function sendDepositEmail(resend: Resend, email: string, token: string, received: number, newBalance: number, walletAddress: string) {
   const timestamp = new Date().toUTCString();
   const subject = `InControl: ${token} Deposit Received`;
-  const baseScanUrl = `https://basescan.org/address/${walletAddress}`;
+  const baseScanUrl = `https://sepolia.basescan.org/address/${walletAddress}`;
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
@@ -175,7 +175,7 @@ serve(async (req) => {
 
     for (const wallet of wallets) {
       try {
-        const balanceResp = await cdpGet(`/platform/v2/evm/token-balances/base/${wallet.wallet_address}`) as Record<string, any>;
+        const balanceResp = await cdpGet(`/platform/v2/evm/token-balances/base-sepolia/${wallet.wallet_address}`) as Record<string, any>;
         const tokenList = (balanceResp?.token_balances ?? balanceResp?.balances ?? []) as Array<Record<string, any>>;
 
         // Parse USDC
