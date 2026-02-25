@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings } from 'lucide-react';
+import { Wallet, TrendingUp, PiggyBank, LogOut, Loader2, LogIn, CreditCard, HelpCircle, Settings, Pencil, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, RefreshCw } from 'lucide-react';
 import { FinancialAdvisorChat } from '@/components/FinancialAdvisorChat';
 import { FeedbackButton } from '@/components/FeedbackButton';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -42,6 +42,8 @@ import { GoalsOverviewCard } from '@/components/GoalsOverviewCard';
 import { ProfitLossCard } from '@/components/ProfitLossCard';
 import { ProfitLossTeaser } from '@/components/ProfitLossTeaser';
 import { UpcomingExpensesCard } from '@/components/UpcomingExpensesCard';
+import { useAgentWallet } from '@/hooks/useAgentWallet';
+import { useDashboardLayout } from '@/hooks/useDashboardLayout';
 
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -56,6 +58,8 @@ const IndexContent = () => {
   const { startTutorial, hasCompletedTutorial, isActive: isTutorialActive } = useTutorialContext();
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const { status: walletStatus } = useAgentWallet();
+  const { sections: dashboardSections, sectionLabels, isEditing, setIsEditing, toggleSection, moveSection, resetLayout, isSectionVisible } = useDashboardLayout();
   
   
   // Demo mode when user is not logged in
@@ -259,6 +263,28 @@ const IndexContent = () => {
             />
             <UnitSelector value={displayUnit} onChange={setDisplayUnit} />
             <ThemeToggle />
+            {!isDemo && walletStatus.connected && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/dca')}
+                className="gap-2"
+                title="DCA Strategies"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">DCA</span>
+              </Button>
+            )}
+            {!isDemo && (
+              <Button
+                variant={isEditing ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setIsEditing(!isEditing)}
+                title={isEditing ? 'Done editing' : 'Edit dashboard'}
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+            )}
             {hasCompletedTutorial && (
               <Button
                 variant="ghost"
@@ -306,7 +332,42 @@ const IndexContent = () => {
           </div>
         </motion.header>
 
+        {/* Edit Dashboard Panel */}
+        {isEditing && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 glass-card rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Edit Dashboard Layout</h3>
+              <Button variant="ghost" size="sm" onClick={resetLayout} className="gap-1 text-xs">
+                <RotateCcw className="w-3 h-3" /> Reset
+              </Button>
+            </div>
+            <div className="space-y-1">
+              {dashboardSections.map((section, idx) => (
+                <div key={section.id} className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => toggleSection(section.id)} className="text-muted-foreground hover:text-foreground">
+                      {section.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 opacity-50" />}
+                    </button>
+                    <span className={`text-sm ${!section.visible ? 'text-muted-foreground line-through' : ''}`}>
+                      {sectionLabels[section.id] || section.id}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => moveSection(section.id, 'up')} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => moveSection(section.id, 'down')} disabled={idx === dashboardSections.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Key Metrics */}
+        {isSectionVisible('key-metrics') && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8" data-tutorial="key-metrics">
           <div data-tutorial="net-worth-card">
             <StatCard
@@ -355,8 +416,10 @@ const IndexContent = () => {
             delay={0.3}
           />
         </div>
+        )}
 
         {/* Charts Row */}
+        {isSectionVisible('charts') && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
           {/* Main charts - wrapped for tutorial spotlight */}
           <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4" data-tutorial="charts-section">
@@ -394,8 +457,10 @@ const IndexContent = () => {
             />
           )}
         </div>
+        )}
 
         {/* P&L Overview - Pro Feature */}
+        {isSectionVisible('pnl') && (
         <div className="mb-8">
           {isPro ? (
             <ProfitLossCard 
@@ -414,8 +479,10 @@ const IndexContent = () => {
             />
           )}
         </div>
+        )}
 
         {/* Financial Goals */}
+        {isSectionVisible('goals') && (
         <div className="mb-8">
           <GoalsOverviewCard
             goals={demoGoals}
@@ -435,9 +502,10 @@ const IndexContent = () => {
             isDemo={isDemo}
           />
         </div>
+        )}
 
         {/* Investment Strategy - Show for logged-in users, or in demo with Pro */}
-        {(!isDemo || isPro) && (
+        {isSectionVisible('strategy') && (!isDemo || isPro) && (
           <div className="mb-8" data-tutorial="investment-strategy-card">
             {isPro ? (
               <InvestmentStrategyCard
@@ -460,6 +528,7 @@ const IndexContent = () => {
         )}
 
         {/* Asset Categories */}
+        {isSectionVisible('assets') && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4" data-tutorial="assets-section">
             <h2 className="text-xl font-semibold">Assets by Category</h2>
@@ -690,8 +759,10 @@ const IndexContent = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Income, Expenses & Debt */}
+        {isSectionVisible('income-expenses') && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div data-tutorial="income-card">
             <IncomeExpenseCard
@@ -748,9 +819,10 @@ const IndexContent = () => {
             />
           </div>
         </div>
+        )}
 
         {/* Debt Payoff Calculator - Pro Only, show in demo mode too */}
-        {demoDebts.length > 0 && (
+        {isSectionVisible('debt') && demoDebts.length > 0 && (
           <div className="mt-8" data-tutorial="debt-payoff-calculator">
             {isPro ? (
               <DebtPayoffCalculator

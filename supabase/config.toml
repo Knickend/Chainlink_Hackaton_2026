@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.moltbook-register]
 verify_jwt = false
+
+[functions.simulate-dca-cre]
+verify_jwt = false
