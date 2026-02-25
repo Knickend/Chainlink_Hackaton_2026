@@ -10,6 +10,7 @@ import { DCAStrategyCard } from '@/components/dca/DCAStrategyCard';
 import { CreateDCADialog } from '@/components/dca/CreateDCADialog';
 import { DCAExecutionHistory } from '@/components/dca/DCAExecutionHistory';
 import { DCAWorkflowDemo } from '@/components/dca/DCAWorkflowDemo';
+import { CREArchitectureExplainer } from '@/components/dca/CREArchitectureExplainer';
 
 const DCA = () => {
   const { user, loading: authLoading } = useAuth();
@@ -54,6 +55,9 @@ const DCA = () => {
           </div>
           <CreateDCADialog onCreate={createStrategy} />
         </motion.header>
+
+        {/* Architecture Explainer */}
+        <CREArchitectureExplainer />
 
         {/* Balance Warning */}
         {showBalanceWarning && (
