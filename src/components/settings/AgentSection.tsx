@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut, Copy, Check, Bell } from 'lucide-react';
+import { Bot, Wallet, Send, ArrowLeftRight, Banknote, Shield, Activity, Loader2, CheckCircle2, XCircle, LogOut, Copy, Check, Bell, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ export function AgentSection() {
     updateSkills,
     updateLimits,
     updateNotifications,
+    refetch,
   } = useAgentWallet();
 
   const [email, setEmail] = useState('');
@@ -82,9 +83,16 @@ export function AgentSection() {
               Agentic Wallet
               {status.connected && <Badge variant="secondary">Connected</Badge>}
             </CardTitle>
-            <CardDescription>
-              Connect your Coinbase Agentic Wallet to enable DeFi skills
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <CardDescription>
+                Connect your Coinbase Agentic Wallet to enable DeFi skills
+              </CardDescription>
+              {status.connected && (
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()} disabled={isLoading}>
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {status.connected ? (
@@ -112,7 +120,24 @@ export function AgentSection() {
                       </Button>
                     </div>
                   </div>
-                  {(status.balance !== null || status.eth_balance !== null) && (
+                  {status.token_balances.length > 0 ? (
+                    <div className="space-y-1">
+                      {status.token_balances.map((token) => {
+                        const stablecoins = ['USDC', 'USDT', 'DAI'];
+                        const ethLike = ['ETH', 'WETH'];
+                        const decimals = stablecoins.includes(token.symbol) ? 2 : ethLike.includes(token.symbol) ? 6 : 4;
+                        const formatted = token.amount.toFixed(decimals);
+                        const prefix = stablecoins.includes(token.symbol) ? '$' : '';
+                        const suffix = stablecoins.includes(token.symbol) ? '' : ` ${token.symbol}`;
+                        return (
+                          <div key={token.symbol + token.contractAddress} className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">{token.symbol}</span>
+                            <span className="text-sm font-semibold">{prefix}{formatted}{suffix}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (status.balance !== null || status.eth_balance !== null) && (
                     <div className="space-y-1">
                       {status.balance !== null && (
                         <div className="flex items-center justify-between">

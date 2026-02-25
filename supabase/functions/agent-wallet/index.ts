@@ -626,6 +626,7 @@ serve(async (req) => {
 
         let balance: string | null = null;
         let ethBalance: string | null = null;
+        let tokenBalances: Array<{ symbol: string; amount: number; contractAddress: string }> = [];
 
         // Auto-heal: if cdp_account_id is missing, re-fetch it from CDP
         if (wallet?.wallet_address && wallet?.is_authenticated && !wallet?.cdp_account_id) {
@@ -680,7 +681,16 @@ serve(async (req) => {
             });
             ethBalance = ethEntry ? parseTokenAmount(ethEntry, 18).toFixed(6) : '0.000000';
 
-            console.log(`[AgentWallet] Parsed balances — USDC: ${balance}, ETH: ${ethBalance}`);
+            // Build token_balances array from all tokens
+            const tokenBalances = tokenList.map((t: any) => {
+              const symbol = (t?.token?.symbol || t?.symbol || 'UNKNOWN').toUpperCase();
+              const contractAddress = t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '';
+              const decimals = t?.token?.decimals ?? 18;
+              const amount = parseTokenAmount(t, decimals);
+              return { symbol, amount, contractAddress };
+            }).filter((t: any) => t.amount > 0);
+
+            console.log(`[AgentWallet] Parsed balances — USDC: ${balance}, ETH: ${ethBalance}, all tokens: ${tokenBalances.length}`);
           } catch (err) {
             console.error('[AgentWallet] Balance fetch error:', err);
           }
@@ -697,6 +707,7 @@ serve(async (req) => {
             daily_spent: wallet?.daily_spent ?? 0,
             balance,
             eth_balance: ethBalance,
+            token_balances: tokenBalances ?? [],
             notify_transactions: wallet?.notify_transactions ?? false,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
