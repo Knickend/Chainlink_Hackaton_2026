@@ -1,94 +1,51 @@
 
 
-# Build DCA Page and Edit Dashboard Features
+# Add Chainlink CRE Architecture Explainer to DCA Page
 
-## Problem
-The DCA management page and Edit Dashboard feature exist only as a plan -- no frontend code was ever created. The database tables (`dca_strategies`, `dca_executions`, `dashboard_layouts`) are ready but have no UI.
+## Overview
+Add a visual "How It Works" architecture explainer section to the DCA page, designed for hackathon judges to quickly understand the Chainlink CRE integration.
 
 ## What Will Be Built
 
-### 1. DCA Management Page (`/dca`)
+### New Component: `src/components/dca/CREArchitectureExplainer.tsx`
+An accordion-style card (always visible, no strategies required) explaining the tech stack:
 
-**New files:**
-- `src/pages/DCA.tsx` -- Main page with strategy list, execution history, and workflow simulator
-- `src/hooks/useDCAStrategies.ts` -- Hook for CRUD on `dca_strategies` and reading `dca_executions`
-- `src/components/dca/DCAStrategyCard.tsx` -- Card per strategy showing token pair, amount, frequency, status, with toggle/delete controls
-- `src/components/dca/CreateDCADialog.tsx` -- Form: select to_token (ETH/WETH/cbBTC), amount in USDC, frequency (daily/weekly/biweekly/monthly), optional dip threshold %
-- `src/components/dca/DCAExecutionHistory.tsx` -- Table of past executions with status, price, amount, tx hash link to sepolia.basescan.org
-- `src/components/dca/DCAWorkflowDemo.tsx` -- Visual pipeline simulator (Cron -> Fetch -> Filter -> Price -> Execute) using the `simulate-dca-cre` edge function
+**Section 1 -- "How Chainlink CRE Powers DCA"**
+- Visual flow diagram using styled boxes and arrows (similar to the WorkflowDemo but static/educational)
+- Steps: Cron Trigger (every 5 min) -> Strategy Evaluation -> Chainlink Price Feed -> Dip Detection -> On-chain Execution (Base Sepolia)
+- Each step has a short description of the Chainlink/CRE component involved
 
-**Features:**
-- List/create/toggle/delete DCA strategies
-- View execution history per strategy
-- Balance warning if wallet USDC is less than total committed amount (uses `useAgentWallet` hook)
-- CRE Workflow Simulator visualization
-- Only accessible to authenticated users with a connected agent wallet
+**Section 2 -- "Architecture"**
+- Accordion items explaining:
+  - **Chainlink CRE SDK** -- workflow orchestration, `cre.Handler()` pattern, consensus aggregation
+  - **Chainlink Price Feeds** -- on-chain oracle data for dip detection baseline
+  - **Coinbase CDP Agent Wallet** -- non-custodial execution on Base Sepolia
+  - **Dip-Buying Logic** -- compares current price vs last execution's `token_price_usd`, multiplier when threshold crossed
 
-### 2. Simulate DCA Edge Function
+**Section 3 -- "Tech Stack"**
+- Badge/chip list: Chainlink CRE, Chainlink Data Feeds, Base Sepolia, USDC, Coinbase CDP, TypeScript
 
-**New file:** `supabase/functions/simulate-dca-cre/index.ts`
-- Accepts user's strategies, simulates the DCA pipeline (check frequencies, fetch prices, evaluate dip thresholds, mock execution)
-- Returns step-by-step logs for the workflow demo visualization
-- Uses existing dip-buying logic: compares current price against `token_price_usd` from last completed execution
-
-### 3. Edit Dashboard Mode
-
-**Modified file:** `src/pages/Index.tsx`
-- Add a pencil/edit icon button in the header toolbar
-- When active, each dashboard section gets a visibility toggle (eye icon) and drag handle for reordering
-- Sections: Key Metrics, Charts, Portfolio History, P&L, Goals, Investment Strategy, Assets, Income/Expenses, Debt, Upcoming Expenses
-- Layout saved to `dashboard_layouts` table via a new `useDashboardLayout` hook
-- Default layout shows all sections in current order
-
-**New files:**
-- `src/hooks/useDashboardLayout.ts` -- Reads/writes `dashboard_layouts` table, provides section order and visibility state
-
-### 4. Navigation Updates
-
-**Modified file:** `src/App.tsx`
-- Add `/dca` route
-
-**Modified file:** `src/pages/Index.tsx`
-- Add DCA link in header (only visible for users with connected wallet)
+### Modified File: `src/pages/DCA.tsx`
+- Import and render `CREArchitectureExplainer` below the header, always visible (not gated behind strategies or wallet connection)
 
 ## Technical Details
 
-### useDCAStrategies Hook
+### Component Structure
 ```text
-- SELECT from dca_strategies WHERE user_id = current user
-- SELECT from dca_executions WHERE strategy_id IN (user strategies), ordered by created_at DESC
-- INSERT/UPDATE/DELETE on dca_strategies
-- Wallet balance check via useAgentWallet().status.balance
+CREArchitectureExplainer
+  |-- Card with "How It Works" header
+  |-- Static pipeline visualization (5 colored boxes with arrows)
+  |-- Accordion with 4 expandable sections (Architecture details)
+  |-- Tech stack badge row
 ```
 
-### Dashboard Layout Schema (stored in dashboard_layouts.layout_config)
-```text
-{
-  "sections": [
-    { "id": "key-metrics", "visible": true, "order": 0 },
-    { "id": "charts", "visible": true, "order": 1 },
-    { "id": "pnl", "visible": true, "order": 2 },
-    { "id": "goals", "visible": true, "order": 3 },
-    { "id": "strategy", "visible": true, "order": 4 },
-    { "id": "assets", "visible": true, "order": 5 },
-    { "id": "income-expenses", "visible": true, "order": 6 },
-    { "id": "debt", "visible": true, "order": 7 }
-  ]
-}
-```
+### Styling
+- Uses existing `glass-card`, `Badge`, `Accordion` components
+- Gradient accents matching the app theme
+- Icons from lucide-react (Clock, Link, TrendingDown, Wallet, Cpu)
 
-### File Summary
+### Files
 | Action | File |
 |--------|------|
-| Create | `src/pages/DCA.tsx` |
-| Create | `src/hooks/useDCAStrategies.ts` |
-| Create | `src/hooks/useDashboardLayout.ts` |
-| Create | `src/components/dca/DCAStrategyCard.tsx` |
-| Create | `src/components/dca/CreateDCADialog.tsx` |
-| Create | `src/components/dca/DCAExecutionHistory.tsx` |
-| Create | `src/components/dca/DCAWorkflowDemo.tsx` |
-| Create | `supabase/functions/simulate-dca-cre/index.ts` |
-| Modify | `src/App.tsx` -- add `/dca` route |
-| Modify | `src/pages/Index.tsx` -- add DCA nav link + edit dashboard toggle with section reordering |
-
-No database changes needed -- all tables already exist with proper RLS policies.
+| Create | `src/components/dca/CREArchitectureExplainer.tsx` |
+| Modify | `src/pages/DCA.tsx` -- import and render the explainer |
