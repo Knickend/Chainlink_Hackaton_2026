@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
+export interface TokenBalance {
+  symbol: string;
+  amount: number;
+  contractAddress: string;
+}
+
 export interface AgentWalletStatus {
   connected: boolean;
   wallet_address: string | null;
@@ -13,6 +19,7 @@ export interface AgentWalletStatus {
   daily_spent: number;
   balance: number | null;
   eth_balance: number | null;
+  token_balances: TokenBalance[];
   notify_transactions: boolean;
 }
 
@@ -36,6 +43,7 @@ const DEFAULT_STATUS: AgentWalletStatus = {
   daily_spent: 0,
   balance: null,
   eth_balance: null,
+  token_balances: [],
   notify_transactions: false,
 };
 
