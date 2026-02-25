@@ -12,6 +12,7 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import AdminLogin from "./pages/AdminLogin";
 import NotFound from "./pages/NotFound";
+import DCA from "./pages/DCA";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import ApiDocs from "./pages/ApiDocs";
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/api-docs" element={<ApiDocs />} />
+              <Route path="/dca" element={<DCA />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
