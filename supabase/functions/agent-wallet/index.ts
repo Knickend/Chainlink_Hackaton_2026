@@ -682,7 +682,7 @@ serve(async (req) => {
             ethBalance = ethEntry ? parseTokenAmount(ethEntry, 18).toFixed(6) : '0.000000';
 
             // Build token_balances array from all tokens
-            const tokenBalances = tokenList.map((t: any) => {
+            tokenBalances = tokenList.map((t: any) => {
               const symbol = (t?.token?.symbol || t?.symbol || 'UNKNOWN').toUpperCase();
               const contractAddress = t?.token?.contractAddress || t?.token?.contract_address || t?.contract_address || '';
               const decimals = t?.token?.decimals ?? 18;
