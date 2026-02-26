@@ -62,18 +62,18 @@ export function CREArchitectureExplainer() {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Pipeline visualization */}
-        <div className="flex items-start gap-2 flex-wrap pb-2">
+        <div className="flex items-center gap-1 pb-2">
           {pipelineSteps.map((step, i) => {
             const Icon = step.icon;
             return (
-              <div key={step.label} className="flex items-center gap-2">
-                <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/30 bg-primary/5 flex-1 min-w-[110px] text-center">
-                  <Icon className="w-5 h-5 text-primary" />
-                  <span className="text-xs font-semibold text-foreground">{step.label}</span>
-                  <span className="text-[10px] text-muted-foreground leading-tight">{step.desc}</span>
+              <div key={step.label} className="flex items-center gap-1 flex-1 min-w-0">
+                <div className="flex flex-col items-center gap-1 p-2 rounded-lg border border-primary/30 bg-primary/5 text-center w-full">
+                  <Icon className="w-4 h-4 text-primary" />
+                  <span className="text-[11px] font-semibold text-foreground leading-tight">{step.label}</span>
+                  <span className="text-[9px] text-muted-foreground leading-tight">{step.desc}</span>
                 </div>
                 {i < pipelineSteps.length - 1 && (
-                  <span className="text-primary font-bold text-lg">→</span>
+                  <span className="text-primary font-bold text-sm shrink-0">→</span>
                 )}
               </div>
             );
