@@ -271,7 +271,7 @@ export function useLivePrices(refreshInterval = 15 * 60 * 1000, additionalCrypto
             ? chainlinkPrices.map(p => {
                 const sym = p.symbol;
                 const colonIdx = sym.indexOf(':');
-                const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
+                const network = colonIdx > -1 ? sym.substring(0, colonIdx) : 'sepolia';
                 const pair = colonIdx > -1 ? sym.substring(colonIdx + 1) : sym;
                 const price = Number(p.price);
                 return {
