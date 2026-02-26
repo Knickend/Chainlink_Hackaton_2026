@@ -1,18 +1,42 @@
 
 
-# Keep All 5 Pipeline Cards on One Horizontal Row
+# Fix Missing Network Names in Chainlink Price Feeds
 
 ## Problem
-The 5 pipeline step cards are wrapping to a second row because `flex-wrap` causes the last card ("Execution") to drop down when there isn't enough space.
+Some Chainlink feed entries in the database have symbols stored without the `network:` prefix (e.g., `CZK/USD` instead of `sepolia:CZK/USD`). When the dialog parses these, the network field ends up as an empty string, showing blank cells in the "Network" column.
+
+Affected symbols in DB: `CZK/USD`, `ETH/USD`, `GBP/USD`, `cbBTC/USD`, `EURC/USD`, `JPY/USD`, `EURC/USD`.
 
 ## Solution
-**File: `src/components/dca/CREArchitectureExplainer.tsx`**
 
-- Remove `flex-wrap` from the container and remove `gap-2` (use tighter spacing)
-- Remove `min-w-[110px]` from cards so they can shrink freely to fit
-- Make each step item `flex-1` so all 5 distribute evenly across the full width
-- Reduce padding from `p-3` to `p-2` to save horizontal space
-- Hide the arrow separators on small screens using responsive classes, or make arrows narrower
+**File: `src/hooks/useLivePrices.ts`** (lines ~274)
 
-This ensures all 5 steps stay in a single horizontal row regardless of container width, shrinking proportionally instead of wrapping.
+When parsing cached Chainlink data, if the `network` field is empty (no colon in symbol), infer the network from the pair name:
+- Pairs like `cbBTC/USD`, `EURC/USD`, `ETH/USD` that also exist on Base should default to a reasonable value
+- Use `"unknown"` as a fallback so the column is never blank
+
+Change line 274 from:
+```typescript
+const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
+```
+to:
+```typescript
+const network = colonIdx > -1 ? sym.substring(0, colonIdx) : 'sepolia';
+```
+
+This defaults to `"sepolia"` for legacy entries without a network prefix, since the Sepolia testnet feeds were the original configuration.
+
+**File: `src/components/ExchangeRatesDialog.tsx`** (line 313)
+
+Add a safety fallback in the display so that if network is still empty for any reason, it shows "N/A" instead of blank:
+
+```typescript
+<TableCell className="text-muted-foreground capitalize">
+  {feed.network || 'N/A'}
+</TableCell>
+```
+
+## Additional Cleanup (Optional)
+
+The root cause is that some DB rows were written without the `network:` prefix. A one-time data cleanup could normalize these, but the display-layer fix is sufficient and non-destructive.
 
