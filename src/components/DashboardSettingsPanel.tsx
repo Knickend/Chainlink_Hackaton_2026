@@ -2,7 +2,10 @@ import { Settings2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { CardConfig } from '@/hooks/useDashboardLayout';
+interface CardConfig {
+  id: string;
+  label: string;
+}
 
 interface DashboardSettingsPanelProps {
   cardRegistry: CardConfig[];

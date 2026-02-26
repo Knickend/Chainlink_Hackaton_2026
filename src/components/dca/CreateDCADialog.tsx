@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
-import type { CreateDCAStrategyInput } from '@/hooks/useDCAStrategies';
+import type { CreateStrategyInput } from '@/hooks/useDCAStrategies';
 
 interface CreateDCADialogProps {
-  onCreate: (input: CreateDCAStrategyInput) => Promise<void>;
+  onCreate: (input: CreateStrategyInput) => Promise<any>;
 }
 
 export function CreateDCADialog({ onCreate }: CreateDCADialogProps) {

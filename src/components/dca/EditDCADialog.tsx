@@ -5,11 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil } from 'lucide-react';
-import type { DCAStrategy, CreateDCAStrategyInput } from '@/hooks/useDCAStrategies';
+import type { DCAStrategy, CreateStrategyInput } from '@/hooks/useDCAStrategies';
 
 interface EditDCADialogProps {
   strategy: DCAStrategy;
-  onUpdate: (id: string, input: Partial<CreateDCAStrategyInput>) => Promise<void>;
+  onUpdate: (id: string, input: Partial<CreateStrategyInput>) => Promise<void>;
 }
 
 export function EditDCADialog({ strategy, onUpdate }: EditDCADialogProps) {
