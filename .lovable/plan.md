@@ -1,19 +1,18 @@
 
 
-# Fix CRE Pipeline Cards to Fit Without Scrolling
+# Keep All 5 Pipeline Cards on One Horizontal Row
 
 ## Problem
-The 5 pipeline step cards in the CRE Architecture Explainer have a fixed minimum width and horizontal scroll (`overflow-x-auto`), causing the last "Execution" card to be cut off on most screen sizes.
+The 5 pipeline step cards are wrapping to a second row because `flex-wrap` causes the last card ("Execution") to drop down when there isn't enough space.
 
 ## Solution
-Change the pipeline layout from a horizontally scrolling row to a flexible grid that distributes cards evenly across the available width:
-
 **File: `src/components/dca/CREArchitectureExplainer.tsx`**
 
-- Replace `overflow-x-auto` with `flex-wrap` so cards wrap on smaller screens instead of scrolling
-- Remove `flex-shrink-0` from individual cards so they can compress to fit
-- Change `min-w-[130px]` to `flex-1 min-w-[110px]` so cards expand evenly to fill the row
-- On desktop (where all 5 fit), they will distribute equally; on mobile they will wrap to a second row
+- Remove `flex-wrap` from the container and remove `gap-2` (use tighter spacing)
+- Remove `min-w-[110px]` from cards so they can shrink freely to fit
+- Make each step item `flex-1` so all 5 distribute evenly across the full width
+- Reduce padding from `p-3` to `p-2` to save horizontal space
+- Hide the arrow separators on small screens using responsive classes, or make arrows narrower
 
-This ensures all 5 steps (Cron Trigger, Strategy Eval, Price Feed, Dip Detection, Execution) are fully visible without horizontal scrolling.
+This ensures all 5 steps stay in a single horizontal row regardless of container width, shrinking proportionally instead of wrapping.
 
