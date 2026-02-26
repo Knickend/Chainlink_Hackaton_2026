@@ -44,7 +44,10 @@ export function DCAWorkflowDemo({ strategies }: DCAWorkflowDemoProps) {
       if (error) throw error;
 
       const logs: { step: string; status: string; message: string }[] = data?.logs || [];
-      const summaryMsg = data?.summary || null;
+      const rawSummary = data?.summary ?? null;
+      const summaryMsg = rawSummary && typeof rawSummary === 'object'
+        ? `${rawSummary.total ?? 0} total, ${rawSummary.succeeded ?? 0} succeeded, ${rawSummary.failed ?? 0} failed, ${rawSummary.skipped ?? 0} skipped`
+        : (typeof rawSummary === 'string' ? rawSummary : null);
 
       // Animate steps sequentially
       for (let i = 0; i < INITIAL_STEPS.length; i++) {
