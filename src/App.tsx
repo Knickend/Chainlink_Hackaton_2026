@@ -16,7 +16,6 @@ import DCA from "./pages/DCA";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import ApiDocs from "./pages/ApiDocs";
-import DCA from "./pages/DCA";
 
 const queryClient = new QueryClient();
 
