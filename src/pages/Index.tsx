@@ -433,10 +433,6 @@ const IndexContent = () => {
                 currentNetWorth={adjustedNetWorth} 
                 formatValue={formatValue}
                 formatDisplayUnitValue={formatDisplayUnitValue}
-                assets={assets}
-                freeMonthlyIncome={netCashFlow}
-                goals={demoGoals}
-                livePrices={prices}
                 delay={0.2}
               />
             </div>

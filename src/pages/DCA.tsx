@@ -16,7 +16,8 @@ const DCA = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { status: walletStatus, isLoading: walletLoading } = useAgentWallet();
-  const { strategies, executions, loading, createStrategy, toggleStrategy, deleteStrategy, updateStrategy, totalCommitted } = useDCAStrategies();
+  const { strategies, executions, isLoading: loading, createStrategy, toggleStrategy, deleteStrategy, updateStrategy } = useDCAStrategies();
+  const totalCommitted = strategies.filter(s => s.is_active).reduce((sum, s) => sum + s.amount_per_execution, 0);
 
   if (authLoading || loading || walletLoading) {
     return (

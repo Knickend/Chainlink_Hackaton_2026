@@ -5,13 +5,13 @@ import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { EditDCADialog } from '@/components/dca/EditDCADialog';
 import { Clock, Zap, TrendingDown } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import type { DCAStrategy, CreateDCAStrategyInput } from '@/hooks/useDCAStrategies';
+import type { DCAStrategy, CreateStrategyInput } from '@/hooks/useDCAStrategies';
 
 interface DCAStrategyCardProps {
   strategy: DCAStrategy;
   onToggle: (id: string, isActive: boolean) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, input: Partial<CreateDCAStrategyInput>) => Promise<void>;
+  onUpdate: (id: string, input: Partial<CreateStrategyInput>) => Promise<void>;
 }
 
 const FREQUENCY_LABELS: Record<string, string> = {
