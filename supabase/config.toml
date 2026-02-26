@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.simulate-dca-cre]
 verify_jwt = false
+
+[functions.api-conf-price-feed]
+verify_jwt = false
