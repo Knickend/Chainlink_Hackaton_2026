@@ -310,7 +310,7 @@ export function ExchangeRatesDialog({
                       {livePrices.chainlinkForex.map((feed) => (
                         <TableRow key={`${feed.network}-${feed.pair}`}>
                           <TableCell className="font-medium">{feed.pair}</TableCell>
-                          <TableCell className="text-muted-foreground capitalize">{feed.network}</TableCell>
+                          <TableCell className="text-muted-foreground capitalize">{feed.network || 'N/A'}</TableCell>
                           <TableCell className="text-right font-mono">
                             {feed.error ? <span className="text-destructive text-xs">Error</span> : feed.answer !== undefined ? Number(feed.answer).toFixed(6) : '—'}
                           </TableCell>
