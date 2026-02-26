@@ -67,7 +67,7 @@ export function CREArchitectureExplainer() {
             const Icon = step.icon;
             return (
               <div key={step.label} className="flex items-center gap-2 flex-shrink-0">
-                <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/30 bg-primary/5 min-w-[100px] text-center">
+                <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/30 bg-primary/5 min-w-[130px] text-center">
                   <Icon className="w-5 h-5 text-primary" />
                   <span className="text-xs font-semibold text-foreground">{step.label}</span>
                   <span className="text-[10px] text-muted-foreground leading-tight">{step.desc}</span>
