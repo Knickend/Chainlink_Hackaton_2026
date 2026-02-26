@@ -1,0 +1,20 @@
+[
+  {
+    "pair": "cbBTC/USD",
+    "network": "base",
+    "rpc": "https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91",
+    "address": "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D"
+  },
+  {
+    "pair": "EURC/USD",
+    "network": "base",
+    "rpc": "https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91",
+    "address": "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250"
+  },
+  {
+    "pair": "ETH/USD",
+    "network": "base",
+    "rpc": "https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91",
+    "address": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"
+  }
+]

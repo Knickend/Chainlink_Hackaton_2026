@@ -2,19 +2,53 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { Tables, TablesInsert } from '@/integrations/supabase/types';
 
-export type DCAStrategy = Tables<'dca_strategies'>;
-export type DCAExecution = Tables<'dca_executions'>;
-
-export interface CreateDCAStrategyInput {
+export interface DCAStrategy {
+  id: string;
+  user_id: string;
+  from_token: string;
   to_token: string;
-  amount_per_execution: number;
   frequency: string;
+  amount_per_execution: number;
+  total_budget_usd: number | null;
+  total_spent_usd: number;
+  tokens_accumulated: number;
+  max_executions: number | null;
+  executions_completed: number;
+  dip_threshold_pct: number;
+  dip_multiplier: number;
+  is_active: boolean;
+  last_executed_at: string | null;
+  next_execution_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DCAExecution {
+  id: string;
+  strategy_id: string;
+  user_id: string;
+  from_token: string;
+  to_token: string;
+  amount_usd: number;
+  token_amount: number | null;
+  token_price_usd: number | null;
+  trigger_type: string;
+  tx_hash: string | null;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface CreateStrategyInput {
+  from_token?: string;
+  to_token: string;
+  frequency: string;
+  amount_per_execution: number;
+  total_budget_usd?: number | null;
+  max_executions?: number | null;
   dip_threshold_pct?: number;
   dip_multiplier?: number;
-  total_budget_usd?: number;
-  max_executions?: number;
 }
 
 export function useDCAStrategies() {
@@ -22,133 +56,139 @@ export function useDCAStrategies() {
   const { toast } = useToast();
   const [strategies, setStrategies] = useState<DCAStrategy[]>([]);
   const [executions, setExecutions] = useState<DCAExecution[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchStrategies = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+    if (!user) { setIsLoading(false); return; }
     try {
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('dca_strategies')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
+
       if (error) throw error;
-      setStrategies(data || []);
+      setStrategies((data as unknown as DCAStrategy[]) || []);
     } catch (err) {
       console.error('Failed to fetch DCA strategies:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
-  const fetchExecutions = useCallback(async () => {
+  const fetchExecutions = useCallback(async (strategyId?: string) => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('dca_executions')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(100);
+
+      if (strategyId) {
+        query = query.eq('strategy_id', strategyId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
-      setExecutions(data || []);
+      setExecutions((data as unknown as DCAExecution[]) || []);
     } catch (err) {
       console.error('Failed to fetch DCA executions:', err);
     }
   }, [user]);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      await Promise.all([fetchStrategies(), fetchExecutions()]);
-      setLoading(false);
-    };
-    load();
+    fetchStrategies();
+    fetchExecutions();
   }, [fetchStrategies, fetchExecutions]);
 
-  const createStrategy = useCallback(async (input: CreateDCAStrategyInput) => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('dca_strategies')
-        .insert({
-          user_id: user.id,
-          from_token: 'USDC',
-          to_token: input.to_token,
-          amount_per_execution: input.amount_per_execution,
-          frequency: input.frequency,
-          dip_threshold_pct: input.dip_threshold_pct ?? 0,
-          dip_multiplier: input.dip_multiplier ?? 1,
-          total_budget_usd: input.total_budget_usd ?? null,
-          max_executions: input.max_executions ?? null,
-        });
-      if (error) throw error;
-      toast({ title: 'Strategy Created', description: `DCA into ${input.to_token} set up successfully.` });
-      await fetchStrategies();
-    } catch (err) {
-      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to create strategy', variant: 'destructive' });
+  const createStrategy = useCallback(async (input: CreateStrategyInput) => {
+    if (!user) throw new Error('Not authenticated');
+    const { data, error } = await supabase
+      .from('dca_strategies')
+      .insert({
+        user_id: user.id,
+        from_token: input.from_token || 'USDC',
+        to_token: input.to_token,
+        frequency: input.frequency,
+        amount_per_execution: input.amount_per_execution,
+        total_budget_usd: input.total_budget_usd ?? null,
+        max_executions: input.max_executions ?? null,
+        dip_threshold_pct: input.dip_threshold_pct ?? 0,
+        dip_multiplier: input.dip_multiplier ?? 1,
+      } as any)
+      .select()
+      .single();
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to create strategy', variant: 'destructive' });
+      throw error;
     }
+    toast({ title: 'Strategy Created', description: `DCA into ${input.to_token} configured` });
+    await fetchStrategies();
+    return data;
   }, [user, toast, fetchStrategies]);
 
   const toggleStrategy = useCallback(async (id: string, isActive: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('dca_strategies')
-        .update({ is_active: isActive })
-        .eq('id', id);
-      if (error) throw error;
-      setStrategies(prev => prev.map(s => s.id === id ? { ...s, is_active: isActive } : s));
-      toast({ title: isActive ? 'Strategy Activated' : 'Strategy Paused' });
-    } catch (err) {
+    const { error } = await supabase
+      .from('dca_strategies')
+      .update({ is_active: isActive } as any)
+      .eq('id', id);
+
+    if (error) {
       toast({ title: 'Error', description: 'Failed to update strategy', variant: 'destructive' });
+      throw error;
     }
-  }, [toast]);
-
-  const deleteStrategy = useCallback(async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('dca_strategies')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-      setStrategies(prev => prev.filter(s => s.id !== id));
-      toast({ title: 'Strategy Deleted' });
-    } catch (err) {
-      toast({ title: 'Error', description: 'Failed to delete strategy', variant: 'destructive' });
-    }
-  }, [toast]);
-
-  const updateStrategy = useCallback(async (id: string, input: Partial<CreateDCAStrategyInput>) => {
-    try {
-      const { error } = await supabase
-        .from('dca_strategies')
-        .update({
-          to_token: input.to_token,
-          amount_per_execution: input.amount_per_execution,
-          frequency: input.frequency,
-          dip_threshold_pct: input.dip_threshold_pct ?? 0,
-          dip_multiplier: input.dip_multiplier ?? 1,
-        })
-        .eq('id', id);
-      if (error) throw error;
-      toast({ title: 'Strategy Updated' });
-      await fetchStrategies();
-    } catch (err) {
-      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to update strategy', variant: 'destructive' });
-    }
+    toast({ title: isActive ? 'Strategy Activated' : 'Strategy Paused' });
+    await fetchStrategies();
   }, [toast, fetchStrategies]);
 
-  const totalCommitted = strategies
-    .filter(s => s.is_active)
-    .reduce((sum, s) => sum + s.amount_per_execution, 0);
+  const deleteStrategy = useCallback(async (id: string) => {
+    const { error } = await supabase
+      .from('dca_strategies')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to delete strategy', variant: 'destructive' });
+      throw error;
+    }
+    toast({ title: 'Strategy Deleted' });
+    await fetchStrategies();
+  }, [toast, fetchStrategies]);
+
+  const updateStrategy = useCallback(async (id: string, input: Partial<CreateStrategyInput>) => {
+    const { error } = await supabase
+      .from('dca_strategies')
+      .update({
+        frequency: input.frequency,
+        amount_per_execution: input.amount_per_execution,
+        total_budget_usd: input.total_budget_usd ?? null,
+        max_executions: input.max_executions ?? null,
+        dip_threshold_pct: input.dip_threshold_pct ?? 0,
+        dip_multiplier: input.dip_multiplier ?? 1,
+      } as any)
+      .eq('id', id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update strategy', variant: 'destructive' });
+      throw error;
+    }
+    toast({ title: 'Strategy Updated', description: 'Your DCA strategy has been adjusted' });
+    await fetchStrategies();
+  }, [toast, fetchStrategies]);
 
   return {
     strategies,
     executions,
-    loading,
+    isLoading,
     createStrategy,
+    updateStrategy,
     toggleStrategy,
     deleteStrategy,
-    updateStrategy,
-    totalCommitted,
-    refetch: () => Promise.all([fetchStrategies(), fetchExecutions()]),
+    fetchExecutions,
+    refetch: fetchStrategies,
   };
 }

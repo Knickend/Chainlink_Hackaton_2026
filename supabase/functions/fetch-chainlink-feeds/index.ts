@@ -13,11 +13,17 @@ const corsHeaders = {
 const CACHE_TTL_MS = 30_000; // 30 seconds
 let cachedResponse: { data: any[]; timestamp: number } | null = null;
 
-// Fallback public RPC (no API key needed)
-const FALLBACK_RPCS = [
-  'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-  'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-];
+// Network-aware fallback RPCs
+const FALLBACK_RPCS_BY_NETWORK: Record<string, string[]> = {
+  sepolia: [
+    'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+    'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
+  ],
+  base: [
+    'https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
+    'https://site2.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
+  ],
+};
 
 const ABI = [
   'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
@@ -68,8 +74,9 @@ async function fetchFeed(
     console.warn(`Primary RPC failed for ${f.pair}:`, String(primaryErr));
   }
 
-  // Fallback RPCs
-  for (const rpc of FALLBACK_RPCS) {
+  // Fallback RPCs (network-aware)
+  const fallbacks = FALLBACK_RPCS_BY_NETWORK[f.network] || [];
+  for (const rpc of fallbacks) {
     try {
       console.log(`Retrying ${f.pair} with fallback ${rpc}`);
       return await queryProvider(getProvider(rpc));
@@ -81,15 +88,50 @@ async function fetchFeed(
   return { pair: f.pair, network: f.network, address: f.address, error: 'All RPCs failed' };
 }
 
+// ── Background refresh: fetch on-chain and upsert to DB ────────────────
+async function backgroundRefresh(
+  feeds: Array<{ pair: string; network: string; rpc: string; address: string }>,
+  supabase: any
+) {
+  try {
+    const settled = await Promise.allSettled(feeds.map(fetchFeed));
+    const results = settled.map((s) =>
+      s.status === 'fulfilled' ? s.value : { error: String((s as PromiseRejectedResult).reason) }
+    );
+
+    // Update in-memory cache
+    cachedResponse = { data: results, timestamp: Date.now() };
+
+    // Upsert to price_cache (use network:pair as symbol, store errors with price=-1)
+    const toUpsert = results
+      .filter((r: any) => r && r.pair)
+      .map((r: any) => ({
+        symbol: `${r.network}:${r.pair}`,
+        price: r.error ? -1 : r.answer,
+        asset_type: 'chainlink',
+        updated_at: new Date().toISOString(),
+      }));
+
+    if (toUpsert.length > 0) {
+      for (const u of toUpsert) {
+        await supabase.from('price_cache').upsert({ ...u }, { onConflict: 'symbol' });
+      }
+    }
+    console.log('Background chainlink refresh complete:', toUpsert.length, 'feeds updated');
+  } catch (err) {
+    console.error('Background chainlink refresh error:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     console.log('fetch-chainlink-feeds: start');
 
-    // ── Return cached response if still fresh ──────────────────────────
+    // ── Return in-memory cached response if still fresh ────────────────
     if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
-      console.log('fetch-chainlink-feeds: returning cached result');
+      console.log('fetch-chainlink-feeds: returning in-memory cached result');
       return new Response(JSON.stringify({ success: true, data: cachedResponse.data, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -115,7 +157,43 @@ serve(async (req) => {
       });
     }
 
-    // ── Fetch all feeds concurrently ───────────────────────────────────
+    // ── Try DB cache first for fast response ───────────────────────────
+    try {
+      const { data: dbCached } = await supabase
+        .from('price_cache')
+        .select('symbol, price, updated_at')
+        .eq('asset_type', 'chainlink');
+
+      if (dbCached && dbCached.length > 0) {
+        console.log('fetch-chainlink-feeds: returning DB cached result, refreshing in background');
+        const dbResults = dbCached.map((row: any) => {
+          const sym = row.symbol as string;
+          const colonIdx = sym.indexOf(':');
+          const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
+          const pair = colonIdx > -1 ? sym.substring(colonIdx + 1) : sym;
+          const price = Number(row.price);
+          return {
+            pair,
+            network,
+            address: '',
+            ...(price === -1 ? { error: 'All RPCs failed' } : { answer: price }),
+            updatedAt: row.updated_at,
+          };
+        });
+
+        // Fire-and-forget background refresh
+        backgroundRefresh(feeds, supabase).catch(console.error);
+
+        return new Response(JSON.stringify({ success: true, data: dbResults, cached: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch (dbErr) {
+      console.warn('DB cache read failed, falling back to RPC:', dbErr);
+    }
+
+    // ── No DB cache (first ever call) — blocking RPC fetch ─────────────
+    console.log('fetch-chainlink-feeds: no DB cache, doing blocking RPC fetch');
     const settled = await Promise.allSettled(feeds.map(fetchFeed));
     const results = settled.map((s) =>
       s.status === 'fulfilled' ? s.value : { error: String((s as PromiseRejectedResult).reason) }
@@ -127,8 +205,13 @@ serve(async (req) => {
     // Upsert to price_cache
     try {
       const toUpsert = results
-        .filter((r: any) => r && r.pair && r.answer !== undefined)
-        .map((r: any) => ({ symbol: r.pair, price: r.answer, asset_type: 'chainlink', updated_at: new Date().toISOString() }));
+        .filter((r: any) => r && r.pair)
+        .map((r: any) => ({
+          symbol: `${r.network}:${r.pair}`,
+          price: r.error ? -1 : r.answer,
+          asset_type: 'chainlink',
+          updated_at: new Date().toISOString(),
+        }));
 
       if (toUpsert.length > 0) {
         for (const u of toUpsert) {

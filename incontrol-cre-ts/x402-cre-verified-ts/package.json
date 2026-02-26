@@ -1,0 +1,9 @@
+{
+  "name": "x402-cre-verified-ts",
+  "version": "1.0.0",
+  "description": "CRE workflow for consensus-verified price data (x402 monetized)",
+  "main": "main.ts",
+  "dependencies": {
+    "@chainlink/cre-sdk": "^1.0.8"
+  }
+}

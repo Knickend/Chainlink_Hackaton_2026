@@ -50,6 +50,9 @@ interface ActionHandlers {
   tradeTokens?: (amount: number, fromToken: string, toToken: string) => Promise<any>;
   getTradeQuote?: (amount: number, fromToken: string, toToken: string) => Promise<any>;
   fundWallet?: (amount: number) => Promise<any>;
+
+  // DCA (optional)
+  createDCAStrategy?: (input: any) => Promise<any>;
 }
 
 // Helper to find items by name (case-insensitive, partial match)
@@ -313,6 +316,26 @@ export function useVoiceActions(handlers: ActionHandlers) {
             success: false,
             needsConfirmation: true,
             message: `Fund your agent wallet with $${data.amount} via Coinbase Onramp — approve or reject?`,
+          };
+        }
+
+        // ===== DCA =====
+        case 'CREATE_DCA': {
+          if (!handlers.createDCAStrategy) {
+            return { success: false, message: 'DCA strategies are not available right now.' };
+          }
+          await handlers.createDCAStrategy({
+            to_token: data.to_token || 'WETH',
+            frequency: data.frequency || 'weekly',
+            amount_per_execution: data.amount_per_execution || 50,
+            total_budget_usd: data.total_budget_usd ?? null,
+            dip_threshold_pct: data.dip_threshold_pct ?? 0,
+            dip_multiplier: data.dip_multiplier ?? 1,
+          });
+          const budgetStr = data.total_budget_usd ? ` with a $${data.total_budget_usd} budget` : '';
+          return {
+            success: true,
+            message: `✅ Created a ${data.frequency || 'weekly'} DCA strategy: $${data.amount_per_execution || 50} into ${data.to_token || 'WETH'}${budgetStr}. View it on your [DCA dashboard](/dca).`,
           };
         }
 
