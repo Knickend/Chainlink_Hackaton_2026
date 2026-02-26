@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, Check, ExternalLink, Zap, DollarSign, Shield, Code } from "lucide-react";
+import { ArrowLeft, Copy, Check, ExternalLink, Zap, DollarSign, Shield, Code, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +52,17 @@ const endpoints = [
     methods: ["GET", "POST", "PUT"],
     returns: ["Real-time prices", "24h changes", "Filter by type or symbols"],
     queryParams: ["?type=crypto", "?symbols=BTC,ETH,GOLD"],
+    bodyParams: { type: "crypto", symbols: ["BTC", "ETH"], limit: 50 },
+  },
+  {
+    name: "Confidential Price Feed",
+    path: "/api-conf-price-feed",
+    price: "$0.08",
+    priceUnits: "80000",
+    description: "CRE confidential compute — encrypted response, enclave-protected",
+    methods: ["GET", "POST", "PUT"],
+    returns: ["AES-GCM encrypted price data", "Decryption instructions", "CRE attestation metadata"],
+    queryParams: ["?type=crypto", "?symbols=BTC,ETH"],
     bodyParams: { type: "crypto", symbols: ["BTC", "ETH"], limit: 50 },
   },
 ];
@@ -111,7 +122,7 @@ export default function ApiDocs() {
 
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Overview */}
-        <section className="grid md:grid-cols-3 gap-6">
+        <section className="grid md:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -150,6 +161,20 @@ export default function ApiDocs() {
             <CardContent>
               <p className="text-sm text-muted-foreground">
                 GET, POST, or PUT with query params or JSON body. Standard HTTP + x402 headers.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Lock className="h-5 w-5 text-amber-500" />
+                Confidential Compute
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Opt into AES-GCM encrypted responses via CRE enclaves. Data never leaves the enclave unencrypted.
               </p>
             </CardContent>
           </Card>
@@ -254,6 +279,7 @@ export default function ApiDocs() {
               <TabsTrigger value="dca">DCA Strategy</TabsTrigger>
               <TabsTrigger value="mcp">MCP (AI Agents)</TabsTrigger>
               <TabsTrigger value="cre">CRE Verified</TabsTrigger>
+              <TabsTrigger value="confidential">Confidential</TabsTrigger>
             </TabsList>
 
             <TabsContent value="flow" className="mt-4">
@@ -585,6 +611,130 @@ curl -X GET "${SUPABASE_URL}/functions/v1/cre-verified-data?type=crypto&symbols=
                       <li><code className="bg-muted-foreground/10 px-1 rounded">verified: true</code> — data sourced from Chainlink on-chain feeds via CRE consensus</li>
                       <li><code className="bg-muted-foreground/10 px-1 rounded">verified: false</code> — cached data not yet verified by CRE consensus</li>
                     </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="confidential" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Confidential Compute (CRE Enclave)
+                  </CardTitle>
+                  <CardDescription>$0.08 per call — AES-GCM encrypted responses, data never leaves the enclave unencrypted</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">What is Confidential Compute?</h4>
+                    <p className="text-sm text-muted-foreground">
+                      The Confidential Price Feed uses Chainlink CRE's <code className="bg-muted-foreground/10 px-1 rounded">ConfidentialHTTPClient</code> to 
+                      execute API requests inside a <strong>secure enclave</strong>. The response body is encrypted with AES-256-GCM before 
+                      leaving the enclave — only the caller with the shared decryption key can read the data. Secrets (API keys, encryption keys) 
+                      are injected via <code className="bg-muted-foreground/10 px-1 rounded">vaultDonSecrets</code> and never appear in node memory or logs.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Endpoint</h4>
+                    <div className="flex items-center gap-2 bg-muted p-2 rounded text-sm font-mono">
+                      <Badge variant="secondary" className="bg-green-500/10 text-green-600 text-xs">GET</Badge>
+                      <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 text-xs">POST</Badge>
+                      <span className="text-xs break-all">{SUPABASE_URL}/functions/v1/api-conf-price-feed</span>
+                    </div>
+                  </div>
+                  <CodeBlock
+                    code={`# Request confidential price data
+curl -X GET "${SUPABASE_URL}/functions/v1/api-conf-price-feed?type=crypto&symbols=BTC,ETH" \\
+  -H "X-Payment: <payment_proof>"
+
+# Response (200):
+# {
+#   "confidential": true,
+#   "encryptionMethod": "AES-256-GCM",
+#   "encryptedPayload": "<base64-encoded nonce||ciphertext||tag>",
+#   "decryption_instructions": {
+#     "algorithm": "AES-256-GCM",
+#     "structure": "nonce (12 bytes) || ciphertext || tag (16 bytes)",
+#     "steps": ["1. Base64-decode", "2. Extract nonce/tag/ciphertext", "3. Decrypt with AES-GCM"]
+#   },
+#   "creWorkflow": {
+#     "name": "conf-http-ts",
+#     "capability": "ConfidentialHTTPClient",
+#     "encryptOutput": true
+#   }
+# }`}
+                  />
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Decryption Flow</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">1</div>
+                        <p className="text-sm text-muted-foreground">Base64-decode the <code className="bg-muted-foreground/10 px-1 rounded">encryptedPayload</code> field from the response</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">2</div>
+                        <p className="text-sm text-muted-foreground">Extract: <strong>nonce</strong> (first 12 bytes), <strong>tag</strong> (last 16 bytes), <strong>ciphertext</strong> (everything in between)</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">3</div>
+                        <p className="text-sm text-muted-foreground">Decrypt using AES-256-GCM with your shared key (<code className="bg-muted-foreground/10 px-1 rounded">san_marino_aes_gcm_encryption_key</code>)</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">4</div>
+                        <p className="text-sm text-muted-foreground">Parse the resulting plaintext as JSON — same format as the standard Price Feed response</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">TypeScript Decryption Example</h4>
+                    <CodeBlock
+                      language="typescript"
+                      code={`// After receiving the confidential response:
+const encrypted = Buffer.from(response.encryptedPayload, 'base64');
+
+// Extract components
+const nonce = encrypted.subarray(0, 12);
+const tag = encrypted.subarray(encrypted.length - 16);
+const ciphertext = encrypted.subarray(12, encrypted.length - 16);
+
+// Decrypt with Web Crypto API
+const key = await crypto.subtle.importKey(
+  'raw',
+  Buffer.from(YOUR_AES_KEY_HEX, 'hex'),
+  { name: 'AES-GCM' },
+  false,
+  ['decrypt']
+);
+
+const decrypted = await crypto.subtle.decrypt(
+  { name: 'AES-GCM', iv: nonce, tagLength: 128 },
+  key,
+  Buffer.concat([ciphertext, tag])
+);
+
+const priceData = JSON.parse(new TextDecoder().decode(decrypted));
+console.log(priceData.prices);`}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Architecture</h4>
+                    <p className="text-sm text-muted-foreground">
+                      The CRE workflow (<code className="bg-muted-foreground/10 px-1 rounded">conf-http-ts/main.ts</code>) uses 
+                      <code className="bg-muted-foreground/10 px-1 rounded">ConfidentialHTTPClient</code> with <code className="bg-muted-foreground/10 px-1 rounded">encryptOutput: true</code>. 
+                      Secrets are resolved from the Vault DON — the AES key (<code className="bg-muted-foreground/10 px-1 rounded">san_marino_aes_gcm_encryption_key</code>) 
+                      and API credentials never appear in code, config, or node memory. Consensus uses 
+                      <code className="bg-muted-foreground/10 px-1 rounded">consensusIdenticalAggregation</code> since the encrypted output is deterministic.
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    <a href="https://docs.chain.link/cre/capabilities/confidential-http" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      Chainlink CRE Confidential HTTP Docs <ExternalLink className="h-3 w-3" />
+                    </a>
+                    {" · "}
+                    <a href="https://ciphertools.co/aes-gcm" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      CipherTools AES-GCM Decryptor <ExternalLink className="h-3 w-3" />
+                    </a>
                   </div>
                 </CardContent>
               </Card>

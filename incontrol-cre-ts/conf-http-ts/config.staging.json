@@ -1,0 +1,5 @@
+{
+  "schedule": "0 */10 * * * *",
+  "url": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/fetch-prices",
+  "owner": ""
+}
