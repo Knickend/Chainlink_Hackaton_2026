@@ -51,9 +51,22 @@ export function PrivacyVaultSection() {
   const [showTransfer, setShowTransfer] = useState(false);
 
   // Transfer form
+  const [fromAddress, setFromAddress] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferToken, setTransferToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'); // USDC on Eth Sepolia
+
+  // Compute max available balance for selected token + from address
+  const maxAmount = (() => {
+    if (!fromAddress) return 0;
+    if (transferToken === '0x0000000000000000000000000000000000000000') {
+      return onchainBalances[fromAddress] ?? 0;
+    }
+    const tok = ERC20_TOKENS_TO_CHECK.find(t => t.address === transferToken);
+    if (!tok) return 0;
+    const entry = onchainTokenBalances[fromAddress]?.find(b => b.symbol === tok.symbol);
+    return entry?.amount ?? 0;
+  })();
 
   const invokePrivacy = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
     const { data, error } = await supabase.functions.invoke('privacy-vault', {
@@ -339,6 +352,21 @@ export function PrivacyVaultSection() {
             ) : (
               <div className="space-y-3">
                 <div className="space-y-2">
+                  <Label>From Address</Label>
+                  <Select value={fromAddress} onValueChange={setFromAddress}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sending address" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {addresses.map((a) => (
+                        <SelectItem key={a.id} value={a.shielded_address}>
+                          {a.label || a.shielded_address.slice(0, 10) + '…' + a.shielded_address.slice(-6)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="transfer-to">Recipient Shielded Address</Label>
                   <Input
                     id="transfer-to"
@@ -349,13 +377,31 @@ export function PrivacyVaultSection() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="transfer-amount">Amount</Label>
-                  <Input
-                    id="transfer-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={transferAmount}
-                    onChange={(e) => setTransferAmount(e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="transfer-amount"
+                      type="number"
+                      placeholder="0.00"
+                      value={transferAmount}
+                      onChange={(e) => setTransferAmount(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={!fromAddress || maxAmount <= 0}
+                      onClick={() => setTransferAmount(String(maxAmount))}
+                    >
+                      Max
+                    </Button>
+                  </div>
+                  {fromAddress && (
+                    <p className="text-xs text-muted-foreground">
+                      Available: {maxAmount.toFixed(6)} {COMMON_TOKENS.find(t => t.address === transferToken)?.label ?? 'tokens'}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="transfer-token">Token</Label>
