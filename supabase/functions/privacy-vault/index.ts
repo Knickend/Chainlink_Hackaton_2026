@@ -226,9 +226,17 @@ serve(async (req) => {
         const structHash = hashPrivateTransfer(account, recipient as string, token as string, amountBigInt, flags, timestamp);
         const auth = await signEip712(structHash, privateKeyHex);
 
-        const result = await callPrivacyAPI("/private-transfer", {
-          account, recipient, token, amount: amountBigInt.toString(), flags, timestamp: Number(timestamp), auth,
-        });
+        let result;
+        try {
+          result = await callPrivacyAPI("/private-transfer", {
+            account, recipient, token, amount: amountBigInt.toString(), flags, timestamp: Number(timestamp), auth,
+          });
+        } catch (e) {
+          if (e instanceof Error && e.message.includes("account not found")) {
+            throw new Error("Your privacy vault account has not been onboarded yet. Please generate a shielded address and deposit tokens into the privacy protocol before making transfers.");
+          }
+          throw e;
+        }
 
         await serviceClient.from("agent_actions_log").insert({
           user_id: userId, action_type: "privacy-transfer",
