@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,10 @@ export function PrivacyVaultSection() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
 
   // Transfer form
   const [fromAddress, setFromAddress] = useState('');
@@ -173,6 +177,25 @@ export function PrivacyVaultSection() {
       toast({ title: 'Transfer Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!depositAmount) return;
+    setIsDepositing(true);
+    try {
+      await invokePrivacy('deposit', {
+        amount: Number(depositAmount),
+        token: depositToken,
+      });
+      toast({ title: 'Deposit Submitted', description: `Deposited ${depositAmount} tokens into the Privacy Vault protocol` });
+      setDepositAmount('');
+      setShowDeposit(false);
+      await fetchBalances();
+    } catch (err) {
+      toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsDepositing(false);
     }
   };
 
@@ -330,6 +353,66 @@ export function PrivacyVaultSection() {
             <p className="text-xs text-muted-foreground mt-2">
               ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger (ERC-20 deposits via the protocol). <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
             </p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Deposit Tokens */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ArrowDownToLine className="w-4 h-4" />
+              Deposit to Privacy Vault
+            </CardTitle>
+            <CardDescription>Deposit ERC-20 tokens into the Convergence protocol to onboard your account and enable private transfers</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!showDeposit ? (
+              <Button variant="outline" size="sm" onClick={() => setShowDeposit(true)}>
+                <ArrowDownToLine className="w-4 h-4 mr-2" /> Deposit Tokens
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="deposit-token">Token</Label>
+                  <Select value={depositToken} onValueChange={setDepositToken}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select token" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COMMON_TOKENS.filter(t => t.address !== '0x0000000000000000000000000000000000000000').map((t) => (
+                        <SelectItem key={t.address} value={t.address}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deposit-amount">Amount</Label>
+                  <Input
+                    id="deposit-amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  ℹ️ Depositing onboards your account with the Convergence protocol, enabling private transfers. Ensure you have approved the token for the protocol contract first.
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={handleDeposit} disabled={isDepositing || !depositAmount} size="sm">
+                    {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
+                    Deposit
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeposit(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
