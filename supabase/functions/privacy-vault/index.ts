@@ -313,6 +313,35 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      case "onchain-erc20-balance": {
+        const { address, token, decimals: dec } = params;
+        if (!address || !token) throw new Error("address and token are required");
+
+        const decimals = Number(dec) || 18;
+        const addrNoPre = (address as string).startsWith("0x") ? (address as string).slice(2) : (address as string);
+        const callData = "0x70a08231" + addrNoPre.toLowerCase().padStart(64, "0");
+
+        const rpcResp = await fetch("https://ethereum-sepolia-rpc.publicnode.com", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "eth_call",
+            params: [{ to: token, data: callData }, "latest"],
+            id: 1,
+          }),
+        });
+        const rpcData = await rpcResp.json();
+        const rawHex = rpcData.result || "0x0";
+        const rawBig = BigInt(rawHex);
+        const balance = Number(rawBig) / Math.pow(10, decimals);
+
+        console.log(`[PrivacyVault] ERC-20 balance for ${address} token ${token}: ${balance} (raw: ${rawBig})`);
+
+        return new Response(JSON.stringify({ success: true, address, token, balance, balance_raw: rawBig.toString() }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

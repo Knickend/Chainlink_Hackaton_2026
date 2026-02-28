@@ -14,6 +14,12 @@ const COMMON_TOKENS = [
   { label: 'ETH (native)', address: '0x0000000000000000000000000000000000000000' },
   { label: 'wBTC', address: '0x29f2D40B0605204364af54EC677bD022dA425d03' },
 ] as const;
+
+const ERC20_TOKENS_TO_CHECK = [
+  { symbol: 'USDC', address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 },
+  { symbol: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', decimals: 18 },
+  { symbol: 'wBTC', address: '0x29f2D40B0605204364af54EC677bD022dA425d03', decimals: 8 },
+] as const;
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -36,6 +42,7 @@ export function PrivacyVaultSection() {
   const [addresses, setAddresses] = useState<ShieldedAddress[]>([]);
   const [balances, setBalances] = useState<PrivacyBalance[]>([]);
   const [onchainBalances, setOnchainBalances] = useState<Record<string, number>>({});
+  const [onchainTokenBalances, setOnchainTokenBalances] = useState<Record<string, { symbol: string; amount: number }[]>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -63,17 +70,34 @@ export function PrivacyVaultSection() {
       const data = await invokePrivacy('list-addresses');
       const addrs = data.addresses || [];
       setAddresses(addrs);
-      // Fetch on-chain balance for each address
-      const balMap: Record<string, number> = {};
+      // Fetch on-chain ETH + ERC-20 balances for each address
+      const ethMap: Record<string, number> = {};
+      const tokenMap: Record<string, { symbol: string; amount: number }[]> = {};
       await Promise.all(
         addrs.map(async (a: ShieldedAddress) => {
+          const addr = a.shielded_address;
+          // Native ETH
           try {
-            const res = await invokePrivacy('onchain-balance', { address: a.shielded_address });
-            balMap[a.shielded_address] = res.balance_eth ?? 0;
+            const res = await invokePrivacy('onchain-balance', { address: addr });
+            ethMap[addr] = res.balance_eth ?? 0;
           } catch { /* ignore */ }
+          // ERC-20 tokens
+          const tokens: { symbol: string; amount: number }[] = [];
+          await Promise.all(
+            ERC20_TOKENS_TO_CHECK.map(async (tok) => {
+              try {
+                const res = await invokePrivacy('onchain-erc20-balance', { address: addr, token: tok.address, decimals: tok.decimals });
+                if (res.balance > 0) {
+                  tokens.push({ symbol: tok.symbol, amount: res.balance });
+                }
+              } catch { /* ignore */ }
+            })
+          );
+          tokenMap[addr] = tokens;
         })
       );
-      setOnchainBalances(balMap);
+      setOnchainBalances(ethMap);
+      setOnchainTokenBalances(tokenMap);
     } catch (err) {
       console.error('Failed to fetch shielded addresses:', err);
     }
@@ -95,7 +119,7 @@ export function PrivacyVaultSection() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshBalances = async () => {
     setIsRefreshing(true);
-    await fetchBalances();
+    await Promise.all([fetchBalances(), fetchAddresses()]);
     setIsRefreshing(false);
   };
 
@@ -223,6 +247,11 @@ export function PrivacyVaultSection() {
                         On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
+                    {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
+                      <p key={i} className="text-xs text-primary">
+                        On-chain: {tok.amount.toFixed(6)} {tok.symbol}
+                      </p>
+                    ))}
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
                     <Button
