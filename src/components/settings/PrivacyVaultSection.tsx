@@ -9,16 +9,16 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const COMMON_TOKENS = [
-  { label: 'USDC', address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
+  { label: 'USDC', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
+  { label: 'LINK', address: '0x779877A7B0D9E8603169DdbD7836e478b4624789' },
   { label: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9' },
   { label: 'ETH (native)', address: '0x0000000000000000000000000000000000000000' },
-  { label: 'wBTC', address: '0x29f2D40B0605204364af54EC677bD022dA425d03' },
 ] as const;
 
 const ERC20_TOKENS_TO_CHECK = [
-  { symbol: 'USDC', address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 },
+  { symbol: 'USDC', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6 },
+  { symbol: 'LINK', address: '0x779877A7B0D9E8603169DdbD7836e478b4624789', decimals: 18 },
   { symbol: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', decimals: 18 },
-  { symbol: 'wBTC', address: '0x29f2D40B0605204364af54EC677bD022dA425d03', decimals: 8 },
 ] as const;
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,7 +53,7 @@ export function PrivacyVaultSection() {
   // Transfer form
   const [transferTo, setTransferTo] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
-  const [transferToken, setTransferToken] = useState('0x036CbD53842c5426634e7929541eC2318f3dCF7e'); // USDC on Sepolia
+  const [transferToken, setTransferToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'); // USDC on Eth Sepolia
 
   const invokePrivacy = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
     const { data, error } = await supabase.functions.invoke('privacy-vault', {
