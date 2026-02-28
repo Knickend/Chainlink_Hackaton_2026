@@ -800,6 +800,30 @@ export type Database = {
         }
         Relationships: []
       }
+      privacy_shielded_addresses: {
+        Row: {
+          created_at: string
+          id: string
+          label: string | null
+          shielded_address: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          shielded_address: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          shielded_address?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           agreed_to_tos: boolean | null
