@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, ExternalLink } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const COMMON_TOKENS = [
+  { label: 'USDC', address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
+  { label: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9' },
+  { label: 'ETH (native)', address: '0x0000000000000000000000000000000000000000' },
+  { label: 'wBTC', address: '0x29f2D40B0605204364af54EC677bD022dA425d03' },
+] as const;
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -272,13 +280,19 @@ export function PrivacyVaultSection() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="transfer-token">Token Contract Address</Label>
-                  <Input
-                    id="transfer-token"
-                    placeholder="0x..."
-                    value={transferToken}
-                    onChange={(e) => setTransferToken(e.target.value)}
-                  />
+                  <Label htmlFor="transfer-token">Token</Label>
+                  <Select value={transferToken} onValueChange={setTransferToken}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select token" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COMMON_TOKENS.map((t) => (
+                        <SelectItem key={t.address} value={t.address}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={handleTransfer} disabled={isSending || !transferTo || !transferAmount} size="sm">
