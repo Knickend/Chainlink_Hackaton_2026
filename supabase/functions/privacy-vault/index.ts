@@ -288,6 +288,31 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      case "onchain-balance": {
+        const { address } = params;
+        if (!address) throw new Error("address is required");
+
+        const rpcResp = await fetch("https://ethereum-sepolia-rpc.publicnode.com", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "eth_getBalance",
+            params: [address, "latest"],
+            id: 1,
+          }),
+        });
+        const rpcData = await rpcResp.json();
+        const weiHex = rpcData.result || "0x0";
+        const wei = BigInt(weiHex);
+        const ethBalance = Number(wei) / 1e18;
+
+        console.log(`[PrivacyVault] On-chain balance for ${address}: ${ethBalance} ETH (${weiHex})`);
+
+        return new Response(JSON.stringify({ success: true, address, balance_eth: ethBalance, balance_wei: wei.toString() }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
