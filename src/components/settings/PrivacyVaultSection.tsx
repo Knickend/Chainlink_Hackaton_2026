@@ -37,7 +37,7 @@ export function PrivacyVaultSection() {
   // Transfer form
   const [transferTo, setTransferTo] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
-  const [transferToken, setTransferToken] = useState('0x036CbD53842c5426634e7929541eC2318f3dCF7e'); // USDC default
+  const [transferToken, setTransferToken] = useState('0x036CbD53842c5426634e7929541eC2318f3dCF7e'); // USDC on Sepolia
 
   const invokePrivacy = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
     const { data, error } = await supabase.functions.invoke('privacy-vault', {
@@ -92,9 +92,9 @@ export function PrivacyVaultSection() {
     setIsSending(true);
     try {
       await invokePrivacy('private-transfer', {
-        to: transferTo,
+        recipient: transferTo,
         amount: Number(transferAmount),
-        token_address: transferToken,
+        token: transferToken,
       });
       toast({ title: 'Private Transfer Sent', description: `Sent ${transferAmount} tokens privately` });
       setTransferTo('');
