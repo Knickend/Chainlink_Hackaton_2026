@@ -2,6 +2,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as secp256k1 from "https://esm.sh/@noble/secp256k1@2.1.0";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.4.0/sha3";
+import { hmac } from "https://esm.sh/@noble/hashes@1.4.0/hmac";
+import { sha256 } from "https://esm.sh/@noble/hashes@1.4.0/sha256";
+
+// Required for @noble/secp256k1 v2 in Deno
+secp256k1.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
+  const h = hmac.create(sha256, k);
+  m.forEach((v) => h.update(v));
+  return h.digest();
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
