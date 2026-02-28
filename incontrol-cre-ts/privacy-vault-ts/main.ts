@@ -51,15 +51,15 @@ function decodePayload(payload: HTTPPayload): PrivacyAction {
 function getEndpoint(action: string): { method: string; path: string } {
   switch (action) {
     case "generate-shielded-address":
-      return { method: "POST", path: "/api/shielded-address/generate" };
+      return { method: "POST", path: "/shielded-address" };
     case "private-transfer":
-      return { method: "POST", path: "/api/transfer" };
+      return { method: "POST", path: "/private-transfer" };
     case "balances":
-      return { method: "GET", path: "/api/balances" };
+      return { method: "POST", path: "/balances" };
     case "transactions":
-      return { method: "GET", path: "/api/transactions" };
+      return { method: "POST", path: "/transactions" };
     case "withdraw":
-      return { method: "POST", path: "/api/withdraw" };
+      return { method: "POST", path: "/withdraw" };
     default:
       throw new Error(`Unknown privacy vault action: ${action}`);
   }

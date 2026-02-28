@@ -17,17 +17,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// EIP-712 Domain for the Convergence Privacy Vault
 const EIP712_DOMAIN = {
   name: "CompliantPrivateTokenDemo",
   version: "0.0.1",
-  chainId: 11155111, // Ethereum Sepolia
+  chainId: 11155111,
   verifyingContract: "0xE588a6c73933BFD66Af9b4A07d48bcE59c0D2d13",
 };
 
 const PRIVACY_VAULT_API = "https://convergence2026-token-api.cldev.cloud";
 
-// --- EIP-712 Signing Utilities ---
+// --- Utility functions ---
 
 function hexToBytes(hex: string): Uint8Array {
   const h = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -52,123 +51,105 @@ function encodeUint256(value: number | bigint): string {
   return padTo32(BigInt(value).toString(16));
 }
 
-function encodeBool(value: boolean): string {
-  return padTo32(value ? "1" : "0");
-}
-
-/**
- * Compute keccak256 hash of hex-encoded data.
- */
 function keccak256Hex(hexData: string): string {
-  const bytes = hexToBytes(hexData);
-  const hash = keccak_256(bytes);
-  return bytesToHex(hash);
+  return bytesToHex(keccak_256(hexToBytes(hexData)));
 }
 
-/**
- * EIP-712 type hash: keccak256 of the type string.
- */
 function typeHash(typeString: string): string {
-  const bytes = new TextEncoder().encode(typeString);
-  return bytesToHex(keccak_256(bytes));
+  return bytesToHex(keccak_256(new TextEncoder().encode(typeString)));
 }
 
-/**
- * EIP-712 domain separator.
- */
 function domainSeparator(): string {
   const DOMAIN_TYPE = "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)";
   const domainTypeHash = typeHash(DOMAIN_TYPE);
-
   const nameHash = bytesToHex(keccak_256(new TextEncoder().encode(EIP712_DOMAIN.name)));
   const versionHash = bytesToHex(keccak_256(new TextEncoder().encode(EIP712_DOMAIN.version)));
   const chainIdHex = encodeUint256(EIP712_DOMAIN.chainId);
   const contractHex = padTo32(EIP712_DOMAIN.verifyingContract);
-
-  const encoded =
-    domainTypeHash.slice(2) +
-    nameHash.slice(2) +
-    versionHash.slice(2) +
-    chainIdHex +
-    contractHex;
-
+  const encoded = domainTypeHash.slice(2) + nameHash.slice(2) + versionHash.slice(2) + chainIdHex + contractHex;
   return keccak256Hex(encoded);
 }
 
-/**
- * Derive the Ethereum address from a secp256k1 private key.
- */
 function deriveAddress(privateKeyHex: string): string {
   const pubKey = secp256k1.getPublicKey(hexToBytes(privateKeyHex), false);
-  // Remove the 0x04 prefix, take keccak256, last 20 bytes
   const pubKeyNoPrefix = pubKey.slice(1);
   const hash = keccak_256(pubKeyNoPrefix);
-  const addressBytes = hash.slice(-20);
-  return bytesToHex(addressBytes);
+  return bytesToHex(hash.slice(-20));
 }
 
-/**
- * Sign an EIP-712 struct hash with the private key.
- * Returns the signature as 0x{r}{s}{v} (65 bytes).
- */
 async function signEip712(structHash: string, privateKeyHex: string): Promise<string> {
   const domSep = domainSeparator();
-  // EIP-712: \x19\x01 || domainSeparator || structHash
   const message = "1901" + domSep.slice(2) + structHash.slice(2);
   const messageHash = hexToBytes(keccak256Hex(message));
-
   const sig = secp256k1.sign(messageHash, hexToBytes(privateKeyHex));
   const r = sig.r.toString(16).padStart(64, "0");
   const s = sig.s.toString(16).padStart(64, "0");
   const v = (sig.recovery! + 27).toString(16).padStart(2, "0");
-
   return "0x" + r + s + v;
 }
 
-// --- Action-specific EIP-712 struct hashing ---
+// --- EIP-712 Struct Hashing (matching official API docs) ---
 
-function hashGenerateShieldedAddress(account: string): string {
-  const TYPE = "GenerateShieldedAddress(address account)";
+function hashRetrieveBalances(account: string, timestamp: bigint): string {
+  const TYPE = "Retrieve Balances(address account,uint256 timestamp)";
   const tHash = typeHash(TYPE);
-  const encoded = tHash.slice(2) + padTo32(account);
-  return keccak256Hex(encoded);
+  return keccak256Hex(tHash.slice(2) + padTo32(account) + encodeUint256(timestamp));
 }
 
-function hashPrivateTransfer(account: string, to: string, amount: bigint, tokenAddress: string): string {
-  const TYPE = "PrivateTransfer(address account,address to,uint256 amount,address token)";
+function hashListTransactions(account: string, timestamp: bigint, cursor: string, limit: bigint): string {
+  const TYPE = "List Transactions(address account,uint256 timestamp,string cursor,uint256 limit)";
   const tHash = typeHash(TYPE);
-  const encoded =
+  const cursorHash = bytesToHex(keccak_256(new TextEncoder().encode(cursor)));
+  return keccak256Hex(tHash.slice(2) + padTo32(account) + encodeUint256(timestamp) + cursorHash.slice(2) + encodeUint256(limit));
+}
+
+function hashPrivateTransfer(sender: string, recipient: string, token: string, amount: bigint, flags: string[], timestamp: bigint): string {
+  const TYPE = "Private Token Transfer(address sender,address recipient,address token,uint256 amount,string[] flags,uint256 timestamp)";
+  const tHash = typeHash(TYPE);
+  // Hash the flags array: keccak256 of concatenated keccak256 of each flag
+  let flagsInnerHash: string;
+  if (flags.length === 0) {
+    flagsInnerHash = bytesToHex(keccak_256(new Uint8Array(0)));
+  } else {
+    const flagHashes = flags.map(f => bytesToHex(keccak_256(new TextEncoder().encode(f))).slice(2)).join("");
+    flagsInnerHash = keccak256Hex(flagHashes);
+  }
+  return keccak256Hex(
     tHash.slice(2) +
-    padTo32(account) +
-    padTo32(to) +
+    padTo32(sender) +
+    padTo32(recipient) +
+    padTo32(token) +
     encodeUint256(amount) +
-    padTo32(tokenAddress);
-  return keccak256Hex(encoded);
+    flagsInnerHash.slice(2) +
+    encodeUint256(timestamp)
+  );
 }
 
-function hashGetBalances(account: string): string {
-  const TYPE = "GetBalances(address account)";
+function hashWithdraw(account: string, token: string, amount: bigint, timestamp: bigint): string {
+  const TYPE = "Withdraw Tokens(address account,address token,uint256 amount,uint256 timestamp)";
   const tHash = typeHash(TYPE);
-  const encoded = tHash.slice(2) + padTo32(account);
-  return keccak256Hex(encoded);
+  return keccak256Hex(tHash.slice(2) + padTo32(account) + padTo32(token) + encodeUint256(amount) + encodeUint256(timestamp));
 }
 
-function hashGetTransactions(account: string): string {
-  const TYPE = "GetTransactions(address account)";
+function hashGenerateShieldedAddress(account: string, timestamp: bigint): string {
+  const TYPE = "Generate Shielded Address(address account,uint256 timestamp)";
   const tHash = typeHash(TYPE);
-  const encoded = tHash.slice(2) + padTo32(account);
-  return keccak256Hex(encoded);
+  return keccak256Hex(tHash.slice(2) + padTo32(account) + encodeUint256(timestamp));
 }
 
-function hashWithdraw(account: string, amount: bigint, tokenAddress: string): string {
-  const TYPE = "Withdraw(address account,uint256 amount,address token)";
-  const tHash = typeHash(TYPE);
-  const encoded =
-    tHash.slice(2) +
-    padTo32(account) +
-    encodeUint256(amount) +
-    padTo32(tokenAddress);
-  return keccak256Hex(encoded);
+// --- Helper to make API calls ---
+
+async function callPrivacyAPI(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const resp = await fetch(`${PRIVACY_VAULT_API}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
+  }
+  return await resp.json();
 }
 
 serve(async (req) => {
@@ -178,38 +159,31 @@ serve(async (req) => {
 
   try {
     const privateKeyHex = Deno.env.get("PRIVACY_VAULT_PRIVATE_KEY");
-    if (!privateKeyHex) {
-      throw new Error("PRIVACY_VAULT_PRIVATE_KEY not configured");
-    }
+    if (!privateKeyHex) throw new Error("PRIVACY_VAULT_PRIVATE_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Authenticate user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const userId = user.id;
     const account = deriveAddress(privateKeyHex);
     const { action, ...params } = await req.json();
+    const timestamp = BigInt(Math.floor(Date.now() / 1000));
 
     console.log(`[PrivacyVault] Action: ${action}, User: ${userId}, Account: ${account}`);
 
@@ -217,29 +191,14 @@ serve(async (req) => {
 
     switch (action) {
       case "generate-shielded-address": {
-        const structHash = hashGenerateShieldedAddress(account);
-        const signature = await signEip712(structHash, privateKeyHex);
-
-        const resp = await fetch(`${PRIVACY_VAULT_API}/api/shielded-address/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account, signature }),
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
-        }
-
-        const result = await resp.json();
-        const shieldedAddress = result.shielded_address || result.shieldedAddress || result.address;
+        const structHash = hashGenerateShieldedAddress(account, timestamp);
+        const auth = await signEip712(structHash, privateKeyHex);
+        const result = await callPrivacyAPI("/shielded-address", { account, timestamp: Number(timestamp), auth });
+        const shieldedAddress = result.address as string;
 
         if (shieldedAddress) {
-          // Store in database
           await serviceClient.from("privacy_shielded_addresses").insert({
-            user_id: userId,
-            shielded_address: shieldedAddress,
-            label: params.label || null,
+            user_id: userId, shielded_address: shieldedAddress, label: params.label || null,
           });
         }
 
@@ -250,151 +209,85 @@ serve(async (req) => {
       }
 
       case "private-transfer": {
-        const { to, amount, token_address } = params;
-        if (!to || !amount || !token_address) {
-          throw new Error("to, amount, and token_address are required");
-        }
+        const { recipient, amount, token } = params;
+        if (!recipient || !amount || !token) throw new Error("recipient, amount, and token are required");
 
-        const amountBigInt = BigInt(Math.round(Number(amount) * 1_000_000)); // Assumes 6 decimals
-        const structHash = hashPrivateTransfer(account, to, amountBigInt, token_address);
-        const signature = await signEip712(structHash, privateKeyHex);
+        const amountBigInt = BigInt(amount);
+        const flags: string[] = params.flags || [];
+        const structHash = hashPrivateTransfer(account, recipient as string, token as string, amountBigInt, flags, timestamp);
+        const auth = await signEip712(structHash, privateKeyHex);
 
-        const resp = await fetch(`${PRIVACY_VAULT_API}/api/transfer`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            account,
-            to,
-            amount: amountBigInt.toString(),
-            token: token_address,
-            signature,
-          }),
+        const result = await callPrivacyAPI("/private-transfer", {
+          account, recipient, token, amount: amountBigInt.toString(), flags, timestamp: Number(timestamp), auth,
         });
 
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
-        }
-
-        const result = await resp.json();
-
-        // Log the action
         await serviceClient.from("agent_actions_log").insert({
-          user_id: userId,
-          action_type: "privacy-transfer",
-          params: { to, amount, token_address, network: "ethereum-sepolia" },
-          status: "executed",
-          result,
+          user_id: userId, action_type: "privacy-transfer",
+          params: { recipient, amount, token, network: "ethereum-sepolia" },
+          status: "executed", result,
         });
 
-        return new Response(
-          JSON.stringify({ success: true, result }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "balances": {
-        const structHash = hashGetBalances(account);
-        const signature = await signEip712(structHash, privateKeyHex);
+        const structHash = hashRetrieveBalances(account, timestamp);
+        const auth = await signEip712(structHash, privateKeyHex);
+        const result = await callPrivacyAPI("/balances", { account, timestamp: Number(timestamp), auth });
 
-        const resp = await fetch(
-          `${PRIVACY_VAULT_API}/api/balances?account=${account}&signature=${signature}`,
-          { method: "GET", headers: { "Content-Type": "application/json" } }
-        );
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
-        }
-
-        const result = await resp.json();
-        return new Response(
-          JSON.stringify({ success: true, balances: result }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, balances: result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "transactions": {
-        const structHash = hashGetTransactions(account);
-        const signature = await signEip712(structHash, privateKeyHex);
+        const cursor = (params.cursor as string) || "";
+        const limit = BigInt(params.limit as number || 20);
+        const structHash = hashListTransactions(account, timestamp, cursor, limit);
+        const auth = await signEip712(structHash, privateKeyHex);
 
-        const resp = await fetch(
-          `${PRIVACY_VAULT_API}/api/transactions?account=${account}&signature=${signature}`,
-          { method: "GET", headers: { "Content-Type": "application/json" } }
-        );
+        const body: Record<string, unknown> = { account, timestamp: Number(timestamp), auth, limit: Number(limit) };
+        if (cursor) body.cursor = cursor;
+        const result = await callPrivacyAPI("/transactions", body);
 
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
-        }
-
-        const result = await resp.json();
-        return new Response(
-          JSON.stringify({ success: true, transactions: result }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, transactions: result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "withdraw": {
-        const { amount, token_address } = params;
-        if (!amount || !token_address) {
-          throw new Error("amount and token_address are required");
-        }
+        const { amount, token } = params;
+        if (!amount || !token) throw new Error("amount and token are required");
 
-        const amountBigInt = BigInt(Math.round(Number(amount) * 1_000_000));
-        const structHash = hashWithdraw(account, amountBigInt, token_address);
-        const signature = await signEip712(structHash, privateKeyHex);
+        const amountBigInt = BigInt(amount);
+        const structHash = hashWithdraw(account, token as string, amountBigInt, timestamp);
+        const auth = await signEip712(structHash, privateKeyHex);
 
-        const resp = await fetch(`${PRIVACY_VAULT_API}/api/withdraw`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            account,
-            amount: amountBigInt.toString(),
-            token: token_address,
-            signature,
-          }),
+        const result = await callPrivacyAPI("/withdraw", {
+          account, token, amount: amountBigInt.toString(), timestamp: Number(timestamp), auth,
         });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Privacy Vault API error ${resp.status}: ${errText}`);
-        }
-
-        const result = await resp.json();
 
         await serviceClient.from("agent_actions_log").insert({
-          user_id: userId,
-          action_type: "privacy-withdraw",
-          params: { amount, token_address, network: "ethereum-sepolia" },
-          status: "executed",
-          result,
+          user_id: userId, action_type: "privacy-withdraw",
+          params: { amount, token, network: "ethereum-sepolia" },
+          status: "executed", result,
         });
 
-        return new Response(
-          JSON.stringify({ success: true, result }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "list-addresses": {
         const { data: addresses } = await userClient
-          .from("privacy_shielded_addresses")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
+          .from("privacy_shielded_addresses").select("*")
+          .eq("user_id", userId).order("created_at", { ascending: false });
 
-        return new Response(
-          JSON.stringify({ success: true, addresses: addresses || [] }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, addresses: addresses || [] }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       default:
-        return new Response(
-          JSON.stringify({ error: `Unknown action: ${action}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: `Unknown action: ${action}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch (error) {
     console.error("[PrivacyVault] Error:", error);
