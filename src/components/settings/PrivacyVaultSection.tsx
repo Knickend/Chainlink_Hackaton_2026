@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,7 @@ export function PrivacyVaultSection() {
   const { toast } = useToast();
   const [addresses, setAddresses] = useState<ShieldedAddress[]>([]);
   const [balances, setBalances] = useState<PrivacyBalance[]>([]);
+  const [onchainBalances, setOnchainBalances] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -60,7 +61,19 @@ export function PrivacyVaultSection() {
     if (!user) return;
     try {
       const data = await invokePrivacy('list-addresses');
-      setAddresses(data.addresses || []);
+      const addrs = data.addresses || [];
+      setAddresses(addrs);
+      // Fetch on-chain balance for each address
+      const balMap: Record<string, number> = {};
+      await Promise.all(
+        addrs.map(async (a: ShieldedAddress) => {
+          try {
+            const res = await invokePrivacy('onchain-balance', { address: a.shielded_address });
+            balMap[a.shielded_address] = res.balance_eth ?? 0;
+          } catch { /* ignore */ }
+        })
+      );
+      setOnchainBalances(balMap);
     } catch (err) {
       console.error('Failed to fetch shielded addresses:', err);
     }
@@ -205,19 +218,35 @@ export function PrivacyVaultSection() {
                     <p className="text-xs font-mono text-muted-foreground truncate">
                       {addr.shielded_address}
                     </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 ml-2"
-                    onClick={() => copyAddress(addr.shielded_address, addr.id)}
-                  >
-                    {copiedId === addr.id ? (
-                      <Check className="w-3.5 h-3.5 text-primary" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
+                    {onchainBalances[addr.shielded_address] !== undefined && (
+                      <p className="text-xs text-primary mt-1">
+                        On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
+                      </p>
                     )}
-                  </Button>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => copyAddress(addr.shielded_address, addr.id)}
+                    >
+                      {copiedId === addr.id ? (
+                        <Check className="w-3.5 h-3.5 text-primary" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                    <a
+                      href={`https://sepolia.etherscan.io/address/${addr.shielded_address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                    </a>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -257,7 +286,7 @@ export function PrivacyVaultSection() {
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
             )}
             <p className="text-xs text-muted-foreground mt-2">
-              ℹ️ Balances reflect the Privacy Vault's internal ledger. Direct on-chain transfers may not appear here — deposits must go through the Privacy Vault protocol.
+              ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger (ERC-20 deposits via the protocol). <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
             </p>
           </CardContent>
         </Card>
