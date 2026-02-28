@@ -212,7 +212,16 @@ serve(async (req) => {
         const { recipient, amount, token } = params;
         if (!recipient || !amount || !token) throw new Error("recipient, amount, and token are required");
 
-        const amountBigInt = BigInt(amount);
+        // Convert human-readable amount to raw token units (BigInt-safe)
+        const TOKEN_DECIMALS: Record<string, number> = {
+          "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
+          "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
+          "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": 18, // WETH
+          "0x0000000000000000000000000000000000000000": 18, // ETH
+        };
+        const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
+        const amountNum = Number(amount);
+        const amountBigInt = BigInt(Math.round(amountNum * (10 ** decimals)));
         const flags: string[] = params.flags || [];
         const structHash = hashPrivateTransfer(account, recipient as string, token as string, amountBigInt, flags, timestamp);
         const auth = await signEip712(structHash, privateKeyHex);
