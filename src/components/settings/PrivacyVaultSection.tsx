@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,11 +70,21 @@ export function PrivacyVaultSection() {
     if (!user) return;
     try {
       const data = await invokePrivacy('balances');
-      setBalances(data.balances || []);
+      // Handle both unwrapped array and nested { balances: [] } format
+      const raw = data.balances;
+      const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.balances) ? raw.balances : [];
+      setBalances(arr);
     } catch (err) {
       console.error('Failed to fetch privacy balances:', err);
     }
   }, [user, invokePrivacy]);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefreshBalances = async () => {
+    setIsRefreshing(true);
+    await fetchBalances();
+    setIsRefreshing(false);
+  };
 
   useEffect(() => {
     setIsLoading(true);
@@ -219,10 +229,17 @@ export function PrivacyVaultSection() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-base">Privacy Vault Balances</CardTitle>
-            <CardDescription>Balances inside your privacy vault on Ethereum Sepolia</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Privacy Vault Balances</CardTitle>
+                <CardDescription>Balances inside your privacy vault on Ethereum Sepolia</CardDescription>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefreshBalances} disabled={isRefreshing}>
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {isLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading…
@@ -239,6 +256,9 @@ export function PrivacyVaultSection() {
             ) : (
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
             )}
+            <p className="text-xs text-muted-foreground mt-2">
+              ℹ️ Balances reflect the Privacy Vault's internal ledger. Direct on-chain transfers may not appear here — deposits must go through the Privacy Vault protocol.
+            </p>
           </CardContent>
         </Card>
       </motion.div>

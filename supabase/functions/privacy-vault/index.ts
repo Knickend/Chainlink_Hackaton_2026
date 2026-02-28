@@ -236,7 +236,10 @@ serve(async (req) => {
         const auth = await signEip712(structHash, privateKeyHex);
         const result = await callPrivacyAPI("/balances", { account, timestamp: Number(timestamp), auth });
 
-        return new Response(JSON.stringify({ success: true, balances: result }),
+        console.log("[PrivacyVault] Raw balances response:", JSON.stringify(result));
+        const balancesArray = Array.isArray(result.balances) ? result.balances : [];
+
+        return new Response(JSON.stringify({ success: true, balances: balancesArray }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
