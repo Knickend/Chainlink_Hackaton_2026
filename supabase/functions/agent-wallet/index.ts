@@ -744,7 +744,7 @@ serve(async (req) => {
         const { enabled_skills } = params;
         if (!Array.isArray(enabled_skills)) throw new Error('enabled_skills must be an array');
 
-        const validSkills = ['send-usdc', 'trade', 'fund'];
+        const validSkills = ['send-usdc', 'trade', 'fund', 'privacy-address', 'privacy-transfer'];
         const filtered = enabled_skills.filter((s: string) => validSkills.includes(s));
 
         await userClient
@@ -1309,6 +1309,143 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ success: true, notify_transactions: !!notify_transactions }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // ===== PRIVACY VAULT ACTIONS =====
+      case 'privacy-shielded-address': {
+        const { data: wallet } = await userClient
+          .from('agent_wallets')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
+        if (!wallet.enabled_skills?.includes('privacy-address')) throw new Error('Shielded Address skill is disabled');
+
+        // Log action
+        const { data: logEntry } = await serviceClient
+          .from('agent_actions_log')
+          .insert({
+            user_id: userId,
+            action_type: 'privacy-shielded-address',
+            params: { label: params.label || null, network: 'ethereum-sepolia' },
+            status: 'pending',
+          })
+          .select()
+          .single();
+
+        try {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/privacy-vault`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': authHeader,
+            },
+            body: JSON.stringify({ action: 'generate-shielded-address', label: params.label }),
+          });
+          const result = await resp.json();
+          if (!resp.ok || result.error) throw new Error(result.error || 'Privacy vault error');
+
+          await serviceClient
+            .from('agent_actions_log')
+            .update({ status: 'executed', result })
+            .eq('id', logEntry?.id);
+
+          return new Response(
+            JSON.stringify({ success: true, ...result }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (err) {
+          await serviceClient
+            .from('agent_actions_log')
+            .update({ status: 'failed', error_message: err instanceof Error ? err.message : 'Unknown error' })
+            .eq('id', logEntry?.id);
+          throw err;
+        }
+      }
+
+      case 'privacy-transfer': {
+        const { to, amount, token_address } = params;
+        if (!to || !amount || !token_address) throw new Error('to, amount, and token_address are required');
+
+        const { data: wallet } = await userClient
+          .from('agent_wallets')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (!wallet?.is_authenticated) throw new Error('Wallet not authenticated');
+        if (!wallet.enabled_skills?.includes('privacy-transfer')) throw new Error('Private Transfer skill is disabled');
+
+        // Spending limit validation
+        if (Number(amount) > wallet.spending_limit_per_tx) {
+          throw new Error(`Amount exceeds per-transaction limit of $${wallet.spending_limit_per_tx}`);
+        }
+
+        const { data: logEntry } = await serviceClient
+          .from('agent_actions_log')
+          .insert({
+            user_id: userId,
+            action_type: 'privacy-transfer',
+            params: { to, amount, token_address, network: 'ethereum-sepolia' },
+            status: 'pending',
+          })
+          .select()
+          .single();
+
+        try {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/privacy-vault`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': authHeader,
+            },
+            body: JSON.stringify({ action: 'private-transfer', to, amount, token_address }),
+          });
+          const result = await resp.json();
+          if (!resp.ok || result.error) throw new Error(result.error || 'Privacy vault error');
+
+          await serviceClient
+            .from('agent_actions_log')
+            .update({ status: 'executed', result })
+            .eq('id', logEntry?.id);
+
+          // Send email notification
+          if (wallet.notify_transactions && wallet.wallet_email) {
+            await sendTransactionEmail(wallet.wallet_email, 'Private Transfer (Ethereum Sepolia)', {
+              amount: Number(amount), token: 'Private Token', recipient: to,
+            });
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, ...result }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (err) {
+          await serviceClient
+            .from('agent_actions_log')
+            .update({ status: 'failed', error_message: err instanceof Error ? err.message : 'Unknown error' })
+            .eq('id', logEntry?.id);
+          throw err;
+        }
+      }
+
+      case 'privacy-balances': {
+        const resp = await fetch(`${supabaseUrl}/functions/v1/privacy-vault`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify({ action: 'balances' }),
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.error) throw new Error(result.error || 'Privacy vault error');
+
+        return new Response(
+          JSON.stringify(result),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

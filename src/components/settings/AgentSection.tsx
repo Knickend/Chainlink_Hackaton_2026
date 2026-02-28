@@ -11,11 +11,14 @@ import { Progress } from '@/components/ui/progress';
 import { useAgentWallet } from '@/hooks/useAgentWallet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
+import { PrivacyVaultSection } from './PrivacyVaultSection';
 
 const SKILLS = [
   { id: 'send-usdc', label: 'Send USDC', description: 'Transfer USDC to any address or ENS name on Base', icon: Send },
   { id: 'trade', label: 'Trade Tokens', description: 'Swap between tokens on Base (e.g. USDC ↔ ETH)', icon: ArrowLeftRight },
   { id: 'fund', label: 'Fund Wallet', description: 'Add funds via Coinbase Onramp', icon: Banknote },
+  { id: 'privacy-address', label: 'Shielded Address', description: 'Generate privacy-preserving addresses via Chainlink ACE', icon: Shield },
+  { id: 'privacy-transfer', label: 'Private Transfer', description: 'Send tokens privately through the ACE Privacy Vault', icon: Shield },
 ];
 
 export function AgentSection() {
@@ -344,6 +347,13 @@ export function AgentSection() {
               </div>
             </CardContent>
           </Card>
+        </motion.div>
+      )}
+
+      {/* Privacy Vault */}
+      {status.connected && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+          <PrivacyVaultSection />
         </motion.div>
       )}
     </div>

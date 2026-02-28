@@ -1,0 +1,22 @@
+# ==========================================================================
+# Privacy Vault CRE Workflow — Chainlink ACE Integration
+# ==========================================================================
+# HTTP-triggered workflow for privacy-preserving token operations via the
+# Convergence 2026 Privacy Vault API. Uses consensusIdenticalAggregation
+# for multi-node agreement on API responses.
+
+production-settings:
+  user-workflow:
+    workflow-name: "privacy-vault-ts-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""
+
+test-settings:
+  user-workflow:
+    workflow-name: "privacy-vault-ts-test"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.test.json"
+    secrets-path: ""
