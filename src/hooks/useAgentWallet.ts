@@ -237,6 +237,48 @@ export function useAgentWallet() {
     }
   }, [invoke, toast, fetchLogs]);
 
+  // --- Privacy Vault Methods ---
+
+  const generateShieldedAddress = useCallback(async (label?: string) => {
+    setIsActing(true);
+    try {
+      const result = await invoke('privacy-shielded-address', { label });
+      await fetchLogs();
+      toast({ title: 'Shielded Address Generated', description: 'New privacy-preserving address created.' });
+      return result;
+    } catch (err) {
+      toast({ title: 'Generation Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      throw err;
+    } finally {
+      setIsActing(false);
+    }
+  }, [invoke, toast, fetchLogs]);
+
+  const privateTransfer = useCallback(async (amount: number, recipient: string, tokenAddress: string) => {
+    setIsActing(true);
+    try {
+      const result = await invoke('privacy-transfer', { amount, to: recipient, token_address: tokenAddress });
+      await fetchLogs();
+      toast({ title: 'Private Transfer Sent', description: `Sent ${amount} tokens privately` });
+      return result;
+    } catch (err) {
+      toast({ title: 'Transfer Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      throw err;
+    } finally {
+      setIsActing(false);
+    }
+  }, [invoke, toast, fetchLogs]);
+
+  const getPrivacyBalances = useCallback(async () => {
+    try {
+      const result = await invoke('privacy-balances');
+      return result;
+    } catch (err) {
+      console.error('Failed to get privacy balances:', err);
+      return null;
+    }
+  }, [invoke]);
+
   return {
     status,
     logs,
@@ -252,6 +294,9 @@ export function useAgentWallet() {
     tradeTokens,
     getTradeQuote,
     fundWallet,
+    generateShieldedAddress,
+    privateTransfer,
+    getPrivacyBalances,
     refetch: fetchStatus,
   };
 }

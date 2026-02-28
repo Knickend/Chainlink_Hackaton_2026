@@ -1,0 +1,5 @@
+{
+  "authorizedEVMAddress": "0x0000000000000000000000000000000000000000",
+  "privacyVaultApiUrl": "https://convergence2026-token-api.cldev.cloud",
+  "supabaseCallbackUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/privacy-vault"
+}
