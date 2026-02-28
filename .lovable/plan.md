@@ -1,55 +1,30 @@
 
 
-## Fix Privacy Vault Balance Refresh and Add ERC-20 On-Chain Balances
+## Fix Wrong Token Contract Addresses (Base Sepolia -> Ethereum Sepolia)
 
-### Problem
-1. The Refresh button only calls `fetchBalances()` (vault internal ledger) but not `fetchAddresses()` (which fetches on-chain balances). So clicking Refresh never updates the on-chain balance display.
-2. The `onchain-balance` edge function action only queries native ETH via `eth_getBalance`. ERC-20 tokens like USDC sent to a shielded address are invisible because they require an `eth_call` to the token contract's `balanceOf` function.
+### Root Cause
+The ERC-20 token contract addresses in `PrivacyVaultSection.tsx` are for **Base Sepolia**, not **Ethereum Sepolia**. The Privacy Vault operates on Ethereum Sepolia (chainId 11155111), so all ERC-20 balance queries return 0 because they're checking the wrong contracts.
 
-### Changes
+Wrong addresses currently in code:
+- USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Base Sepolia)
+- WETH: `0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9` (Sepolia -- this one is actually correct for Sepolia WETH)
+- wBTC: `0x29f2D40B0605204364af54EC677bD022dA425d03` (Base Sepolia)
 
-**1. Edge Function: `supabase/functions/privacy-vault/index.ts`**
-- Add a new action `onchain-erc20-balance` that calls the ERC-20 `balanceOf(address)` method via `eth_call` on Sepolia RPC.
-- Accepts `address` (the shielded address) and `token` (ERC-20 contract address).
-- Uses the standard `balanceOf` function selector `0x70a08231` + zero-padded address.
-- Returns the token balance with appropriate decimal conversion (6 decimals for USDC, 18 for WETH/wBTC).
-- Accept an optional `decimals` parameter (default 18) to convert raw balance.
+### Fix (single file: `src/components/settings/PrivacyVaultSection.tsx`)
 
-**2. UI: `src/components/settings/PrivacyVaultSection.tsx`**
-- Update `handleRefreshBalances` to also call `fetchAddresses()` so the Refresh button updates both vault and on-chain balances.
-- After fetching on-chain ETH balance per address, also fetch ERC-20 balances for the common tokens (USDC, WETH, wBTC) using the new `onchain-erc20-balance` action.
-- Store ERC-20 balances in a new state variable `onchainTokenBalances` as `Record<string, { symbol: string; amount: number }[]>`.
-- Display each token's on-chain balance below the ETH balance in the shielded address list (only showing tokens with non-zero balances).
-- The display will look like:
-```text
-Savings - 0x85c0...Bad7
-On-chain: 0.001000 SepoliaETH
-On-chain: 0.500000 USDC
-```
+Update the token addresses to the correct Ethereum Sepolia contracts:
+
+| Token | Current (Wrong) | Correct (Eth Sepolia) |
+|-------|------------------|-----------------------|
+| USDC  | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` |
+| LINK  | (not listed) | `0x779877A7B0D9E8603169DdbD7836e478b4624789` (from API docs) |
+| WETH  | `0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9` | Keep as-is (correct) |
+| wBTC  | `0x29f2D40B0605204364af54EC677bD022dA425d03` | Remove (no standard wBTC on Eth Sepolia) |
+
+Update both `COMMON_TOKENS` and `ERC20_TOKENS_TO_CHECK` arrays with the corrected addresses. Add LINK token (18 decimals) since the API docs reference it as a supported vault token. Remove wBTC since there's no standard deployment on Ethereum Sepolia.
 
 ### Technical Details
-
-**ERC-20 balanceOf call:**
-```text
-POST https://ethereum-sepolia-rpc.publicnode.com
-{
-  "jsonrpc": "2.0",
-  "method": "eth_call",
-  "params": [{
-    "to": "<token_contract>",
-    "data": "0x70a08231000000000000000000000000<address_without_0x>"
-  }, "latest"],
-  "id": 1
-}
-```
-
-The result is a hex-encoded uint256 which gets divided by 10^decimals.
-
-**Token decimals mapping:**
-- USDC: 6 decimals
-- WETH: 18 decimals  
-- wBTC: 8 decimals
-
-**Refresh button fix** (simple one-liner):
-Change `handleRefreshBalances` to call both `fetchBalances()` and `fetchAddresses()` in parallel.
+- The `COMMON_TOKENS` array (used in the transfer token dropdown) and `ERC20_TOKENS_TO_CHECK` array (used for on-chain balance queries) both need updating
+- The default `transferToken` state also needs to be updated to the correct USDC address
+- No edge function changes needed -- the on-chain RPC queries work correctly, they were just given wrong contract addresses
 
