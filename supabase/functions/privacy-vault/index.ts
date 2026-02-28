@@ -125,6 +125,12 @@ function hashPrivateTransfer(sender: string, recipient: string, token: string, a
   );
 }
 
+function hashDeposit(account: string, token: string, amount: bigint, timestamp: bigint): string {
+  const TYPE = "Deposit Tokens(address account,address token,uint256 amount,uint256 timestamp)";
+  const tHash = typeHash(TYPE);
+  return keccak256Hex(tHash.slice(2) + padTo32(account) + padTo32(token) + encodeUint256(amount) + encodeUint256(timestamp));
+}
+
 function hashWithdraw(account: string, token: string, amount: bigint, timestamp: bigint): string {
   const TYPE = "Withdraw Tokens(address account,address token,uint256 amount,uint256 timestamp)";
   const tHash = typeHash(TYPE);
@@ -271,6 +277,37 @@ serve(async (req) => {
         const result = await callPrivacyAPI("/transactions", body);
 
         return new Response(JSON.stringify({ success: true, transactions: result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "deposit": {
+        const { amount, token } = params;
+        if (!amount || !token) throw new Error("amount and token are required");
+
+        const TOKEN_DECIMALS_DEP: Record<string, number> = {
+          "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,
+          "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18,
+          "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": 18,
+          "0x0000000000000000000000000000000000000000": 18,
+        };
+        const depDecimals = TOKEN_DECIMALS_DEP[(token as string).toLowerCase()] ?? 18;
+        const depAmountNum = Number(amount);
+        const depAmountBigInt = BigInt(Math.round(depAmountNum * (10 ** depDecimals)));
+
+        const depStructHash = hashDeposit(account, token as string, depAmountBigInt, timestamp);
+        const depAuth = await signEip712(depStructHash, privateKeyHex);
+
+        const depResult = await callPrivacyAPI("/deposit", {
+          account, token, amount: depAmountBigInt.toString(), timestamp: Number(timestamp), auth: depAuth,
+        });
+
+        await serviceClient.from("agent_actions_log").insert({
+          user_id: userId, action_type: "privacy-deposit",
+          params: { amount, token, network: "ethereum-sepolia" },
+          status: "executed", result: depResult,
+        });
+
+        return new Response(JSON.stringify({ success: true, result: depResult }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
