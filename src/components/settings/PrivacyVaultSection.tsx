@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,22 @@ const ERC20_TOKENS_TO_CHECK = [
   { symbol: 'LINK', address: '0x779877A7B0D9E8603169DdbD7836e478b4624789', decimals: 18 },
   { symbol: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', decimals: 18 },
 ] as const;
+
+const TOKEN_DECIMALS: Record<string, { symbol: string; decimals: number }> = {
+  '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238': { symbol: 'USDC', decimals: 6 },
+  '0x779877A7B0D9E8603169DdbD7836e478b4624789': { symbol: 'LINK', decimals: 18 },
+  '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9': { symbol: 'WETH', decimals: 18 },
+  '0x0000000000000000000000000000000000000000': { symbol: 'SepoliaETH', decimals: 18 },
+};
+
+interface ActivityLogEntry {
+  id: string;
+  action_type: string;
+  status: string;
+  created_at: string;
+  result: Record<string, any> | null;
+  params: Record<string, any>;
+}
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +70,7 @@ export function PrivacyVaultSection() {
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
 
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
@@ -131,6 +148,24 @@ export function PrivacyVaultSection() {
     }
   }, [user, invokePrivacy]);
 
+  const fetchActivityLog = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('agent_actions_log')
+        .select('id, action_type, status, created_at, result, params')
+        .eq('user_id', user.id)
+        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'deposit', 'private-transfer'])
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (!error && data) {
+        setActivityLog(data as unknown as ActivityLogEntry[]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch activity log:', err);
+    }
+  }, [user]);
+
   const fetchBalances = useCallback(async () => {
     if (!user) return;
     try {
@@ -146,14 +181,15 @@ export function PrivacyVaultSection() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshBalances = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
+    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
     setIsRefreshing(false);
   };
 
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances, checkOnboardStatus]);
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog]);
+  
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -322,6 +358,9 @@ export function PrivacyVaultSection() {
                         On-chain: {tok.amount.toFixed(6)} {tok.symbol}
                       </p>
                     ))}
+                    <p className="text-[10px] text-muted-foreground mt-0.5 italic">
+                      These are tokens held directly on this address, not inside the Privacy Vault.
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
                     <Button
@@ -374,12 +413,19 @@ export function PrivacyVaultSection() {
               </div>
             ) : balances.length > 0 ? (
               <div className="space-y-2">
-                {balances.map((b, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border">
-                    <span className="text-sm text-muted-foreground">{b.token}</span>
-                    <span className="text-sm font-semibold">{b.amount}</span>
-                  </div>
-                ))}
+                {balances.map((b, i) => {
+                  const tokenKey = Object.keys(TOKEN_DECIMALS).find(k => k.toLowerCase() === b.token.toLowerCase());
+                  const tokenInfo = tokenKey ? TOKEN_DECIMALS[tokenKey] : null;
+                  const symbol = tokenInfo?.symbol ?? `${b.token.slice(0, 6)}…${b.token.slice(-4)}`;
+                  const decimals = tokenInfo?.decimals ?? 18;
+                  const formatted = (Number(b.amount) / Math.pow(10, decimals)).toFixed(6);
+                  return (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border">
+                      <span className="text-sm text-muted-foreground">{symbol}</span>
+                      <span className="text-sm font-semibold">{formatted} {symbol}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
@@ -583,6 +629,71 @@ export function PrivacyVaultSection() {
                   </Button>
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Activity Log */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Activity Log
+            </CardTitle>
+            <CardDescription>Recent privacy vault transactions with on-chain links</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {activityLog.length > 0 ? (
+              <div className="space-y-2">
+                {activityLog.map((entry) => {
+                  const result = entry.result as Record<string, any> | null;
+                  const txHashes: { label: string; hash: string }[] = [];
+                  if (result?.wrap_tx) txHashes.push({ label: 'Wrap', hash: result.wrap_tx });
+                  if (result?.approve_tx) txHashes.push({ label: 'Approve', hash: result.approve_tx });
+                  if (result?.deposit_tx) txHashes.push({ label: 'Deposit', hash: result.deposit_tx });
+                  if (result?.transfer_tx) txHashes.push({ label: 'Transfer', hash: result.transfer_tx });
+                  return (
+                    <div key={entry.id} className="p-3 rounded-lg border border-border space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {entry.action_type.replace('privacy-vault-', '').replace('-', ' ')}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${entry.status === 'success' ? 'text-emerald-400 border-emerald-600/30' : entry.status === 'error' ? 'text-destructive border-destructive/30' : 'text-muted-foreground'}`}
+                          >
+                            {entry.status}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(entry.created_at).toLocaleDateString()} {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {txHashes.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {txHashes.map((tx) => (
+                            <a
+                              key={tx.hash}
+                              href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              {tx.label}: {tx.hash.slice(0, 8)}…{tx.hash.slice(-6)}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No privacy vault activity yet.</p>
             )}
           </CardContent>
         </Card>
