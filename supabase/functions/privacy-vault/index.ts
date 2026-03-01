@@ -25,6 +25,16 @@ const EIP712_DOMAIN = {
 };
 
 const PRIVACY_VAULT_API = "https://convergence2026-token-api.cldev.cloud";
+const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+const VAULT_CONTRACT = EIP712_DOMAIN.verifyingContract;
+const CHAIN_ID = BigInt(EIP712_DOMAIN.chainId);
+
+const TOKEN_DECIMALS: Record<string, number> = {
+  "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
+  "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
+  "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": 18, // WETH
+  "0x0000000000000000000000000000000000000000": 18, // ETH
+};
 
 // --- Utility functions ---
 
@@ -88,7 +98,7 @@ async function signEip712(structHash: string, privateKeyHex: string): Promise<st
   return "0x" + r + s + v;
 }
 
-// --- EIP-712 Struct Hashing (matching official API docs) ---
+// --- EIP-712 Struct Hashing ---
 
 function hashRetrieveBalances(account: string, timestamp: bigint): string {
   const TYPE = "Retrieve Balances(address account,uint256 timestamp)";
@@ -106,7 +116,6 @@ function hashListTransactions(account: string, timestamp: bigint, cursor: string
 function hashPrivateTransfer(sender: string, recipient: string, token: string, amount: bigint, flags: string[], timestamp: bigint): string {
   const TYPE = "Private Token Transfer(address sender,address recipient,address token,uint256 amount,string[] flags,uint256 timestamp)";
   const tHash = typeHash(TYPE);
-  // Hash the flags array: keccak256 of concatenated keccak256 of each flag
   let flagsInnerHash: string;
   if (flags.length === 0) {
     flagsInnerHash = bytesToHex(keccak_256(new Uint8Array(0)));
@@ -115,20 +124,9 @@ function hashPrivateTransfer(sender: string, recipient: string, token: string, a
     flagsInnerHash = keccak256Hex(flagHashes);
   }
   return keccak256Hex(
-    tHash.slice(2) +
-    padTo32(sender) +
-    padTo32(recipient) +
-    padTo32(token) +
-    encodeUint256(amount) +
-    flagsInnerHash.slice(2) +
-    encodeUint256(timestamp)
+    tHash.slice(2) + padTo32(sender) + padTo32(recipient) + padTo32(token) +
+    encodeUint256(amount) + flagsInnerHash.slice(2) + encodeUint256(timestamp)
   );
-}
-
-function hashDeposit(account: string, token: string, amount: bigint, timestamp: bigint): string {
-  const TYPE = "Deposit Tokens(address account,address token,uint256 amount,uint256 timestamp)";
-  const tHash = typeHash(TYPE);
-  return keccak256Hex(tHash.slice(2) + padTo32(account) + padTo32(token) + encodeUint256(amount) + encodeUint256(timestamp));
 }
 
 function hashWithdraw(account: string, token: string, amount: bigint, timestamp: bigint): string {
@@ -141,6 +139,140 @@ function hashGenerateShieldedAddress(account: string, timestamp: bigint): string
   const TYPE = "Generate Shielded Address(address account,uint256 timestamp)";
   const tHash = typeHash(TYPE);
   return keccak256Hex(tHash.slice(2) + padTo32(account) + encodeUint256(timestamp));
+}
+
+// --- RLP Encoding for Raw Ethereum Transactions ---
+
+function rlpEncodeLength(len: number, offset: number): Uint8Array {
+  if (len < 56) {
+    return new Uint8Array([len + offset]);
+  }
+  const hexLen = len.toString(16);
+  const lenBytes = hexToBytes(hexLen.length % 2 ? "0" + hexLen : hexLen);
+  return new Uint8Array([offset + 55 + lenBytes.length, ...lenBytes]);
+}
+
+function rlpEncodeItem(data: Uint8Array): Uint8Array {
+  if (data.length === 1 && data[0] < 0x80) {
+    return data;
+  }
+  const prefix = rlpEncodeLength(data.length, 0x80);
+  const result = new Uint8Array(prefix.length + data.length);
+  result.set(prefix);
+  result.set(data, prefix.length);
+  return result;
+}
+
+function rlpEncodeList(items: Uint8Array[]): Uint8Array {
+  const encoded = items.map(rlpEncodeItem);
+  let totalLen = 0;
+  encoded.forEach(e => totalLen += e.length);
+  const prefix = rlpEncodeLength(totalLen, 0xc0);
+  const result = new Uint8Array(prefix.length + totalLen);
+  result.set(prefix);
+  let offset = prefix.length;
+  encoded.forEach(e => { result.set(e, offset); offset += e.length; });
+  return result;
+}
+
+function bigIntToBytes(val: bigint): Uint8Array {
+  if (val === 0n) return new Uint8Array(0);
+  let hex = val.toString(16);
+  if (hex.length % 2) hex = "0" + hex;
+  return hexToBytes(hex);
+}
+
+// --- Raw Transaction Signing (Legacy Type 0, EIP-155) ---
+
+async function getNonce(address: string): Promise<bigint> {
+  const resp = await fetch(SEPOLIA_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionCount", params: [address, "pending"], id: 1 }),
+  });
+  const data = await resp.json();
+  return BigInt(data.result || "0x0");
+}
+
+async function getGasPrice(): Promise<bigint> {
+  const resp = await fetch(SEPOLIA_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_gasPrice", params: [], id: 1 }),
+  });
+  const data = await resp.json();
+  return BigInt(data.result || "0x0");
+}
+
+function signRawTransaction(
+  nonce: bigint, gasPrice: bigint, gasLimit: bigint,
+  to: string, value: bigint, data: string,
+  privateKeyHex: string
+): string {
+  const toBytes = hexToBytes(to);
+  const dataBytes = data === "0x" ? new Uint8Array(0) : hexToBytes(data);
+
+  // EIP-155 signing: hash [nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]
+  const signingFields = [
+    bigIntToBytes(nonce),
+    bigIntToBytes(gasPrice),
+    bigIntToBytes(gasLimit),
+    toBytes,
+    bigIntToBytes(value),
+    dataBytes,
+    bigIntToBytes(CHAIN_ID),
+    new Uint8Array(0), // 0
+    new Uint8Array(0), // 0
+  ];
+
+  const rlpEncoded = rlpEncodeList(signingFields);
+  const txHash = keccak_256(rlpEncoded);
+  const sig = secp256k1.sign(txHash, hexToBytes(privateKeyHex));
+  const r = sig.r;
+  const s = sig.s;
+  const v = CHAIN_ID * 2n + 35n + BigInt(sig.recovery!);
+
+  // Build signed tx: [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
+  const signedFields = [
+    bigIntToBytes(nonce),
+    bigIntToBytes(gasPrice),
+    bigIntToBytes(gasLimit),
+    toBytes,
+    bigIntToBytes(value),
+    dataBytes,
+    bigIntToBytes(v),
+    bigIntToBytes(r),
+    bigIntToBytes(s),
+  ];
+
+  return bytesToHex(rlpEncodeList(signedFields));
+}
+
+async function sendRawTransaction(signedTx: string): Promise<string> {
+  const resp = await fetch(SEPOLIA_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_sendRawTransaction", params: [signedTx], id: 1 }),
+  });
+  const data = await resp.json();
+  if (data.error) {
+    throw new Error(`eth_sendRawTransaction failed: ${JSON.stringify(data.error)}`);
+  }
+  return data.result as string;
+}
+
+async function waitForReceipt(txHash: string, maxAttempts = 30): Promise<Record<string, unknown>> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const resp = await fetch(SEPOLIA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionReceipt", params: [txHash], id: 1 }),
+    });
+    const data = await resp.json();
+    if (data.result) return data.result;
+  }
+  throw new Error(`Transaction ${txHash} not mined after ${maxAttempts * 2}s`);
 }
 
 // --- Helper to make API calls ---
@@ -218,13 +350,6 @@ serve(async (req) => {
         const { recipient, amount, token } = params;
         if (!recipient || !amount || !token) throw new Error("recipient, amount, and token are required");
 
-        // Convert human-readable amount to raw token units (BigInt-safe)
-        const TOKEN_DECIMALS: Record<string, number> = {
-          "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
-          "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
-          "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": 18, // WETH
-          "0x0000000000000000000000000000000000000000": 18, // ETH
-        };
         const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
         const amountNum = Number(amount);
         const amountBigInt = BigInt(Math.round(amountNum * (10 ** decimals)));
@@ -281,19 +406,85 @@ serve(async (req) => {
       }
 
       case "deposit": {
-        // Deposits into the Convergence Privacy Vault are done on-chain,
-        // not via the API. Return the contract address and instructions.
-        const privacyContract = EIP712_DOMAIN.verifyingContract;
-        
+        // Automated on-chain deposit: approve + deposit to the Vault contract
+        const { amount, token } = params;
+        if (!amount || !token) throw new Error("amount and token are required");
+        if ((token as string).toLowerCase() === "0x0000000000000000000000000000000000000000") {
+          throw new Error("Native ETH deposits are not supported. Use an ERC-20 token.");
+        }
+
+        const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
+        const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+
+        console.log(`[PrivacyVault] On-chain deposit: token=${token}, amount=${amountBigInt}, account=${accountAddr}`);
+
+        // Get nonce and gas price
+        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        // Use 1.2x gas price buffer for reliability
+        const bufferedGasPrice = gasPrice * 12n / 10n;
+
+        // Step 1: approve(vault, amount)
+        const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
+        const approveTx = signRawTransaction(nonce, bufferedGasPrice, 100000n, token as string, 0n, approveData, privateKeyHex);
+        const approveTxHash = await sendRawTransaction(approveTx);
+        console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
+
+        // Wait for approve to be mined
+        const approveReceipt = await waitForReceipt(approveTxHash);
+        const approveStatus = approveReceipt.status as string;
+        if (approveStatus !== "0x1") {
+          throw new Error(`Approve transaction reverted: ${approveTxHash}`);
+        }
+        console.log(`[PrivacyVault] Approve tx mined successfully`);
+
+        // Step 2: deposit(token, amount) on the Vault contract
+        const depositData = "0x47e7ef24" + padTo32(token as string) + encodeUint256(amountBigInt);
+        const depositNonce = nonce + 1n;
+        const depositTx = signRawTransaction(depositNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, 0n, depositData, privateKeyHex);
+        const depositTxHash = await sendRawTransaction(depositTx);
+        console.log(`[PrivacyVault] Deposit tx sent: ${depositTxHash}`);
+
+        // Wait for deposit to be mined
+        const depositReceipt = await waitForReceipt(depositTxHash);
+        const depositStatus = depositReceipt.status as string;
+        if (depositStatus !== "0x1") {
+          throw new Error(`Deposit transaction reverted: ${depositTxHash}`);
+        }
+        console.log(`[PrivacyVault] Deposit tx mined successfully`);
+
+        // Log the action
+        await serviceClient.from("agent_actions_log").insert({
+          user_id: userId, action_type: "privacy-deposit",
+          params: { amount, token, network: "ethereum-sepolia", approve_tx: approveTxHash, deposit_tx: depositTxHash },
+          status: "executed",
+          result: { approve_tx: approveTxHash, deposit_tx: depositTxHash },
+        });
+
         return new Response(JSON.stringify({
           success: true,
           method: "on-chain",
-          contract: privacyContract,
+          approve_tx: approveTxHash,
+          deposit_tx: depositTxHash,
           network: "ethereum-sepolia",
-          chain_id: EIP712_DOMAIN.chainId,
-          instructions: "To deposit tokens into the Privacy Vault, send an on-chain transaction to the privacy contract. For ERC-20 tokens, first approve the contract to spend your tokens, then call the deposit function on the contract.",
-          account,
+          message: "Deposit completed on-chain. The indexer may take ~30 seconds to credit your privacy vault balance.",
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "onboard-status": {
+        // Check if the account is onboarded by querying the /balances API
+        try {
+          const structHash = hashRetrieveBalances(account, timestamp);
+          const auth = await signEip712(structHash, privateKeyHex);
+          await callPrivacyAPI("/balances", { account, timestamp: Number(timestamp), auth });
+          return new Response(JSON.stringify({ success: true, onboarded: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "";
+          const notOnboarded = msg.includes("404") || msg.includes("account not found") || msg.includes("not found");
+          return new Response(JSON.stringify({ success: true, onboarded: !notOnboarded }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
 
       case "withdraw": {
@@ -331,22 +522,17 @@ serve(async (req) => {
         const { address } = params;
         if (!address) throw new Error("address is required");
 
-        const rpcResp = await fetch("https://ethereum-sepolia-rpc.publicnode.com", {
+        const rpcResp = await fetch(SEPOLIA_RPC, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "eth_getBalance",
-            params: [address, "latest"],
-            id: 1,
+            jsonrpc: "2.0", method: "eth_getBalance", params: [address, "latest"], id: 1,
           }),
         });
         const rpcData = await rpcResp.json();
         const weiHex = rpcData.result || "0x0";
         const wei = BigInt(weiHex);
         const ethBalance = Number(wei) / 1e18;
-
-        console.log(`[PrivacyVault] On-chain balance for ${address}: ${ethBalance} ETH (${weiHex})`);
 
         return new Response(JSON.stringify({ success: true, address, balance_eth: ethBalance, balance_wei: wei.toString() }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -360,22 +546,17 @@ serve(async (req) => {
         const addrNoPre = (address as string).startsWith("0x") ? (address as string).slice(2) : (address as string);
         const callData = "0x70a08231" + addrNoPre.toLowerCase().padStart(64, "0");
 
-        const rpcResp = await fetch("https://ethereum-sepolia-rpc.publicnode.com", {
+        const rpcResp = await fetch(SEPOLIA_RPC, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "eth_call",
-            params: [{ to: token, data: callData }, "latest"],
-            id: 1,
+            jsonrpc: "2.0", method: "eth_call", params: [{ to: token, data: callData }, "latest"], id: 1,
           }),
         });
         const rpcData = await rpcResp.json();
         const rawHex = rpcData.result || "0x0";
         const rawBig = BigInt(rawHex);
         const balance = Number(rawBig) / Math.pow(10, decimals);
-
-        console.log(`[PrivacyVault] ERC-20 balance for ${address} token ${token}: ${balance} (raw: ${rawBig})`);
 
         return new Response(JSON.stringify({ success: true, address, token, balance, balance_raw: rawBig.toString() }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
