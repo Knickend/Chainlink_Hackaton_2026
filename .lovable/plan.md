@@ -1,27 +1,18 @@
 
+## Fix: Privacy Vault Transaction ID Display
 
-## Add Transaction Hash Links to Activity Log
+### Problem
+The `transaction_id` returned by Privacy Vault operations is an internal UUID (e.g., `019ca6f8-e1a7-771e-8521-790bc77429da`), not a blockchain transaction hash. The current code treats it the same as `tx_hash` fields and generates a broken Etherscan link.
 
-### What Changes
+### Solution
+Separate `transaction_id` from the blockchain hash fields. Display it as a non-clickable reference label instead of linking to a block explorer.
 
-**File: `src/components/settings/AgentSection.tsx`** (lines 322-346)
+### Technical Changes
 
-Update the Activity Log card to extract and display transaction hash links from each log entry's `result` field.
+**File: `src/components/settings/AgentActivityLog.tsx`**
 
-### Details
+1. Remove `transaction_id` from the `hashFields` array (revert to the 5 original fields only).
+2. After rendering blockchain tx links, check if `result.transaction_id` exists separately.
+3. Render it as a static, non-clickable label with the truncated ID (e.g., "Transaction Id: 019ca6...29da") styled consistently but without an anchor tag or external link icon.
 
-The `log.result` object may contain various tx hash fields depending on the action type:
-- `tx_hash` -- for sends, trades, fund operations
-- `wrap_tx`, `approve_tx`, `deposit_tx` -- for privacy vault deposits
-- `transfer_tx` -- for private transfers
-
-For each log entry, extract all tx hashes found in `result` and render them as clickable Etherscan links below the action description. Use the `ExternalLink` icon from lucide-react.
-
-The links will point to:
-- Base transactions: `https://basescan.org/tx/{hash}` for agent wallet actions (send, trade, fund)
-- Sepolia transactions: `https://sepolia.etherscan.io/tx/{hash}` for privacy vault actions
-
-To distinguish, check if `action_type` contains "privacy" -- if so, use Sepolia explorer; otherwise use Base explorer.
-
-Each hash link will show a truncated hash (first 6 + last 4 chars) with an external link icon, rendered in a row below the existing params line.
-
+This keeps real blockchain hashes clickable while correctly treating the Privacy Vault's async reference ID as informational-only.
