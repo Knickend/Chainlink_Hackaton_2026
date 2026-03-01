@@ -48,11 +48,12 @@ export function AgentActivityLog({ logs }: AgentActivityLogProps) {
                   </p>
                   {log.result && (() => {
                     const result = log.result as Record<string, unknown>;
-                    const hashFields = ['tx_hash', 'wrap_tx', 'approve_tx', 'deposit_tx', 'transfer_tx', 'transaction_id'];
+                    const hashFields = ['tx_hash', 'wrap_tx', 'approve_tx', 'deposit_tx', 'transfer_tx'];
                     const hashes = hashFields
                       .filter(f => result[f] && typeof result[f] === 'string')
                       .map(f => ({ label: f.replace(/_/g, ' '), hash: result[f] as string }));
-                    if (hashes.length === 0) return null;
+                    const txId = typeof result.transaction_id === 'string' ? result.transaction_id : null;
+                    if (hashes.length === 0 && !txId) return null;
                     const explorerBase = log.action_type.includes('privacy')
                       ? 'https://sepolia.etherscan.io/tx/'
                       : 'https://basescan.org/tx/';
@@ -71,6 +72,12 @@ export function AgentActivityLog({ logs }: AgentActivityLogProps) {
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         ))}
+                        {txId && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <span>Ref:</span>
+                            <span className="font-mono">{txId.slice(0, 8)}…{txId.slice(-4)}</span>
+                          </span>
+                        )}
                       </div>
                     );
                   })()}
