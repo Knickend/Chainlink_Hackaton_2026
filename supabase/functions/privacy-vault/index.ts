@@ -406,54 +406,53 @@ serve(async (req) => {
       }
 
       case "deposit": {
-        // Automated on-chain deposit: approve + deposit to the Vault contract
+        // Automated on-chain deposit: approve + deposit (ERC-20) or direct deposit (native ETH)
         const { amount, token } = params;
         if (!amount || !token) throw new Error("amount and token are required");
-        if ((token as string).toLowerCase() === "0x0000000000000000000000000000000000000000") {
-          throw new Error("Native ETH deposits are not supported. Use an ERC-20 token.");
-        }
 
+        const isNativeETH = (token as string).toLowerCase() === "0x0000000000000000000000000000000000000000";
         const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
         const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
         const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
 
-        console.log(`[PrivacyVault] On-chain deposit: token=${token}, amount=${amountBigInt}, account=${accountAddr}`);
+        console.log(`[PrivacyVault] On-chain deposit: token=${token}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
 
         // Get nonce and gas price
         const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
-        // Use 1.2x gas price buffer for reliability
         const bufferedGasPrice = gasPrice * 12n / 10n;
 
-        // Step 1: approve(vault, amount)
-        const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
-        const approveTx = signRawTransaction(nonce, bufferedGasPrice, 100000n, token as string, 0n, approveData, privateKeyHex);
-        const approveTxHash = await sendRawTransaction(approveTx);
-        console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
+        let approveTxHash: string | undefined;
+        let depositTxHash: string;
+        let depositNonce = nonce;
 
-        // Wait for approve to be mined
-        const approveReceipt = await waitForReceipt(approveTxHash);
-        const approveStatus = approveReceipt.status as string;
-        if (approveStatus !== "0x1") {
-          throw new Error(`Approve transaction reverted: ${approveTxHash}`);
+        if (!isNativeETH) {
+          // ERC-20 flow: approve then deposit
+          const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
+          const approveTx = signRawTransaction(nonce, bufferedGasPrice, 100000n, token as string, 0n, approveData, privateKeyHex);
+          approveTxHash = await sendRawTransaction(approveTx);
+          console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
+
+          const approveReceipt = await waitForReceipt(approveTxHash);
+          if ((approveReceipt.status as string) !== "0x1") {
+            throw new Error(`Approve transaction reverted: ${approveTxHash}`);
+          }
+          console.log(`[PrivacyVault] Approve tx mined successfully`);
+          depositNonce = nonce + 1n;
         }
-        console.log(`[PrivacyVault] Approve tx mined successfully`);
 
-        // Step 2: deposit(token, amount) on the Vault contract
+        // deposit(token, amount) — for native ETH, send value; for ERC-20, value=0
         const depositData = "0x47e7ef24" + padTo32(token as string) + encodeUint256(amountBigInt);
-        const depositNonce = nonce + 1n;
-        const depositTx = signRawTransaction(depositNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, 0n, depositData, privateKeyHex);
-        const depositTxHash = await sendRawTransaction(depositTx);
+        const depositValue = isNativeETH ? amountBigInt : 0n;
+        const depositTx = signRawTransaction(depositNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, depositValue, depositData, privateKeyHex);
+        depositTxHash = await sendRawTransaction(depositTx);
         console.log(`[PrivacyVault] Deposit tx sent: ${depositTxHash}`);
 
-        // Wait for deposit to be mined
         const depositReceipt = await waitForReceipt(depositTxHash);
-        const depositStatus = depositReceipt.status as string;
-        if (depositStatus !== "0x1") {
+        if ((depositReceipt.status as string) !== "0x1") {
           throw new Error(`Deposit transaction reverted: ${depositTxHash}`);
         }
         console.log(`[PrivacyVault] Deposit tx mined successfully`);
 
-        // Log the action
         await serviceClient.from("agent_actions_log").insert({
           user_id: userId, action_type: "privacy-deposit",
           params: { amount, token, network: "ethereum-sepolia", approve_tx: approveTxHash, deposit_tx: depositTxHash },
@@ -464,7 +463,7 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true,
           method: "on-chain",
-          approve_tx: approveTxHash,
+          ...(approveTxHash ? { approve_tx: approveTxHash } : {}),
           deposit_tx: depositTxHash,
           network: "ethereum-sepolia",
           message: "Deposit completed on-chain. The indexer may take ~30 seconds to credit your privacy vault balance.",

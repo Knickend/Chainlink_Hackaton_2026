@@ -12,7 +12,7 @@ const COMMON_TOKENS = [
   { label: 'USDC', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
   { label: 'LINK', address: '0x779877A7B0D9E8603169DdbD7836e478b4624789' },
   { label: 'WETH', address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9' },
-  { label: 'ETH (native)', address: '0x0000000000000000000000000000000000000000' },
+  { label: 'SepoliaETH', address: '0x0000000000000000000000000000000000000000' },
 ] as const;
 
 const ERC20_TOKENS_TO_CHECK = [
@@ -53,7 +53,7 @@ export function PrivacyVaultSection() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
-  const [depositResult, setDepositResult] = useState<{ approve_tx: string; deposit_tx: string } | null>(null);
+  const [depositResult, setDepositResult] = useState<{ approve_tx?: string; deposit_tx: string } | null>(null);
 
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
@@ -199,7 +199,7 @@ export function PrivacyVaultSection() {
         amount: Number(depositAmount),
         token: depositToken,
       });
-      if (result.approve_tx && result.deposit_tx) {
+      if (result.deposit_tx) {
         setDepositResult({ approve_tx: result.approve_tx, deposit_tx: result.deposit_tx });
       }
       toast({ title: 'Deposit Completed', description: 'On-chain deposit executed. Indexer may take ~30s to credit your balance.' });
@@ -415,7 +415,7 @@ export function PrivacyVaultSection() {
                       <SelectValue placeholder="Select token" />
                     </SelectTrigger>
                     <SelectContent>
-                      {COMMON_TOKENS.filter(t => t.address !== '0x0000000000000000000000000000000000000000').map((t) => (
+                      {COMMON_TOKENS.map((t) => (
                         <SelectItem key={t.address} value={t.address}>
                           {t.label}
                         </SelectItem>
@@ -434,7 +434,7 @@ export function PrivacyVaultSection() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  ℹ️ This will automatically execute an on-chain <strong>approve</strong> + <strong>deposit</strong> transaction on Sepolia. Ensure the vault account holds enough tokens and ETH for gas.
+                  ℹ️ This will execute an on-chain deposit on Sepolia. For ERC-20 tokens, an <strong>approve</strong> step runs first. For SepoliaETH, the deposit sends native ETH directly. Ensure the vault account holds enough balance and ETH for gas.
                 </p>
                 {isDepositing && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
@@ -446,12 +446,14 @@ export function PrivacyVaultSection() {
                   <div className="space-y-2 p-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10">
                     <p className="text-xs font-semibold text-emerald-400">✅ Deposit completed on-chain</p>
                     <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        Approve TX:{' '}
-                        <a href={`https://sepolia.etherscan.io/tx/${depositResult.approve_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
-                          {depositResult.approve_tx.slice(0, 10)}…{depositResult.approve_tx.slice(-8)}
-                        </a>
-                      </p>
+                      {depositResult.approve_tx && (
+                        <p className="text-xs text-muted-foreground">
+                          Approve TX:{' '}
+                          <a href={`https://sepolia.etherscan.io/tx/${depositResult.approve_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                            {depositResult.approve_tx.slice(0, 10)}…{depositResult.approve_tx.slice(-8)}
+                          </a>
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Deposit TX:{' '}
                         <a href={`https://sepolia.etherscan.io/tx/${depositResult.deposit_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
