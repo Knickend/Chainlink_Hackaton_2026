@@ -406,44 +406,60 @@ serve(async (req) => {
       }
 
       case "deposit": {
-        // Automated on-chain deposit: approve + deposit (ERC-20) or direct deposit (native ETH)
+        // Automated on-chain deposit: for native ETH, wrap to WETH first, then approve+deposit WETH
         const { amount, token } = params;
         if (!amount || !token) throw new Error("amount and token are required");
 
         const isNativeETH = (token as string).toLowerCase() === "0x0000000000000000000000000000000000000000";
-        const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
+        const WETH_ADDRESS = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
+        // For native ETH deposits, we wrap to WETH then deposit WETH
+        const effectiveToken = isNativeETH ? WETH_ADDRESS : (token as string);
+        const decimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
         const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
         const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
 
-        console.log(`[PrivacyVault] On-chain deposit: token=${token}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
+        console.log(`[PrivacyVault] On-chain deposit: token=${token}, effectiveToken=${effectiveToken}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
 
         // Get nonce and gas price
         const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
         const bufferedGasPrice = gasPrice * 12n / 10n;
 
+        let currentNonce = nonce;
+        let wrapTxHash: string | undefined;
         let approveTxHash: string | undefined;
         let depositTxHash: string;
-        let depositNonce = nonce;
 
-        if (!isNativeETH) {
-          // ERC-20 flow: approve then deposit
-          const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
-          const approveTx = signRawTransaction(nonce, bufferedGasPrice, 100000n, token as string, 0n, approveData, privateKeyHex);
-          approveTxHash = await sendRawTransaction(approveTx);
-          console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
+        if (isNativeETH) {
+          // Step 1: Wrap ETH → WETH by calling WETH.deposit() (selector 0xd0e30db0) with value
+          const wrapData = "0xd0e30db0";
+          const wrapTx = signRawTransaction(currentNonce, bufferedGasPrice, 60000n, WETH_ADDRESS, amountBigInt, wrapData, privateKeyHex);
+          wrapTxHash = await sendRawTransaction(wrapTx);
+          console.log(`[PrivacyVault] Wrap ETH→WETH tx sent: ${wrapTxHash}`);
 
-          const approveReceipt = await waitForReceipt(approveTxHash);
-          if ((approveReceipt.status as string) !== "0x1") {
-            throw new Error(`Approve transaction reverted: ${approveTxHash}`);
+          const wrapReceipt = await waitForReceipt(wrapTxHash);
+          if ((wrapReceipt.status as string) !== "0x1") {
+            throw new Error(`Wrap ETH→WETH transaction reverted: ${wrapTxHash}`);
           }
-          console.log(`[PrivacyVault] Approve tx mined successfully`);
-          depositNonce = nonce + 1n;
+          console.log(`[PrivacyVault] Wrap tx mined successfully`);
+          currentNonce += 1n;
         }
 
-        // deposit(token, amount) — for native ETH, send value; for ERC-20, value=0
-        const depositData = "0x47e7ef24" + padTo32(token as string) + encodeUint256(amountBigInt);
-        const depositValue = isNativeETH ? amountBigInt : 0n;
-        const depositTx = signRawTransaction(depositNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, depositValue, depositData, privateKeyHex);
+        // Step 2: Approve vault to spend the token
+        const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
+        const approveTx = signRawTransaction(currentNonce, bufferedGasPrice, 100000n, effectiveToken, 0n, approveData, privateKeyHex);
+        approveTxHash = await sendRawTransaction(approveTx);
+        console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
+
+        const approveReceipt = await waitForReceipt(approveTxHash);
+        if ((approveReceipt.status as string) !== "0x1") {
+          throw new Error(`Approve transaction reverted: ${approveTxHash}`);
+        }
+        console.log(`[PrivacyVault] Approve tx mined successfully`);
+        currentNonce += 1n;
+
+        // Step 3: deposit(token, amount) on the Vault contract
+        const depositData = "0x47e7ef24" + padTo32(effectiveToken) + encodeUint256(amountBigInt);
+        const depositTx = signRawTransaction(currentNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, 0n, depositData, privateKeyHex);
         depositTxHash = await sendRawTransaction(depositTx);
         console.log(`[PrivacyVault] Deposit tx sent: ${depositTxHash}`);
 
@@ -455,18 +471,21 @@ serve(async (req) => {
 
         await serviceClient.from("agent_actions_log").insert({
           user_id: userId, action_type: "privacy-deposit",
-          params: { amount, token, network: "ethereum-sepolia", approve_tx: approveTxHash, deposit_tx: depositTxHash },
+          params: { amount, token: effectiveToken, network: "ethereum-sepolia", wrap_tx: wrapTxHash, approve_tx: approveTxHash, deposit_tx: depositTxHash },
           status: "executed",
-          result: { approve_tx: approveTxHash, deposit_tx: depositTxHash },
+          result: { wrap_tx: wrapTxHash, approve_tx: approveTxHash, deposit_tx: depositTxHash },
         });
 
         return new Response(JSON.stringify({
           success: true,
           method: "on-chain",
-          ...(approveTxHash ? { approve_tx: approveTxHash } : {}),
+          ...(wrapTxHash ? { wrap_tx: wrapTxHash } : {}),
+          approve_tx: approveTxHash,
           deposit_tx: depositTxHash,
           network: "ethereum-sepolia",
-          message: "Deposit completed on-chain. The indexer may take ~30 seconds to credit your privacy vault balance.",
+          message: isNativeETH
+            ? "SepoliaETH wrapped to WETH and deposited on-chain. The indexer may take ~30 seconds to credit your privacy vault balance."
+            : "Deposit completed on-chain. The indexer may take ~30 seconds to credit your privacy vault balance.",
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 

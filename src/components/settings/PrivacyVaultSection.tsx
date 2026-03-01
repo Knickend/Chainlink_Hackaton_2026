@@ -53,7 +53,7 @@ export function PrivacyVaultSection() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
-  const [depositResult, setDepositResult] = useState<{ approve_tx?: string; deposit_tx: string } | null>(null);
+  const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
 
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
@@ -200,7 +200,7 @@ export function PrivacyVaultSection() {
         token: depositToken,
       });
       if (result.deposit_tx) {
-        setDepositResult({ approve_tx: result.approve_tx, deposit_tx: result.deposit_tx });
+        setDepositResult({ wrap_tx: result.wrap_tx, approve_tx: result.approve_tx, deposit_tx: result.deposit_tx });
       }
       toast({ title: 'Deposit Completed', description: 'On-chain deposit executed. Indexer may take ~30s to credit your balance.' });
       setDepositAmount('');
@@ -446,6 +446,14 @@ export function PrivacyVaultSection() {
                   <div className="space-y-2 p-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10">
                     <p className="text-xs font-semibold text-emerald-400">✅ Deposit completed on-chain</p>
                     <div className="space-y-1">
+                      {depositResult.wrap_tx && (
+                        <p className="text-xs text-muted-foreground">
+                          Wrap TX:{' '}
+                          <a href={`https://sepolia.etherscan.io/tx/${depositResult.wrap_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                            {depositResult.wrap_tx.slice(0, 10)}…{depositResult.wrap_tx.slice(-8)}
+                          </a>
+                        </p>
+                      )}
                       {depositResult.approve_tx && (
                         <p className="text-xs text-muted-foreground">
                           Approve TX:{' '}
