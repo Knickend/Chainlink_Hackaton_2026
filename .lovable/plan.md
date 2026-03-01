@@ -1,58 +1,27 @@
 
 
-## Automated On-Chain Deposit for Privacy Vault Onboarding
+## Add SepoliaETH to the Privacy Vault Deposit Dropdown
 
-### Problem
-The Privacy Vault's `deposit` action currently just returns instructions. The Convergence protocol requires an actual on-chain deposit transaction (approve + deposit) to onboard the account before private transfers work.
+### What Changes
 
-### What Will Change
+**1. UI - Token Dropdown (`src/components/settings/PrivacyVaultSection.tsx`)**
+- Remove the filter that excludes native ETH (`0x000...000`) from the deposit token dropdown
+- Rename the label from "ETH (native)" to "SepoliaETH" for clarity
 
-**1. Edge Function (`supabase/functions/privacy-vault/index.ts`)**
-
-Add raw Ethereum transaction utilities:
-- `rlpEncode()` -- RLP-encode transaction fields for signing/broadcasting
-- `signRawTransaction()` -- sign a legacy (Type 0) Ethereum transaction using EIP-155 replay protection (chainId 11155111)
-- `sendRawTransaction()` -- broadcast via `eth_sendRawTransaction` to Sepolia public RPC
-- `getNonce()` -- fetch account nonce via `eth_getTransactionCount`
-- `getGasPrice()` -- fetch gas price via `eth_gasPrice`
-
-Replace the `deposit` case with a two-step on-chain flow:
-- Step 1: Send `approve(vault_address, amount)` tx to the ERC-20 token contract (selector `0x095ea7b3`)
-- Wait for approval tx to be mined (poll `eth_getTransactionReceipt`)
-- Step 2: Send `deposit(token, amount)` tx to the Vault contract at `0xE588a6c73933BFD66Af9b4A07d48bcE59c0D2d13` (selector `0x47e7ef24`)
-- Return both transaction hashes
-- Log the action to `agent_actions_log`
-
-Add an `onboard-status` case:
-- Call the `/balances` API endpoint and check success vs error
-- Return `{ onboarded: true/false }` for the UI
-
-**2. UI (`src/components/settings/PrivacyVaultSection.tsx`)**
-
-Update the deposit card:
-- On submit, call the edge function's new `deposit` action (which now executes on-chain)
-- Display returned tx hashes with Etherscan links after success
-- Show a note that indexer detection may take ~30 seconds
-
-Add onboarding status indicator:
-- On mount, call `onboard-status` action
-- Show a green badge "Account Registered" or amber warning "Not Onboarded" in the Privacy Vault header card
-- When not onboarded, show a brief explanation directing users to deposit first
+**2. Edge Function - Native ETH Deposit (`supabase/functions/privacy-vault/index.ts`)**
+- Replace the error thrown for native ETH deposits with a working deposit flow
+- For SepoliaETH, skip the `approve` step (not needed for native ETH) and call `deposit` on the Vault contract with `msg.value` set to the deposit amount instead of using the ERC-20 `deposit(token, amount)` pattern
+- The Vault contract likely accepts native ETH via a payable `deposit()` or `depositETH()` function, or wraps it internally. We'll send native ETH value directly with the deposit call using `value = amountBigInt` and `token = 0x000...000`
 
 ### Technical Details
 
-RLP encoding handles legacy Ethereum transactions with EIP-155 signing:
-- Sign over `[nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]`
-- Recovery: `v = chainId * 2 + 35 + recovery`
+For native ETH deposits on the Vault contract:
+- No `approve` step needed (ETH is not an ERC-20)
+- The transaction sends ETH `value` directly: `signRawTransaction(nonce, gasPrice, 200000n, VAULT_CONTRACT, amountBigInt, depositData, privateKey)`
+- The deposit call data still uses selector `0x47e7ef24` with the null address as the token parameter
+- The response will return a single `deposit_tx` hash (no `approve_tx`)
 
-Gas limits: 100,000 for approve, 200,000 for deposit (conservative; Sepolia gas is free).
-
-Token decimals mapping reused from existing code (USDC=6, others=18).
-
-### Prerequisites
-The account derived from `PRIVACY_VAULT_PRIVATE_KEY` must hold:
-- Sepolia ETH for gas
-- The ERC-20 tokens being deposited
-
-The UI will show on-chain balances so users can verify availability before depositing.
+### Files Modified
+- `src/components/settings/PrivacyVaultSection.tsx` -- remove ETH filter from deposit dropdown, rename label to "SepoliaETH"
+- `supabase/functions/privacy-vault/index.ts` -- handle native ETH deposit flow (skip approve, send value)
 
