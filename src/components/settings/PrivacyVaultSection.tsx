@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,12 +53,16 @@ export function PrivacyVaultSection() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
+  const [depositResult, setDepositResult] = useState<{ approve_tx: string; deposit_tx: string } | null>(null);
+
+  // Onboarding status
+  const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
   // Transfer form
   const [fromAddress, setFromAddress] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
-  const [transferToken, setTransferToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'); // USDC on Eth Sepolia
+  const [transferToken, setTransferToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
 
   // Compute max available balance for selected token + from address
   const maxAmount = (() => {
@@ -81,24 +85,31 @@ export function PrivacyVaultSection() {
     return data;
   }, []);
 
+  const checkOnboardStatus = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await invokePrivacy('onboard-status');
+      setOnboardStatus(data.onboarded ? 'onboarded' : 'not-onboarded');
+    } catch {
+      setOnboardStatus('error');
+    }
+  }, [user, invokePrivacy]);
+
   const fetchAddresses = useCallback(async () => {
     if (!user) return;
     try {
       const data = await invokePrivacy('list-addresses');
       const addrs = data.addresses || [];
       setAddresses(addrs);
-      // Fetch on-chain ETH + ERC-20 balances for each address
       const ethMap: Record<string, number> = {};
       const tokenMap: Record<string, { symbol: string; amount: number }[]> = {};
       await Promise.all(
         addrs.map(async (a: ShieldedAddress) => {
           const addr = a.shielded_address;
-          // Native ETH
           try {
             const res = await invokePrivacy('onchain-balance', { address: addr });
             ethMap[addr] = res.balance_eth ?? 0;
           } catch { /* ignore */ }
-          // ERC-20 tokens
           const tokens: { symbol: string; amount: number }[] = [];
           await Promise.all(
             ERC20_TOKENS_TO_CHECK.map(async (tok) => {
@@ -124,7 +135,6 @@ export function PrivacyVaultSection() {
     if (!user) return;
     try {
       const data = await invokePrivacy('balances');
-      // Handle both unwrapped array and nested { balances: [] } format
       const raw = data.balances;
       const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.balances) ? raw.balances : [];
       setBalances(arr);
@@ -136,14 +146,14 @@ export function PrivacyVaultSection() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshBalances = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchBalances(), fetchAddresses()]);
+    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
     setIsRefreshing(false);
   };
 
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances]);
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -183,15 +193,19 @@ export function PrivacyVaultSection() {
   const handleDeposit = async () => {
     if (!depositAmount) return;
     setIsDepositing(true);
+    setDepositResult(null);
     try {
-      await invokePrivacy('deposit', {
+      const result = await invokePrivacy('deposit', {
         amount: Number(depositAmount),
         token: depositToken,
       });
-      toast({ title: 'Deposit Submitted', description: `Deposited ${depositAmount} tokens into the Privacy Vault protocol` });
+      if (result.approve_tx && result.deposit_tx) {
+        setDepositResult({ approve_tx: result.approve_tx, deposit_tx: result.deposit_tx });
+      }
+      toast({ title: 'Deposit Completed', description: 'On-chain deposit executed. Indexer may take ~30s to credit your balance.' });
       setDepositAmount('');
-      setShowDeposit(false);
-      await fetchBalances();
+      // Re-check onboard status after deposit
+      await Promise.all([fetchBalances(), checkOnboardStatus()]);
     } catch (err) {
       toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
@@ -216,13 +230,33 @@ export function PrivacyVaultSection() {
                 <Shield className="w-5 h-5 text-primary" />
                 ACE Privacy Vault
               </CardTitle>
-              <Badge variant="outline" className="text-xs">
-                Ethereum Sepolia
-              </Badge>
+              <div className="flex items-center gap-2">
+                {onboardStatus === 'loading' ? (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Checking…
+                  </Badge>
+                ) : onboardStatus === 'onboarded' ? (
+                  <Badge className="text-xs gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600/30 hover:bg-emerald-600/30">
+                    <CheckCircle2 className="w-3 h-3" /> Account Registered
+                  </Badge>
+                ) : onboardStatus === 'not-onboarded' ? (
+                  <Badge className="text-xs gap-1 bg-amber-600/20 text-amber-400 border-amber-600/30 hover:bg-amber-600/30">
+                    <AlertTriangle className="w-3 h-3" /> Not Onboarded
+                  </Badge>
+                ) : null}
+                <Badge variant="outline" className="text-xs">
+                  Ethereum Sepolia
+                </Badge>
+              </div>
             </div>
             <CardDescription>
               Privacy-preserving token operations via Chainlink ACE — shielded addresses &amp; private transfers on Ethereum Sepolia
             </CardDescription>
+            {onboardStatus === 'not-onboarded' && (
+              <p className="text-xs text-amber-400 mt-2">
+                ⚠️ Your account is not yet registered with the Convergence protocol. Deposit ERC-20 tokens below to onboard and enable private transfers.
+              </p>
+            )}
           </CardHeader>
         </Card>
       </motion.div>
@@ -400,14 +434,42 @@ export function PrivacyVaultSection() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  ℹ️ Depositing onboards your account with the Convergence protocol, enabling private transfers. Ensure you have approved the token for the protocol contract first.
+                  ℹ️ This will automatically execute an on-chain <strong>approve</strong> + <strong>deposit</strong> transaction on Sepolia. Ensure the vault account holds enough tokens and ETH for gas.
                 </p>
+                {isDepositing && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Signing &amp; broadcasting on-chain transactions… This may take up to 60 seconds.
+                  </div>
+                )}
+                {depositResult && (
+                  <div className="space-y-2 p-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10">
+                    <p className="text-xs font-semibold text-emerald-400">✅ Deposit completed on-chain</p>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        Approve TX:{' '}
+                        <a href={`https://sepolia.etherscan.io/tx/${depositResult.approve_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                          {depositResult.approve_tx.slice(0, 10)}…{depositResult.approve_tx.slice(-8)}
+                        </a>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Deposit TX:{' '}
+                        <a href={`https://sepolia.etherscan.io/tx/${depositResult.deposit_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                          {depositResult.deposit_tx.slice(0, 10)}…{depositResult.deposit_tx.slice(-8)}
+                        </a>
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      ℹ️ The Convergence indexer may take ~30 seconds to detect the deposit and credit your privacy vault balance.
+                    </p>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <Button onClick={handleDeposit} disabled={isDepositing || !depositAmount} size="sm">
                     {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
                     Deposit
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowDeposit(false)}>
+                  <Button variant="ghost" size="sm" onClick={() => { setShowDeposit(false); setDepositResult(null); }}>
                     Cancel
                   </Button>
                 </div>
