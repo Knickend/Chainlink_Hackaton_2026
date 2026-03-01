@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const COMMON_TOKENS = [
@@ -71,6 +72,7 @@ export function PrivacyVaultSection() {
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [howOpen, setHowOpen] = useState(false);
 
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
@@ -296,6 +298,66 @@ export function PrivacyVaultSection() {
           </CardHeader>
         </Card>
       </motion.div>
+
+      {/* How It Works */}
+      <Collapsible open={howOpen} onOpenChange={setHowOpen}>
+        <Card className="glass-card border-primary/20">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-primary" />
+                  <CardTitle className="text-base">How It Works</CardTitle>
+                  <Badge variant="outline" className="text-xs">3 steps</Badge>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${howOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-4 pt-0">
+              {/* Flow diagram */}
+              <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
+                {[
+                  { step: 1, icon: ArrowDownToLine, title: 'Deposit', desc: 'ERC-20 tokens from your account address' },
+                  { step: 2, icon: BookOpen, title: 'Vault Balance', desc: 'Protocol internal ledger (not on-chain)' },
+                  { step: 3, icon: SendHorizontal, title: 'Private Transfer', desc: 'Off-chain transfer to any recipient' },
+                ].map((item, i) => (
+                  <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
+                    <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/20 bg-primary/5 text-center w-full">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                        <item.icon className="w-4 h-4 text-primary" />
+                      </div>
+                      <Badge variant="secondary" className="text-[10px]">Step {item.step}</Badge>
+                      <span className="text-sm font-semibold">{item.title}</span>
+                      <span className="text-[11px] text-muted-foreground leading-tight">{item.desc}</span>
+                    </div>
+                    {i < 2 && (
+                      <ArrowRight className="w-4 h-4 text-primary shrink-0 rotate-90 sm:rotate-0 my-1 sm:my-0 sm:mx-2" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Key notes */}
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p className="flex items-start gap-2">
+                  <Shield className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                  <span>Shielded addresses are <strong className="text-foreground">receive-only</strong> — you cannot send from them</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <Wallet className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                  <span>Deposits move tokens from your <strong className="text-foreground">account address</strong> into the protocol's internal ledger</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <SendHorizontal className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                  <span>Private transfers happen off-chain via <strong className="text-foreground">EIP-712 signatures</strong> — no visible on-chain transaction</span>
+                </p>
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Generate Shielded Address */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
