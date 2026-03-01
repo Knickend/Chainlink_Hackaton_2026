@@ -1,18 +1,39 @@
 
-## Fix: Privacy Vault Transaction ID Display
 
-### Problem
-The `transaction_id` returned by Privacy Vault operations is an internal UUID (e.g., `019ca6f8-e1a7-771e-8521-790bc77429da`), not a blockchain transaction hash. The current code treats it the same as `tx_hash` fields and generates a broken Etherscan link.
+## Add "How It Works" Info Card to Privacy Vault
 
-### Solution
-Separate `transaction_id` from the blockchain hash fields. Display it as a non-clickable reference label instead of linking to a block explorer.
+### What
+Add a collapsible visual explainer card directly below the Privacy Vault header card, showing the three-step flow: **Deposit -> Vault Balance -> Private Transfer**.
+
+### Design
+A compact card with a horizontal flow diagram using icons and connecting arrows:
+
+```text
++------------------+       +------------------+       +------------------+
+|  1. Deposit      |  -->  |  2. Vault Balance |  -->  |  3. Private      |
+|  ERC-20 tokens   |       |  Protocol ledger  |       |     Transfer     |
+|  from account    |       |  (not on-chain)   |       |  to recipient    |
++------------------+       +------------------+       +------------------+
+```
+
+Below the flow, include 2-3 short clarifying notes:
+- "Shielded addresses are receive-only -- you cannot send from them"
+- "Deposits move tokens from your account address into the protocol's internal ledger"
+- "Private transfers happen off-chain via EIP-712 signatures -- no visible on-chain transaction"
+
+The card will use a `Collapsible` (like `CREArchitectureCard`) so it can be collapsed after reading.
 
 ### Technical Changes
 
-**File: `src/components/settings/AgentActivityLog.tsx`**
+**File: `src/components/settings/PrivacyVaultSection.tsx`**
 
-1. Remove `transaction_id` from the `hashFields` array (revert to the 5 original fields only).
-2. After rendering blockchain tx links, check if `result.transaction_id` exists separately.
-3. Render it as a static, non-clickable label with the truncated ID (e.g., "Transaction Id: 019ca6...29da") styled consistently but without an anchor tag or external link icon.
+1. Import `Collapsible`, `CollapsibleContent`, `CollapsibleTrigger` from radix, plus `ChevronDown`, `ArrowRight`, `Info` from lucide-react.
+2. Add a new state `const [howOpen, setHowOpen] = useState(false)`.
+3. Insert a new `Collapsible` card between the header card (line ~298) and the "Generate Shielded Address" card (line ~300).
+4. The card contains:
+   - A trigger header with an Info icon, "How It Works" title, and a chevron toggle
+   - Three step boxes in a horizontal row (stacking vertically on mobile) connected by arrow icons
+   - A list of key notes with muted styling
+   - Badge labels for each step (Deposit, Vault, Transfer)
 
-This keeps real blockchain hashes clickable while correctly treating the Privacy Vault's async reference ID as informational-only.
+No other files need changes.
