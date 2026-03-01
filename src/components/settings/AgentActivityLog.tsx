@@ -48,7 +48,7 @@ export function AgentActivityLog({ logs }: AgentActivityLogProps) {
                   </p>
                   {log.result && (() => {
                     const result = log.result as Record<string, unknown>;
-                    const hashFields = ['tx_hash', 'wrap_tx', 'approve_tx', 'deposit_tx', 'transfer_tx'];
+                    const hashFields = ['tx_hash', 'wrap_tx', 'approve_tx', 'deposit_tx', 'transfer_tx', 'transaction_id'];
                     const hashes = hashFields
                       .filter(f => result[f] && typeof result[f] === 'string')
                       .map(f => ({ label: f.replace(/_/g, ' '), hash: result[f] as string }));
