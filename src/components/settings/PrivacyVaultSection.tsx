@@ -294,11 +294,41 @@ export function PrivacyVaultSection() {
     }
   };
 
+  const [checkingEligibility, setCheckingEligibility] = useState<string | null>(null);
+
+  const handleCheckEligibility = async (tokenAddress: string) => {
+    setCheckingEligibility(tokenAddress);
+    try {
+      const data = await invokePrivacy('check-deposit-allowed', { token: tokenAddress, amount: 1 });
+      if (data.allowed) {
+        toast({ title: 'Deposit Allowed', description: `Your account is eligible to deposit this token.` });
+      } else {
+        toast({ title: 'Deposit Denied', description: data.reason || 'Your account may need to be whitelisted on the ACE policy engine.', variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({ title: 'Eligibility Check Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setCheckingEligibility(null);
+    }
+  };
+
   const handleDeposit = async () => {
     if (!depositAmount) return;
     setIsDepositing(true);
     setDepositResult(null);
     try {
+      // Pre-flight: check if deposit is allowed by policy engine
+      const preCheck = await invokePrivacy('check-deposit-allowed', { token: depositToken, amount: Number(depositAmount) });
+      if (!preCheck.allowed) {
+        toast({
+          title: 'Deposit Denied by Policy Engine',
+          description: preCheck.reason || 'Your account may need to be whitelisted for this token on the ACE policy engine.',
+          variant: 'destructive',
+        });
+        setIsDepositing(false);
+        return;
+      }
+
       const result = await invokePrivacy('deposit', {
         amount: Number(depositAmount),
         token: depositToken,
@@ -625,10 +655,34 @@ export function PrivacyVaultSection() {
                           Register
                         </Button>
                       )}
-                      {isRegistered && status?.policyEngine && (
-                        <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[140px]" title={status.policyEngine}>
-                          Policy: {status.policyEngine.slice(0, 8)}…
-                        </span>
+                      {isRegistered && (
+                        <div className="flex items-center gap-2">
+                          {status?.policyEngine && (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${status.policyEngine}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-muted-foreground font-mono truncate max-w-[140px] hover:text-primary hover:underline"
+                              title={status.policyEngine}
+                            >
+                              Policy: {status.policyEngine.slice(0, 8)}…
+                            </a>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px] px-2"
+                            disabled={checkingEligibility === tok.address}
+                            onClick={() => handleCheckEligibility(tok.address)}
+                          >
+                            {checkingEligibility === tok.address ? (
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                            )}
+                            Check Eligibility
+                          </Button>
+                        </div>
                       )}
                     </div>
                   );

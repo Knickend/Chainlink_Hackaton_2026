@@ -431,11 +431,49 @@ serve(async (req) => {
           body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
         });
         const checkResult = await checkResp.json();
+        
+        // Robust revert detection for eth_call
+        const isRevert = (result: string | undefined): boolean => {
+          if (!result || result === "0x") return true;
+          // Error(string) selector
+          if (result.startsWith("0x08c379a2")) return true;
+          // Panic(uint256) selector
+          if (result.startsWith("0x4e487b71")) return true;
+          return false;
+        };
+        
+        const decodeRevertReason = (result: string): string => {
+          if (!result || result === "0x") return "Empty result (call reverted with no reason)";
+          if (result.startsWith("0x08c379a2") && result.length >= 138) {
+            try {
+              // Decode Error(string): skip selector (4 bytes) + offset (32 bytes) + length (32 bytes) = 68 bytes = 136 hex chars + "0x"
+              const lenHex = result.slice(74, 138);
+              const strLen = parseInt(lenHex, 16);
+              const strHex = result.slice(138, 138 + strLen * 2);
+              const bytes = new Uint8Array(strLen);
+              for (let i = 0; i < strLen; i++) {
+                bytes[i] = parseInt(strHex.slice(i * 2, i * 2 + 2), 16);
+              }
+              return new TextDecoder().decode(bytes);
+            } catch { return "Revert with undecodable Error(string)"; }
+          }
+          if (result.startsWith("0x4e487b71")) return "Panic error";
+          return "Unknown revert data";
+        };
+
         if (checkResult.error) {
-          console.error(`[PrivacyVault] checkDepositAllowed reverted:`, JSON.stringify(checkResult.error));
-          throw new Error(`Deposit not allowed by policy engine. Your account (${accountAddr}) may need to be whitelisted on the ACE policy engine for this token. Error: ${JSON.stringify(checkResult.error)}`);
+          const errMsg = typeof checkResult.error === 'object' ? JSON.stringify(checkResult.error) : String(checkResult.error);
+          console.error(`[PrivacyVault] checkDepositAllowed JSON-RPC error:`, errMsg);
+          throw new Error(`Deposit not allowed by policy engine. Your account (${accountAddr}) may need to be whitelisted for this token on the ACE policy engine. RPC error: ${errMsg}`);
         }
-        console.log(`[PrivacyVault] checkDepositAllowed passed`);
+        
+        if (isRevert(checkResult.result)) {
+          const reason = decodeRevertReason(checkResult.result || "0x");
+          console.error(`[PrivacyVault] checkDepositAllowed reverted. Result: ${checkResult.result}, Reason: ${reason}`);
+          throw new Error(`Deposit denied by policy engine. Your account (${accountAddr}) may need to be whitelisted for token ${effectiveToken}. Revert reason: ${reason}`);
+        }
+        
+        console.log(`[PrivacyVault] checkDepositAllowed passed, result: ${checkResult.result}`);
 
         // Get nonce and gas price
         const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
@@ -482,7 +520,7 @@ serve(async (req) => {
 
         const depositReceipt = await waitForReceipt(depositTxHash);
         if ((depositReceipt.status as string) !== "0x1") {
-          throw new Error(`Deposit transaction reverted: ${depositTxHash}`);
+          throw new Error(`Deposit transaction reverted on-chain: ${depositTxHash}. The ACE policy engine likely rejected the deposit. Your account may need to be whitelisted for this token. Check the policy engine associated with this token via Token Registration.`);
         }
         console.log(`[PrivacyVault] Deposit tx mined successfully`);
 
@@ -665,6 +703,58 @@ serve(async (req) => {
         console.log(`[PrivacyVault] check-registration: token=${token}, registered=${isRegistered}, policyEngine=${policyEngine}`);
 
         return new Response(JSON.stringify({ success: true, token, registered: isRegistered, policy_engine: policyEngine }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "check-deposit-allowed": {
+        // Standalone diagnostic: check if a deposit would be allowed by the policy engine
+        const { token: cdaToken, amount: cdaAmount } = params;
+        if (!cdaToken) throw new Error("token is required");
+
+        const cdaEffective = (cdaToken as string).toLowerCase() === "0x0000000000000000000000000000000000000000"
+          ? "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9" : (cdaToken as string);
+        const cdaDecimals = TOKEN_DECIMALS[cdaEffective.toLowerCase()] ?? 18;
+        const cdaAmountBigInt = BigInt(Math.round(Number(cdaAmount || 1) * (10 ** cdaDecimals)));
+        const cdaAccountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+
+        const cdaSelector = bytesToHex(keccak_256(new TextEncoder().encode("checkDepositAllowed(address,address,uint256)"))).slice(0, 10);
+        const cdaData = cdaSelector + padTo32(cdaAccountAddr) + padTo32(cdaEffective) + encodeUint256(cdaAmountBigInt);
+
+        const cdaResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: cdaData }, "latest"], id: 1 }),
+        });
+        const cdaResult = await cdaResp.json();
+
+        let allowed = true;
+        let reason = "Deposit allowed";
+
+        if (cdaResult.error) {
+          allowed = false;
+          reason = `RPC error: ${typeof cdaResult.error === 'object' ? JSON.stringify(cdaResult.error) : String(cdaResult.error)}`;
+        } else {
+          const r = cdaResult.result;
+          if (!r || r === "0x" || r.startsWith("0x08c379a2") || r.startsWith("0x4e487b71")) {
+            allowed = false;
+            if (r && r.startsWith("0x08c379a2") && r.length >= 138) {
+              try {
+                const lenHex = r.slice(74, 138);
+                const strLen = parseInt(lenHex, 16);
+                const strHex = r.slice(138, 138 + strLen * 2);
+                const bytes = new Uint8Array(strLen);
+                for (let i = 0; i < strLen; i++) bytes[i] = parseInt(strHex.slice(i * 2, i * 2 + 2), 16);
+                reason = `Policy engine denied: ${new TextDecoder().decode(bytes)}`;
+              } catch { reason = "Policy engine denied deposit (undecodable reason)"; }
+            } else {
+              reason = "Policy engine denied deposit. Your account may need to be whitelisted.";
+            }
+          }
+        }
+
+        console.log(`[PrivacyVault] check-deposit-allowed: token=${cdaToken}, allowed=${allowed}, reason=${reason}`);
+
+        return new Response(JSON.stringify({ success: true, allowed, reason, account: cdaAccountAddr, token: cdaEffective }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
