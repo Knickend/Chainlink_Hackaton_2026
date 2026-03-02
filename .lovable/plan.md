@@ -1,58 +1,57 @@
 
 
-## Fix: Add Token Registration to Privacy Vault
+## Fix: Proper Policy Engine Pre-Check and Better Error Handling for Deposits
 
 ### Problem
-The Privacy Vault's private transfers and withdrawals fail because tokens (USDC, LINK, WETH) have not been **registered** on the vault smart contract (`0xE588a6c73933BFD66Af9b4A07d48bcE59c0D2d13`). The contract's `register(address token, address policyEngine)` function must be called for each token before deposits, transfers, or withdrawals can work. Without registration, the on-chain policy engine check reverts.
+The deposit transaction reverts on-chain because the Chainlink ACE policy engine rejects the deposit. The existing `checkDepositAllowed` pre-check does not properly detect EVM reverts from `eth_call`, so it silently passes and the actual deposit transaction fails on-chain (wasting gas on the approve tx).
 
-### Solution
-Add a `register` action to the backend function that calls the vault contract's `register(token, policyEngine)` on-chain, and expose a simple UI to trigger registration for each supported token.
+### Root Cause
+When `eth_call` to `checkDepositAllowed(depositor, token, amount)` reverts (because the policy denies it), the JSON-RPC response may return revert data in the `result` field rather than as a top-level `error`. The current code only checks `checkResult.error`, missing the revert.
 
 ### Changes
 
-**1. Backend: `supabase/functions/privacy-vault/index.ts`**
+**Backend: `supabase/functions/privacy-vault/index.ts`**
 
-Add a new `register` case that:
-- Accepts `token` and `policyEngine` parameters (policyEngine defaults to `address(0)` for no-policy / permissive mode, unless a specific ACE policy engine address is provided)
-- Encodes the `register(address,address)` function call (selector: first 4 bytes of `keccak256("register(address,address)")`)
-- Signs and sends a raw transaction to the vault contract
-- Waits for the receipt and logs the result
-- Note: registration is first-come, first-served -- if someone else already registered the token, the tx will revert. In that case, deposits should already work.
+1. **Fix `checkDepositAllowed` revert detection** in the `deposit` case:
+   - After the `eth_call`, check BOTH `checkResult.error` AND whether `checkResult.result` contains revert data (starts with `0x08c379a2` for `Error(string)` or is very short/empty)
+   - If the call reverts, extract and decode the revert reason if possible
+   - Return a clear 400 error explaining the policy engine denied the deposit and the account may need to be whitelisted
 
-Also add a `check-registration` action that calls the view function `sPolicyEngines(token)` to check if a token is already registered.
+2. **Add a `check-deposit-allowed` action** (standalone diagnostic):
+   - Lets the UI call `checkDepositAllowed` independently so users can test policy eligibility before attempting a deposit
+   - Returns `{ allowed: true/false, reason: "..." }`
 
-**2. Frontend: `src/components/settings/PrivacyVaultSection.tsx`**
+3. **Improve error message** when the deposit tx itself reverts:
+   - Include guidance about the ACE policy engine and whitelisting
+   - Mention which policy engine address is associated with the token (from `sPolicyEngines`)
 
-Add a "Token Registration" card (collapsible, similar to other cards) that:
-- Shows each supported token (USDC, LINK, WETH) with its registration status (registered / not registered)
-- On mount, calls `check-registration` for each token
-- Provides a "Register" button for unregistered tokens
-- Lets the user optionally provide a policy engine address (defaults to `address(0)` for permissive/no policy)
-- Shows success/failure result after registration
-- Place this card at the top of the Privacy Vault section (before deposit), since registration is a prerequisite
+**Frontend: `src/components/settings/PrivacyVaultSection.tsx`**
+
+4. **Add a pre-flight check before deposit**:
+   - Before starting the deposit flow, call the new `check-deposit-allowed` action
+   - If denied, show a clear toast: "Deposit denied by policy engine. Your account may need to be whitelisted for this token."
+   - Skip the approve+deposit transactions entirely (saves gas)
+
+5. **Show policy engine info** in the Token Registration card:
+   - For registered tokens, display the associated policy engine address
+   - Add a "Check Eligibility" button that calls `checkDepositAllowed` and reports whether deposits are allowed for the current account
 
 ### Technical Details
 
-Register function selector:
+Revert detection for `eth_call`:
 ```text
-keccak256("register(address,address)") => first 4 bytes
+// A successful view call returns result data (or 0x for void)
+// A reverted call may return:
+//   - error field in JSON-RPC response
+//   - result starting with 0x08c379a2 (Error(string) selector)
+//   - result starting with 0x4e487b71 (Panic(uint256) selector)
+//   - empty result with error in the response
 ```
 
-Calldata encoding:
-```text
-selector + padTo32(tokenAddress) + padTo32(policyEngineAddress)
-```
+The fix checks all these cases to reliably detect policy engine rejections before sending the actual deposit transaction.
 
-Check registration (view call to `sPolicyEngines(address)`):
-```text
-keccak256("sPolicyEngines(address)") => first 4 bytes
-eth_call with data = selector + padTo32(tokenAddress)
-Returns address (0x0 means not registered)
-```
-
-### Flow After Fix
-1. User registers each token (one-time on-chain tx per token)
-2. User deposits tokens (approve + deposit on-chain)
-3. Vault balance is credited off-chain by the indexer
-4. User can now do private transfers and withdrawals
+### Expected Outcome
+- Deposits that would be rejected by the policy engine are caught BEFORE any on-chain transactions (no wasted gas on approve)
+- Clear error messages tell the user their account needs ACE policy engine whitelisting
+- Users can proactively check eligibility per token via a "Check Eligibility" button
 
