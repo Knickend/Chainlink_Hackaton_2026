@@ -581,6 +581,77 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      case "check-registration": {
+        // Check if a token is registered on the vault contract by calling sPolicyEngines(address)
+        const { token } = params;
+        if (!token) throw new Error("token is required");
+
+        // selector: keccak256("sPolicyEngines(address)") first 4 bytes
+        const selectorBytes = keccak_256(new TextEncoder().encode("sPolicyEngines(address)"));
+        const selector = bytesToHex(selectorBytes).slice(0, 10); // 0x + 8 hex chars
+        const callData = selector + padTo32(token as string);
+
+        const rpcResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0", method: "eth_call",
+            params: [{ to: VAULT_CONTRACT, data: callData }, "latest"], id: 1,
+          }),
+        });
+        const rpcData = await rpcResp.json();
+        const result = rpcData.result || "0x" + "0".repeat(64);
+        // If result is all zeros → not registered
+        const isRegistered = result !== "0x" + "0".repeat(64) && result !== "0x";
+        const policyEngine = "0x" + result.slice(26); // last 20 bytes
+
+        console.log(`[PrivacyVault] check-registration: token=${token}, registered=${isRegistered}, policyEngine=${policyEngine}`);
+
+        return new Response(JSON.stringify({ success: true, token, registered: isRegistered, policy_engine: policyEngine }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "register": {
+        // Register a token on the vault contract: register(address token, address policyEngine)
+        const { token, policyEngine } = params;
+        if (!token) throw new Error("token is required");
+
+        const policyAddr = (policyEngine as string) || "0x0000000000000000000000000000000000000000";
+
+        // selector: keccak256("register(address,address)") first 4 bytes
+        const selectorBytes = keccak_256(new TextEncoder().encode("register(address,address)"));
+        const selector = bytesToHex(selectorBytes).slice(0, 10);
+        const registerData = selector + padTo32(token as string) + padTo32(policyAddr);
+
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        const bufferedGasPrice = gasPrice * 12n / 10n;
+
+        console.log(`[PrivacyVault] register: token=${token}, policyEngine=${policyAddr}, account=${accountAddr}`);
+
+        const signedTx = signRawTransaction(nonce, bufferedGasPrice, 150000n, VAULT_CONTRACT, 0n, registerData, privateKeyHex);
+        const txHash = await sendRawTransaction(signedTx);
+        console.log(`[PrivacyVault] register tx sent: ${txHash}`);
+
+        const receipt = await waitForReceipt(txHash);
+        const success = (receipt.status as string) === "0x1";
+
+        if (!success) {
+          throw new Error(`Registration transaction reverted: ${txHash}. The token may already be registered by another account.`);
+        }
+
+        console.log(`[PrivacyVault] register tx mined successfully: ${txHash}`);
+
+        await serviceClient.from("agent_actions_log").insert({
+          user_id: userId, action_type: "privacy-register-token",
+          params: { token, policyEngine: policyAddr, network: "ethereum-sepolia" },
+          status: "executed", result: { tx_hash: txHash },
+        });
+
+        return new Response(JSON.stringify({ success: true, tx_hash: txHash, token, policy_engine: policyAddr }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

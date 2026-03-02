@@ -79,6 +79,11 @@ export function PrivacyVaultSection() {
   const [withdrawToken, setWithdrawToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [withdrawResult, setWithdrawResult] = useState<Record<string, any> | null>(null);
 
+  // Token registration
+  const [tokenRegStatus, setTokenRegStatus] = useState<Record<string, { registered: boolean; policyEngine: string; loading: boolean }>>({});
+  const [registeringToken, setRegisteringToken] = useState<string | null>(null);
+  const [showRegistration, setShowRegistration] = useState(false);
+
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
@@ -192,11 +197,47 @@ export function PrivacyVaultSection() {
     setIsRefreshing(false);
   };
 
+  const checkTokenRegistration = useCallback(async () => {
+    if (!user) return;
+    const tokens = ERC20_TOKENS_TO_CHECK;
+    const newStatus: Record<string, { registered: boolean; policyEngine: string; loading: boolean }> = {};
+    tokens.forEach(t => { newStatus[t.address] = { registered: false, policyEngine: '', loading: true }; });
+    setTokenRegStatus(newStatus);
+
+    await Promise.all(tokens.map(async (tok) => {
+      try {
+        const data = await invokePrivacy('check-registration', { token: tok.address });
+        setTokenRegStatus(prev => ({
+          ...prev,
+          [tok.address]: { registered: data.registered, policyEngine: data.policy_engine || '', loading: false },
+        }));
+      } catch {
+        setTokenRegStatus(prev => ({
+          ...prev,
+          [tok.address]: { registered: false, policyEngine: '', loading: false },
+        }));
+      }
+    }));
+  }, [user, invokePrivacy]);
+
+  const handleRegisterToken = async (tokenAddress: string) => {
+    setRegisteringToken(tokenAddress);
+    try {
+      const result = await invokePrivacy('register', { token: tokenAddress });
+      toast({ title: 'Token Registered', description: `Transaction: ${result.tx_hash?.slice(0, 10)}…` });
+      await checkTokenRegistration();
+    } catch (err) {
+      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setRegisteringToken(null);
+    }
+  };
+
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog]);
-  
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog(), checkTokenRegistration()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog, checkTokenRegistration]);
+
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -526,6 +567,79 @@ export function PrivacyVaultSection() {
             </p>
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Token Registration */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33 }}>
+        <Collapsible open={showRegistration} onOpenChange={setShowRegistration}>
+          <Card className="glass-card border-primary/20">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <CardTitle className="text-base">Token Registration</CardTitle>
+                    <Badge variant="outline" className="text-xs">Prerequisite</Badge>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showRegistration ? 'rotate-180' : ''}`} />
+                </div>
+                <CardDescription className="text-left">
+                  Tokens must be registered on the vault contract before deposits, transfers, or withdrawals work
+                </CardDescription>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="space-y-3 pt-0">
+                {ERC20_TOKENS_TO_CHECK.map((tok) => {
+                  const status = tokenRegStatus[tok.address];
+                  const isLoading = status?.loading ?? true;
+                  const isRegistered = status?.registered ?? false;
+                  const isRegistering = registeringToken === tok.address;
+
+                  return (
+                    <div key={tok.address} className="flex items-center justify-between p-3 rounded-lg border border-border">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium">{tok.symbol}</span>
+                        {isLoading ? (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Checking…
+                          </Badge>
+                        ) : isRegistered ? (
+                          <Badge className="text-xs gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600/30 hover:bg-emerald-600/30">
+                            <CheckCircle2 className="w-3 h-3" /> Registered
+                          </Badge>
+                        ) : (
+                          <Badge className="text-xs gap-1 bg-amber-600/20 text-amber-400 border-amber-600/30 hover:bg-amber-600/30">
+                            <AlertTriangle className="w-3 h-3" /> Not Registered
+                          </Badge>
+                        )}
+                      </div>
+                      {!isRegistered && !isLoading && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isRegistering}
+                          onClick={() => handleRegisterToken(tok.address)}
+                        >
+                          {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                          Register
+                        </Button>
+                      )}
+                      {isRegistered && status?.policyEngine && (
+                        <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[140px]" title={status.policyEngine}>
+                          Policy: {status.policyEngine.slice(0, 8)}…
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-muted-foreground">
+                  ℹ️ Registration is a one-time on-chain transaction per token. If a token is already registered by another user, deposits should work without re-registering.
+                </p>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       </motion.div>
 
       {/* Deposit Tokens */}
