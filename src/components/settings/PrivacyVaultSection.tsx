@@ -660,13 +660,45 @@ export function PrivacyVaultSection() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="withdraw-amount">Amount</Label>
-                  <Input
-                    id="withdraw-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="withdraw-amount"
+                      type="number"
+                      placeholder="0.00"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={balances.length === 0}
+                      onClick={() => {
+                        const match = balances.find(b => b.token.toLowerCase() === withdrawToken.toLowerCase());
+                        if (match) {
+                          const tokenKey = Object.keys(TOKEN_DECIMALS).find(k => k.toLowerCase() === match.token.toLowerCase());
+                          const decimals = tokenKey ? TOKEN_DECIMALS[tokenKey].decimals : 18;
+                          const formatted = Number(match.amount) / Math.pow(10, decimals);
+                          setWithdrawAmount(String(formatted));
+                        }
+                      }}
+                    >
+                      Max
+                    </Button>
+                  </div>
+                  {(() => {
+                    const match = balances.find(b => b.token.toLowerCase() === withdrawToken.toLowerCase());
+                    if (match) {
+                      const tokenKey = Object.keys(TOKEN_DECIMALS).find(k => k.toLowerCase() === match.token.toLowerCase());
+                      const decimals = tokenKey ? TOKEN_DECIMALS[tokenKey].decimals : 18;
+                      const symbol = tokenKey ? TOKEN_DECIMALS[tokenKey].symbol : 'tokens';
+                      const formatted = (Number(match.amount) / Math.pow(10, decimals)).toFixed(6);
+                      return <p className="text-xs text-muted-foreground">Available: {formatted} {symbol}</p>;
+                    }
+                    return <p className="text-xs text-muted-foreground">No vault balance for this token</p>;
+                  })()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   ℹ️ This withdraws tokens from the Privacy Vault's internal ledger back on-chain to your account address. The protocol will process the withdrawal via signed request.
