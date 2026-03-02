@@ -420,6 +420,23 @@ serve(async (req) => {
 
         console.log(`[PrivacyVault] On-chain deposit: token=${token}, effectiveToken=${effectiveToken}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
 
+        // Pre-check: call checkDepositAllowed(depositor, token, amount) view function
+        // selector: keccak256("checkDepositAllowed(address,address,uint256)") first 4 bytes
+        const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("checkDepositAllowed(address,address,uint256)"))).slice(0, 10);
+        const checkData = checkSelector + padTo32(accountAddr) + padTo32(effectiveToken) + encodeUint256(amountBigInt);
+        
+        const checkResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
+        });
+        const checkResult = await checkResp.json();
+        if (checkResult.error) {
+          console.error(`[PrivacyVault] checkDepositAllowed reverted:`, JSON.stringify(checkResult.error));
+          throw new Error(`Deposit not allowed by policy engine. Your account (${accountAddr}) may need to be whitelisted on the ACE policy engine for this token. Error: ${JSON.stringify(checkResult.error)}`);
+        }
+        console.log(`[PrivacyVault] checkDepositAllowed passed`);
+
         // Get nonce and gas price
         const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
         const bufferedGasPrice = gasPrice * 12n / 10n;
@@ -506,6 +523,7 @@ serve(async (req) => {
       }
 
       case "withdraw": {
+        // Two-step withdrawal: 1) get ticket from API, 2) redeem on-chain via withdrawWithTicket
         const { amount, token } = params;
         if (!amount || !token) throw new Error("amount and token are required");
 
@@ -514,17 +532,56 @@ serve(async (req) => {
         const structHash = hashWithdraw(account, token as string, amountBigInt, timestamp);
         const auth = await signEip712(structHash, privateKeyHex);
 
-        const result = await callPrivacyAPI("/withdraw", {
+        // Step 1: Request withdrawal ticket from API
+        const ticketResult = await callPrivacyAPI("/withdraw", {
           account, token, amount: amountBigInt.toString(), timestamp: Number(timestamp), auth,
         });
+
+        console.log(`[PrivacyVault] Withdrawal ticket received:`, JSON.stringify(ticketResult));
+
+        const ticket = ticketResult.ticket as string;
+        if (!ticket) {
+          throw new Error("No withdrawal ticket received from API");
+        }
+
+        // Step 2: Redeem on-chain via withdrawWithTicket(token, amount, ticket)
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+        const [wNonce, wGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        const wBufferedGasPrice = wGasPrice * 12n / 10n;
+
+        // withdrawWithTicket(address token, uint256 amount, bytes calldata ticket)
+        const withdrawSelector = bytesToHex(keccak_256(new TextEncoder().encode("withdrawWithTicket(address,uint256,bytes)"))).slice(0, 10);
+        // ABI encode: token (32) + amount (32) + offset to bytes (32) + bytes length (32) + bytes data (padded)
+        const ticketBytes = hexToBytes(ticket);
+        const ticketLen = ticketBytes.length;
+        const ticketPadded = ticketLen % 32 === 0 ? ticketLen : ticketLen + (32 - ticketLen % 32);
+        let ticketHex = bytesToHex(ticketBytes).slice(2);
+        ticketHex = ticketHex.padEnd(ticketPadded * 2, "0");
+
+        const withdrawData = withdrawSelector
+          + padTo32(token as string)               // token address
+          + encodeUint256(amountBigInt)             // amount
+          + encodeUint256(96)                       // offset to bytes (3 * 32 = 96)
+          + encodeUint256(ticketLen)                // bytes length
+          + ticketHex;                              // bytes data (padded to 32)
+
+        const withdrawTx = signRawTransaction(wNonce, wBufferedGasPrice, 300000n, VAULT_CONTRACT, 0n, "0x" + withdrawData.slice(2), privateKeyHex);
+        const withdrawTxHash = await sendRawTransaction(withdrawTx);
+        console.log(`[PrivacyVault] withdrawWithTicket tx sent: ${withdrawTxHash}`);
+
+        const withdrawReceipt = await waitForReceipt(withdrawTxHash);
+        if ((withdrawReceipt.status as string) !== "0x1") {
+          throw new Error(`Withdrawal on-chain redemption reverted: ${withdrawTxHash}. The ticket may have expired or the policy engine rejected it.`);
+        }
+        console.log(`[PrivacyVault] withdrawWithTicket tx mined successfully`);
 
         await serviceClient.from("agent_actions_log").insert({
           user_id: userId, action_type: "privacy-withdraw",
           params: { amount, token, network: "ethereum-sepolia" },
-          status: "executed", result,
+          status: "executed", result: { ...ticketResult, withdraw_tx: withdrawTxHash },
         });
 
-        return new Response(JSON.stringify({ success: true, result }),
+        return new Response(JSON.stringify({ success: true, withdraw_tx: withdrawTxHash, ticket_id: ticketResult.id, result: ticketResult }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
