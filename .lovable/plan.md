@@ -1,39 +1,48 @@
 
 
-## Add "How It Works" Info Card to Privacy Vault
+## Add Withdraw UI to Privacy Vault
 
 ### What
-Add a collapsible visual explainer card directly below the Privacy Vault header card, showing the three-step flow: **Deposit -> Vault Balance -> Private Transfer**.
+Add a "Withdraw from Privacy Vault" card to the Privacy Vault section, allowing users to withdraw tokens from their vault balance back to their account address on-chain.
+
+### Where it fits
+The withdraw card will be placed between the "Deposit to Privacy Vault" card and the "Private Transfer" card, following the natural flow: Deposit -> (Withdraw) -> Transfer.
 
 ### Design
-A compact card with a horizontal flow diagram using icons and connecting arrows:
+A card matching the existing Deposit and Transfer cards pattern:
+- Collapsed by default with a "Withdraw Tokens" button
+- When expanded, shows a form with:
+  - Token selector (same COMMON_TOKENS list used elsewhere)
+  - Amount input
+  - A note explaining that withdrawal moves tokens from the vault ledger back on-chain to the account address
+  - Submit and Cancel buttons
+- Success state showing any returned transaction details
 
-```text
-+------------------+       +------------------+       +------------------+
-|  1. Deposit      |  -->  |  2. Vault Balance |  -->  |  3. Private      |
-|  ERC-20 tokens   |       |  Protocol ledger  |       |     Transfer     |
-|  from account    |       |  (not on-chain)   |       |  to recipient    |
-+------------------+       +------------------+       +------------------+
-```
-
-Below the flow, include 2-3 short clarifying notes:
-- "Shielded addresses are receive-only -- you cannot send from them"
-- "Deposits move tokens from your account address into the protocol's internal ledger"
-- "Private transfers happen off-chain via EIP-712 signatures -- no visible on-chain transaction"
-
-The card will use a `Collapsible` (like `CREArchitectureCard`) so it can be collapsed after reading.
+### Also: Update "How It Works" diagram
+Add a small note beneath the 3-step flow mentioning that withdrawals reverse step 1 (moving tokens from the vault ledger back on-chain).
 
 ### Technical Changes
 
 **File: `src/components/settings/PrivacyVaultSection.tsx`**
 
-1. Import `Collapsible`, `CollapsibleContent`, `CollapsibleTrigger` from radix, plus `ChevronDown`, `ArrowRight`, `Info` from lucide-react.
-2. Add a new state `const [howOpen, setHowOpen] = useState(false)`.
-3. Insert a new `Collapsible` card between the header card (line ~298) and the "Generate Shielded Address" card (line ~300).
-4. The card contains:
-   - A trigger header with an Info icon, "How It Works" title, and a chevron toggle
-   - Three step boxes in a horizontal row (stacking vertically on mobile) connected by arrow icons
-   - A list of key notes with muted styling
-   - Badge labels for each step (Deposit, Vault, Transfer)
+1. Add new state variables:
+   - `showWithdraw` (boolean)
+   - `isWithdrawing` (boolean)
+   - `withdrawAmount` (string)
+   - `withdrawToken` (string, defaulting to USDC address)
+   - `withdrawResult` (object or null for displaying result)
 
-No other files need changes.
+2. Add `handleWithdraw` function that calls `invokePrivacy('withdraw', { amount, token })` -- mirroring the existing `handleDeposit` pattern. On success, refresh balances and show a toast.
+
+3. Insert a new card (motion.div) between the Deposit card (~line 598) and the Private Transfer card (~line 600). The card uses the same expand/collapse pattern as Deposit:
+   - Header with `ArrowUpFromLine` icon (or similar), title "Withdraw from Privacy Vault"
+   - Description: "Move tokens from your vault balance back on-chain to your account address"
+   - Form: token selector + amount input + submit/cancel buttons
+   - Result display area for any returned data
+
+4. Add a note in the "How It Works" collapsible section mentioning withdrawals reverse the deposit step.
+
+5. Update the `fetchActivityLog` query to also include `'privacy-withdraw'` in the `action_type` filter so withdraw actions appear in the activity log.
+
+No backend or database changes needed -- the `withdraw` case is already implemented in the edge function.
+
