@@ -509,7 +509,8 @@ serve(async (req) => {
         const { amount, token } = params;
         if (!amount || !token) throw new Error("amount and token are required");
 
-        const amountBigInt = BigInt(amount);
+        const decimals = TOKEN_DECIMALS[(token as string).toLowerCase()] ?? 18;
+        const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
         const structHash = hashWithdraw(account, token as string, amountBigInt, timestamp);
         const auth = await signEip712(structHash, privateKeyHex);
 
