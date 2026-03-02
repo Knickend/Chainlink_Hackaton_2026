@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, ArrowUpFromLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,6 +73,11 @@ export function PrivacyVaultSection() {
   const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [howOpen, setHowOpen] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawToken, setWithdrawToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
+  const [withdrawResult, setWithdrawResult] = useState<Record<string, any> | null>(null);
 
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
@@ -157,7 +162,7 @@ export function PrivacyVaultSection() {
         .from('agent_actions_log')
         .select('id, action_type, status, created_at, result, params')
         .eq('user_id', user.id)
-        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'deposit', 'private-transfer'])
+        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw'])
         .order('created_at', { ascending: false })
         .limit(10);
       if (!error && data) {
@@ -225,6 +230,26 @@ export function PrivacyVaultSection() {
       toast({ title: 'Transfer Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmount) return;
+    setIsWithdrawing(true);
+    setWithdrawResult(null);
+    try {
+      const result = await invokePrivacy('withdraw', {
+        amount: Number(withdrawAmount),
+        token: withdrawToken,
+      });
+      setWithdrawResult(result);
+      toast({ title: 'Withdrawal Initiated', description: 'Tokens are being moved back on-chain to your account address.' });
+      setWithdrawAmount('');
+      await Promise.all([fetchBalances(), checkOnboardStatus()]);
+    } catch (err) {
+      toast({ title: 'Withdrawal Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsWithdrawing(false);
     }
   };
 
@@ -354,6 +379,10 @@ export function PrivacyVaultSection() {
                   <span>Private transfers happen off-chain via <strong className="text-foreground">EIP-712 signatures</strong> — no visible on-chain transaction</span>
                 </p>
               </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-start gap-2">
+                <ArrowUpFromLine className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                <span><strong className="text-foreground">Withdrawals</strong> reverse step 1 — moving tokens from the vault ledger back on-chain to your account address</span>
+              </p>
             </CardContent>
           </CollapsibleContent>
         </Card>
@@ -588,6 +617,90 @@ export function PrivacyVaultSection() {
                     Deposit
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => { setShowDeposit(false); setDepositResult(null); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Withdraw from Privacy Vault */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.37 }}>
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ArrowUpFromLine className="w-4 h-4" />
+              Withdraw from Privacy Vault
+            </CardTitle>
+            <CardDescription>Move tokens from your vault balance back on-chain to your account address</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!showWithdraw ? (
+              <Button variant="outline" size="sm" onClick={() => setShowWithdraw(true)}>
+                <ArrowUpFromLine className="w-4 h-4 mr-2" /> Withdraw Tokens
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="withdraw-token">Token</Label>
+                  <Select value={withdrawToken} onValueChange={setWithdrawToken}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select token" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COMMON_TOKENS.map((t) => (
+                        <SelectItem key={t.address} value={t.address}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="withdraw-amount">Amount</Label>
+                  <Input
+                    id="withdraw-amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  ℹ️ This withdraws tokens from the Privacy Vault's internal ledger back on-chain to your account address. The protocol will process the withdrawal via signed request.
+                </p>
+                {isWithdrawing && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Processing withdrawal… This may take a moment.
+                  </div>
+                )}
+                {withdrawResult && (
+                  <div className="space-y-2 p-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10">
+                    <p className="text-xs font-semibold text-emerald-400">✅ Withdrawal submitted</p>
+                    {withdrawResult.transaction_id && (
+                      <p className="text-xs text-muted-foreground">
+                        Transaction ID: <span className="font-mono text-foreground">{withdrawResult.transaction_id}</span>
+                      </p>
+                    )}
+                    {withdrawResult.withdraw_tx && (
+                      <p className="text-xs text-muted-foreground">
+                        TX:{' '}
+                        <a href={`https://sepolia.etherscan.io/tx/${withdrawResult.withdraw_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                          {withdrawResult.withdraw_tx.slice(0, 10)}…{withdrawResult.withdraw_tx.slice(-8)}
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount} size="sm">
+                    {isWithdrawing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpFromLine className="w-4 h-4 mr-2" />}
+                    Withdraw
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setShowWithdraw(false); setWithdrawResult(null); }}>
                     Cancel
                   </Button>
                 </div>
