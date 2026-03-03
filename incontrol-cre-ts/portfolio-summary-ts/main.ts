@@ -41,7 +41,7 @@ interface WorkflowConfig {
 
 interface Config {
   supabaseApiUrl: string;
-  supabaseApiKey: string;
+  supabaseAnonKeySecret: string;
   workflows: WorkflowConfig[];
   general: {
     maxRetries: number;
