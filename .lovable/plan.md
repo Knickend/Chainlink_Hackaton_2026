@@ -1,58 +1,78 @@
 
 
-## Redesign Deposit/Withdraw to Use Shielded Addresses
+## Fix Deposit Flow: Backend Wallet Signs On-Chain Deposit on Behalf of User
 
 ### Problem
+The current `deposit` action only returns the shielded address and tells the user to send tokens there. But the vault protocol doesn't auto-credit balances from shielded addresses — an actual on-chain `vault.deposit(token, amount)` transaction is required. The signing wallet `0x8E6B...` must perform this on-chain deposit on behalf of the user.
 
-The current deposit flow calls `approve()` + `deposit()` on-chain from the signing wallet (`0x8E6B...`), which has no token balance. The signing wallet is only meant for infrastructure operations (PE deployment, token registration). Users fund the vault by sending tokens to their **shielded addresses** — the vault protocol picks them up automatically via its indexer.
+### Correct Workflow
+1. User generates a shielded address
+2. User sends tokens to their shielded address from any external wallet/exchange
+3. Backend detects the token balance on the shielded address, then `0x8E6B...` calls `approve(vault, amount)` + `vault.deposit(token, amount)` on-chain — but the deposit is credited to the **user's account** (the account derived from the private key, which is associated with their shielded addresses)
+4. Private transfers and withdrawals work via the API + on-chain ticket redemption as before
 
-The Etherscan screenshot confirms: the deposit tx failed with "ERC20: transfer amount exceeds balance" because the signing wallet tried to transferFrom itself to the vault contract.
+### Key Insight
+The deposit **does** need `approve + deposit` on-chain, but the tokens come from the **shielded address balance**, not from `0x8E6B...`'s own balance. However, since shielded addresses are receive-only (no private key to sign from them), the actual mechanism is:
+- The signing wallet `0x8E6B...` is the **account** registered with the vault protocol
+- When users send tokens to their shielded address, the protocol's indexer associates those tokens with the account `0x8E6B...`
+- The backend then calls `deposit(token, amount)` from `0x8E6B...` to move those indexed tokens into the private vault ledger
 
-### Solution
-
-**Replace the on-chain deposit action with a "Fund via Shielded Address" flow:**
-
-1. **Remove** the entire on-chain deposit logic (approve + deposit + wrap transactions)
-2. **Replace with instructions**: show the user their shielded address and tell them to send tokens there from any wallet/exchange
-3. The Privacy Vault protocol's indexer will automatically credit the balance
-
-**For withdrawals**: withdrawals already go through the API ticket system, but the redeemed tokens currently go to the signing wallet. Change the withdraw to send tokens to a user-specified destination address (or their shielded address).
+So the deposit action should:
+1. Check the user's shielded address on-chain balance for the selected token
+2. Call `ensureTokenRegistered` (existing)
+3. Call `approve(vault, amount)` from the signing wallet
+4. Call `vault.deposit(token, amount)` from the signing wallet
+5. The vault credits the private balance to the account
 
 ### Backend Changes (`supabase/functions/privacy-vault/index.ts`)
 
-**`deposit` action** — Replace the entire on-chain approve+deposit flow with:
-- Ensure the user has at least one shielded address (auto-generate one if not)
-- Return the shielded address + instructions for sending tokens there
-- Keep `ensureTokenRegistered` so the token is ready when funds arrive
+**`deposit` action** — Restore the on-chain approve+deposit flow but with the correct understanding:
+- Accept `amount` and `token` parameters
+- If no amount specified, read the shielded address's on-chain ERC20 balance and deposit all of it
+- Call `ensureTokenRegistered(token)` first
+- Call `approve(vaultContract, amount)` signed by `0x8E6B...`
+- Call `deposit(token, amount)` on the vault contract signed by `0x8E6B...`
+- The vault protocol associates this deposit with the account and increments the private ledger
+- Log the result
 
-**`withdraw` action** — After redeeming the ticket on-chain (which sends tokens to the signing wallet), add a follow-up ERC20 transfer from the signing wallet to a user-specified `recipient` address. If no recipient specified, return the signing wallet balance info.
+**Keep the "get deposit address" sub-flow** — if no `amount` param is provided, just return the shielded address (existing behavior). If `amount` is provided, perform the on-chain deposit.
+
+Add a new action `"deposit-from-shielded"` that:
+1. Reads the on-chain ERC20 balance of the user's shielded address
+2. If balance > 0, performs approve + deposit from the signing wallet for that amount
+3. Returns the tx hashes
 
 ### Frontend Changes (`src/components/settings/PrivacyVaultSection.tsx`)
 
-**Deposit section** — Replace the amount+token form with:
-- Display the user's shielded address (or generate one)
-- A "Copy Address" button
-- Instructions: "Send tokens to this address from any wallet or exchange. Your vault balance will update automatically within ~30 seconds."
-- A "Refresh Balance" button
+**Deposit section** — Two-phase UX:
+1. Phase 1 (current): "Get Deposit Address" shows shielded address + copy button
+2. Phase 2 (new): Add a "Deposit to Vault" button that appears when the shielded address has a token balance. This calls the backend `deposit` action with `amount` to trigger the on-chain approve+deposit flow.
+3. Show token balances on shielded addresses (already fetched via `onchain-erc20-balance`) with a "Deposit to Vault" button next to each balance
 
-**Withdraw section** — Add a `recipient` address field so withdrawn tokens are sent to the user's chosen address, not left in the signing wallet.
-
-**"How It Works" update** — Step 2 changes from "Deposit tokens" to "Send tokens to your shielded address"
+**Update deposit handler**: Change `handleDeposit` to support both flows:
+- "Get Address" flow (no amount) — existing
+- "Deposit to Vault" flow (with amount + token) — new, triggers on-chain deposit
 
 ### Technical Details
 
-Current deposit flow (broken):
 ```text
-signing wallet --approve--> vault contract --transferFrom--> vault  ← FAILS (no balance)
-```
-
-New flow:
-```text
-user's external wallet --send tokens--> shielded address --> vault indexer credits balance
-```
-
-For withdrawals:
-```text
-vault --ticket redemption--> signing wallet --transfer--> user's specified recipient
+User sends USDC to shielded address
+      |
+      v
+Frontend shows balance on shielded address (already implemented)
+      |
+      v
+User clicks "Deposit to Vault" 
+      |
+      v
+Backend: ensureTokenRegistered(USDC)
+Backend: 0x8E6B... signs approve(vault, amount) tx
+Backend: 0x8E6B... signs deposit(USDC, amount) tx  
+      |
+      v
+Vault credits private balance to account 0x8E6B...
+      |
+      v
+Private balance updated, user can now transfer/withdraw
 ```
 
