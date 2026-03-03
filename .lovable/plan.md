@@ -1,74 +1,72 @@
 
 
-## Deploy Own PolicyEngine Behind ERC1967 Proxy
+## Fix: Policy Engine Deployment - Wrong Constructor Args
 
-### Problem
-USDC and LINK are registered on the Privacy Vault with policy engines (`0xa4e2ced7...` and `0xcf3e8b18...`) controlled by someone else, which reject our depositor address. WETH is not registered at all. We need our own PolicyEngine instance that permits our vault account.
+### Root Cause (Two Bugs)
 
-### Approach
-Rather than compiling Solidity in the edge function, we reuse the already-deployed PolicyEngine implementation contract on Sepolia. We read its address from an existing proxy's ERC1967 storage slot, then deploy a fresh ERC1967Proxy pointing to it with `initialize(PolicyResult.Allowed)`. This gives us a permissive PolicyEngine where we are the admin.
+1. **Wrong CONSTRUCTOR_ARGS_HEX_LEN**: The original creation tx used 68 bytes of `_data` (not 36), making the total constructor args 384 hex chars (6 words), not 320 (5 words). Stripping only 320 chars leaves 1 word of old data in the creation code, corrupting the deployed bytecode.
 
-### Changes
+2. **Wrong `initialize` selector**: The actual PolicyEngine uses `initialize(uint8,address)` (selector `0x85ee7ba6`) with two parameters: `defaultResult` and `admin`. Our code computed the selector for `initialize(uint8)` (`0x4351e6b6`) which doesn't exist on the contract.
 
-**1. Backend: `supabase/functions/privacy-vault/index.ts`**
+### Evidence
 
-Add two new actions:
-
-**`deploy-policy-engine`**:
-- Read the PolicyEngine implementation address from existing proxy `0xa4e2ced7...` using `eth_getStorageAt` at slot `0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc` (ERC1967 implementation slot)
-- Construct the ERC1967Proxy creation bytecode: the well-known OpenZeppelin minimal proxy constructor that takes `(address implementation, bytes data)`
-- Encode init data as `PolicyEngine.initialize(uint8 defaultResult)` where defaultResult = 0 (Allowed enum)
-- Sign and send a contract creation transaction (to = empty, data = creation bytecode + constructor args)
-- Wait for receipt, extract deployed contract address from receipt
-- Log the new PE address
-- Return `{ policy_engine: deployedAddress, tx_hash }`
-
-**`re-register-token`**:
-- For tokens NOT yet registered (like WETH): call `register(token, ourPolicyEngine)` on the vault contract
-- For tokens already registered with another PE: inform the user that re-registration is not possible (first-come-first-served) unless the vault supports `updatePolicyEngine`
-
-**2. Frontend: `src/components/settings/PrivacyVaultSection.tsx`**
-
-Add a "Deploy Policy Engine" card (collapsible) in the Token Registration section:
-- "Deploy My Policy Engine" button that calls the new backend action
-- Shows the deployed PE address once complete
-- Stores the deployed PE address in component state
-- Updates the "Register" button for unregistered tokens to use the newly deployed PE address instead of `address(0)`
-- For already-registered tokens, shows a note: "Already registered with another policy engine"
-
-### Technical Details
-
-**Reading implementation from proxy:**
+Original tx constructor args (from `0x9f93...`):
 ```text
-eth_getStorageAt(
-  proxy_address,
-  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
-  "latest"
-) => returns implementation address
+word 0: impl address (013f9b3a...)
+word 1: offset = 0x40 (64)
+word 2: length = 0x44 (68 bytes)  <-- NOT 0x24 (36 bytes)
+word 3: 85ee7ba6 + uint8(1)       <-- selector is 85ee7ba6, NOT 4351e6b6
+word 4: address arg               <-- second parameter (admin)
+word 5: padding
+Total = 6 words = 384 hex chars
 ```
 
-**ERC1967Proxy creation bytecode:**
-The OpenZeppelin ERC1967Proxy constructor bytecode is standardized. We use the same proxy bytecode found on the existing deployed proxy contract, prepended with the constructor that encodes `(address _implementation, bytes memory _data)`.
+Our failed tx had `4351e6b6` (wrong selector) and only stripped 320 chars (leaving corruption).
 
-Since the proxy at `0xa4e2ced7...` was created 3 days ago, we can fetch its creation transaction bytecode to get the exact creation code, then append our own constructor arguments.
+### Fix in `supabase/functions/privacy-vault/index.ts`
 
-**PolicyEngine.initialize selector:**
+In the `deploy-policy-engine` case (around lines 838-856):
+
+1. Change `CONSTRUCTOR_ARGS_HEX_LEN` from `320` to `384`
+2. Use the correct selector `0x85ee7ba6` for `initialize(uint8,address)` instead of computing `keccak256("initialize(uint8)")`
+3. Build `_data` as 68 bytes: `85ee7ba6` + `encode(uint8 0)` + `encode(address deployer)` = 4 + 32 + 32 = 68 bytes
+4. Update the ABI-encoded bytes:
+   - Length = 68 (0x44) instead of 36 (0x24)
+   - initData = 68 bytes padded to 96 bytes (3 words = 192 hex chars)
+   - Total constructor args = address(32) + offset(32) + length(32) + data(96) = 192 bytes = 384 hex chars
+
+### Specific Code Changes
+
 ```text
-keccak256("initialize(uint8)") => first 4 bytes
-Argument: 0 (PolicyResult.Allowed)
+// OLD (line 839):
+const CONSTRUCTOR_ARGS_HEX_LEN = 320;
+
+// NEW:
+const CONSTRUCTOR_ARGS_HEX_LEN = 384;
+
+// OLD (lines 845-849):
+const initSelector = bytesToHex(keccak256(...("initialize(uint8)"))).slice(0,10);
+const initData = initSelector.slice(2) + encodeUint256(0);
+const initDataPadded = initData.padEnd(128, "0");
+
+// NEW:
+const initSelector = "85ee7ba6";  // initialize(uint8,address)
+const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+const initData = initSelector + encodeUint256(0) + padTo32(accountAddr);
+// 8 + 64 + 64 = 136 hex chars = 68 bytes, pad to 96 bytes = 192 hex chars
+const initDataPadded = initData.padEnd(192, "0");
+
+// OLD (line 856):
+const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(36) + initDataPadded;
+
+// NEW:
+const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(68) + initDataPadded;
 ```
 
-**Extracting deployed address from receipt:**
-The deployed contract address is in `receipt.contractAddress`.
-
-### Important Limitations
-- USDC (`0x1c7D...`) and LINK (`0x7798...`) are already registered with other policy engines. These registrations cannot be changed from our side -- they are first-come-first-served.
-- Our deployed PE will only be useful for tokens NOT yet registered (WETH) or future tokens.
-- The deployed PE defaults to "Allowed" with no policies, meaning all deposit/transfer/withdraw operations are permitted for any address.
+Note: `accountAddr` derivation must move before this block (it's currently at line 862, after the constructor args construction). Move it earlier or derive it inline.
 
 ### Expected Outcome
-1. User clicks "Deploy My Policy Engine" -- deploys a new permissive PE on Sepolia
-2. User registers WETH with the new PE (WETH is currently unregistered)
-3. WETH deposits should work immediately since the PE allows everything
-4. For USDC/LINK, the user would need to coordinate with whoever controls those policy engines to get whitelisted
+- Correct creation bytecode (no corruption from leftover old constructor args)
+- Correct `initialize(uint8,address)` call with `defaultResult=0` (Allowed) and `admin=ourAccount`
+- Proxy deployment succeeds, giving us a permissive PolicyEngine we control
 
