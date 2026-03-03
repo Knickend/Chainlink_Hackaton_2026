@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, ArrowUpFromLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, ArrowUpFromLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal, Rocket } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +84,10 @@ export function PrivacyVaultSection() {
   const [registeringToken, setRegisteringToken] = useState<string | null>(null);
   const [showRegistration, setShowRegistration] = useState(false);
 
+  // Deploy Policy Engine
+  const [deployedPE, setDeployedPE] = useState<string | null>(null);
+  const [isDeployingPE, setIsDeployingPE] = useState(false);
+  const [showDeployPE, setShowDeployPE] = useState(false);
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
@@ -309,6 +313,40 @@ export function PrivacyVaultSection() {
       toast({ title: 'Eligibility Check Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setCheckingEligibility(null);
+    }
+  };
+
+  const handleDeployPolicyEngine = async () => {
+    setIsDeployingPE(true);
+    try {
+      const data = await invokePrivacy('deploy-policy-engine');
+      setDeployedPE(data.policy_engine);
+      toast({ title: 'Policy Engine Deployed', description: `Deployed at ${data.policy_engine?.slice(0, 14)}… — TX: ${data.tx_hash?.slice(0, 10)}…` });
+    } catch (err) {
+      toast({ title: 'Deployment Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsDeployingPE(false);
+    }
+  };
+
+  const handleRegisterWithCustomPE = async (tokenAddress: string) => {
+    if (!deployedPE) {
+      toast({ title: 'No Policy Engine', description: 'Deploy your own Policy Engine first.', variant: 'destructive' });
+      return;
+    }
+    setRegisteringToken(tokenAddress);
+    try {
+      const result = await invokePrivacy('re-register-token', { token: tokenAddress, policyEngine: deployedPE });
+      if (result.success === false) {
+        toast({ title: 'Registration Failed', description: result.error || 'Token already registered', variant: 'destructive' });
+      } else {
+        toast({ title: 'Token Registered', description: `Registered with your PE. TX: ${result.tx_hash?.slice(0, 10)}…` });
+      }
+      await checkTokenRegistration();
+    } catch (err) {
+      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setRegisteringToken(null);
     }
   };
 
@@ -620,6 +658,73 @@ export function PrivacyVaultSection() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent className="space-y-3 pt-0">
+                {/* Deploy Policy Engine Card */}
+                <Collapsible open={showDeployPE} onOpenChange={setShowDeployPE}>
+                  <div className="rounded-lg border border-primary/20 bg-primary/5">
+                    <CollapsibleTrigger asChild>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-accent/30 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <Rocket className="w-4 h-4 text-primary" />
+                          <span className="text-sm font-medium">Deploy My Policy Engine</span>
+                          {deployedPE && (
+                            <Badge className="text-xs gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600/30">
+                              <CheckCircle2 className="w-3 h-3" /> Deployed
+                            </Badge>
+                          )}
+                        </div>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showDeployPE ? 'rotate-180' : ''}`} />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-3 pb-3 space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Deploy a permissive PolicyEngine (defaults to "Allowed") so you can register unregistered tokens (like WETH) without needing third-party whitelisting.
+                        </p>
+                        {deployedPE ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 p-2 rounded border border-emerald-600/30 bg-emerald-600/10">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-emerald-400">Policy Engine Deployed</p>
+                                <a
+                                  href={`https://sepolia.etherscan.io/address/${deployedPE}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-mono text-primary hover:underline truncate block"
+                                >
+                                  {deployedPE}
+                                </a>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Use the "Register with My PE" buttons below for unregistered tokens.
+                            </p>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={isDeployingPE}
+                            onClick={handleDeployPolicyEngine}
+                          >
+                            {isDeployingPE ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Deploying… (may take ~60s)
+                              </>
+                            ) : (
+                              <>
+                                <Rocket className="w-4 h-4 mr-2" />
+                                Deploy My Policy Engine
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
+
+                {/* Token list */}
                 {ERC20_TOKENS_TO_CHECK.map((tok) => {
                   const status = tokenRegStatus[tok.address];
                   const isLoading = status?.loading ?? true;
@@ -645,15 +750,29 @@ export function PrivacyVaultSection() {
                         )}
                       </div>
                       {!isRegistered && !isLoading && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={isRegistering}
-                          onClick={() => handleRegisterToken(tok.address)}
-                        >
-                          {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                          Register
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {deployedPE ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isRegistering}
+                              onClick={() => handleRegisterWithCustomPE(tok.address)}
+                            >
+                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Rocket className="w-3 h-3 mr-1" />}
+                              Register with My PE
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isRegistering}
+                              onClick={() => handleRegisterToken(tok.address)}
+                            >
+                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              Register
+                            </Button>
+                          )}
+                        </div>
                       )}
                       {isRegistered && (
                         <div className="flex items-center gap-2">
@@ -688,7 +807,7 @@ export function PrivacyVaultSection() {
                   );
                 })}
                 <p className="text-xs text-muted-foreground">
-                  ℹ️ Registration is a one-time on-chain transaction per token. If a token is already registered by another user, deposits should work without re-registering.
+                  ℹ️ Tokens already registered by others use their policy engine (first-come-first-served). Deploy your own PE above to register unregistered tokens with permissive rules.
                 </p>
               </CardContent>
             </CollapsibleContent>

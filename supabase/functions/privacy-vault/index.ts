@@ -209,7 +209,8 @@ function signRawTransaction(
   to: string, value: bigint, data: string,
   privateKeyHex: string
 ): string {
-  const toBytes = hexToBytes(to);
+  // For contract creation, to should be "" or "0x" -> empty bytes
+  const toBytes = (!to || to === "" || to === "0x") ? new Uint8Array(0) : hexToBytes(to);
   const dataBytes = data === "0x" ? new Uint8Array(0) : hexToBytes(data);
 
   // EIP-155 signing: hash [nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]
@@ -797,6 +798,150 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({ success: true, tx_hash: txHash, token, policy_engine: policyAddr }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "deploy-policy-engine": {
+        // Deploy a new ERC1967Proxy pointing to the existing PolicyEngine implementation
+        // with initialize(uint8 defaultResult = 0 = Allowed)
+        const EXISTING_PROXY = "0xa4e2ced7d7727078aa5d7bc154a00c1950551b00";
+        const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+        const CREATION_TX_HASH = "0x9f93e85c5cb43c3fc38455ea790c1de1f812da4ebfa2c9d8f3295fe247863e98";
+
+        // Step 1: Read the implementation address from the existing proxy
+        const storageResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getStorageAt", params: [EXISTING_PROXY, IMPL_SLOT, "latest"], id: 1 }),
+        });
+        const storageData = await storageResp.json();
+        if (!storageData.result || storageData.result === "0x" + "0".repeat(64)) {
+          throw new Error("Could not read implementation address from existing proxy");
+        }
+        const implAddress = "0x" + storageData.result.slice(26);
+        console.log(`[PrivacyVault] deploy-policy-engine: implementation address = ${implAddress}`);
+
+        // Step 2: Fetch the creation tx to extract the creation bytecode
+        const txResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionByHash", params: [CREATION_TX_HASH], id: 1 }),
+        });
+        const txData = await txResp.json();
+        if (!txData.result?.input) {
+          throw new Error("Could not fetch creation transaction input data");
+        }
+        const fullInput = txData.result.input as string; // 0x-prefixed hex
+
+        // Step 3: Extract creation bytecode by stripping original constructor args
+        // Original constructor: ERC1967Proxy(address implementation, bytes memory _data)
+        // _data was initialize(uint8) = 36 bytes
+        // ABI encoding: 32 (addr) + 32 (offset=64) + 32 (length=36) + 64 (data padded) = 160 bytes = 320 hex chars
+        const CONSTRUCTOR_ARGS_HEX_LEN = 320;
+        const creationCode = fullInput.slice(0, fullInput.length - CONSTRUCTOR_ARGS_HEX_LEN);
+        console.log(`[PrivacyVault] deploy-policy-engine: creation code length = ${(creationCode.length - 2) / 2} bytes`);
+
+        // Step 4: Build our constructor args
+        // initialize(uint8) selector
+        const initSelector = bytesToHex(keccak_256(new TextEncoder().encode("initialize(uint8)"))).slice(0, 10);
+        // _data = initSelector + abi.encode(uint8(0)) = 4 + 32 = 36 bytes
+        const initData = initSelector.slice(2) + encodeUint256(0); // 8 + 64 = 72 hex chars = 36 bytes
+        // Pad initData to 64 bytes (next multiple of 32): 36 bytes → 64 bytes = 128 hex chars
+        const initDataPadded = initData.padEnd(128, "0");
+
+        // ABI encode (address impl, bytes _data):
+        // word 0: impl address padded
+        // word 1: offset to bytes = 0x40 (64)
+        // word 2: bytes length = 0x24 (36)
+        // word 3-4: bytes data padded to 64 bytes
+        const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(36) + initDataPadded;
+
+        const deployData = creationCode + constructorArgs;
+        console.log(`[PrivacyVault] deploy-policy-engine: total deploy data length = ${(deployData.length - 2) / 2} bytes`);
+
+        // Step 5: Sign and send contract creation transaction
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        const bufferedGasPrice = gasPrice * 12n / 10n;
+
+        // Contract creation: to = "" (empty)
+        const signedTx = signRawTransaction(nonce, bufferedGasPrice, 2000000n, "", 0n, deployData, privateKeyHex);
+        const txHash = await sendRawTransaction(signedTx);
+        console.log(`[PrivacyVault] deploy-policy-engine: tx sent: ${txHash}`);
+
+        const receipt = await waitForReceipt(txHash, 40);
+        if ((receipt.status as string) !== "0x1") {
+          throw new Error(`Policy engine deployment transaction reverted: ${txHash}`);
+        }
+
+        const deployedAddress = receipt.contractAddress as string;
+        console.log(`[PrivacyVault] deploy-policy-engine: deployed at ${deployedAddress}, tx: ${txHash}`);
+
+        await serviceClient.from("agent_actions_log").insert({
+          user_id: userId, action_type: "deploy-policy-engine",
+          params: { implementation: implAddress, network: "ethereum-sepolia" },
+          status: "executed", result: { policy_engine: deployedAddress, tx_hash: txHash },
+        });
+
+        return new Response(JSON.stringify({
+          success: true, policy_engine: deployedAddress, tx_hash: txHash,
+          implementation: implAddress, network: "ethereum-sepolia",
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "re-register-token": {
+        // Register a token with a custom policy engine (for tokens not yet registered)
+        const { token: reRegToken, policyEngine: reRegPE } = params;
+        if (!reRegToken || !reRegPE) throw new Error("token and policyEngine are required");
+
+        // First check if already registered
+        const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("sPolicyEngines(address)"))).slice(0, 10);
+        const checkData = checkSelector + padTo32(reRegToken as string);
+        const checkResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
+        });
+        const checkResult = await checkResp.json();
+        const existingPE = checkResult.result || "0x" + "0".repeat(64);
+        const alreadyRegistered = existingPE !== "0x" + "0".repeat(64) && existingPE !== "0x";
+
+        if (alreadyRegistered) {
+          const currentPE = "0x" + existingPE.slice(26);
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Token is already registered with policy engine ${currentPE}. Registration is first-come-first-served and cannot be changed.`,
+            current_policy_engine: currentPE,
+          }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Register with our custom PE
+        const regSelector = bytesToHex(keccak_256(new TextEncoder().encode("register(address,address)"))).slice(0, 10);
+        const regData = regSelector + padTo32(reRegToken as string) + padTo32(reRegPE as string);
+
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        const bufferedGasPrice = gasPrice * 12n / 10n;
+
+        console.log(`[PrivacyVault] re-register-token: token=${reRegToken}, policyEngine=${reRegPE}, account=${accountAddr}`);
+
+        const signedTx = signRawTransaction(nonce, bufferedGasPrice, 150000n, VAULT_CONTRACT, 0n, regData, privateKeyHex);
+        const txHash = await sendRawTransaction(signedTx);
+        console.log(`[PrivacyVault] re-register-token tx sent: ${txHash}`);
+
+        const receipt = await waitForReceipt(txHash);
+        if ((receipt.status as string) !== "0x1") {
+          throw new Error(`Token registration reverted: ${txHash}. The token may already be registered.`);
+        }
+
+        await serviceClient.from("agent_actions_log").insert({
+          user_id: userId, action_type: "privacy-register-token-custom-pe",
+          params: { token: reRegToken, policyEngine: reRegPE, network: "ethereum-sepolia" },
+          status: "executed", result: { tx_hash: txHash },
+        });
+
+        return new Response(JSON.stringify({
+          success: true, tx_hash: txHash, token: reRegToken, policy_engine: reRegPE,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       default:
