@@ -808,6 +808,19 @@ export function PrivacyVaultSection() {
                             )}
                             Check Eligibility
                           </Button>
+                          {deployedPE && status?.policyEngine &&
+                           status.policyEngine.toLowerCase() !== deployedPE.toLowerCase() && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2"
+                              disabled={isRegistering}
+                              onClick={() => handleRegisterWithCustomPE(tok.address)}
+                            >
+                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              Re-register with My PE
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>
