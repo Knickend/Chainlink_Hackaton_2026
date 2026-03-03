@@ -1,60 +1,59 @@
 
 
-## Fix: WETH Registration Failing with Zero Policy Engine
+## Fix: USDC Deposit Denied - Allow Re-registration with Custom Policy Engine
 
-### Root Cause
+### Problem
 
-The registration failed because the vault contract received `address(0)` as the policy engine. This happened because the "Register" button (shown when no PE is deployed) calls `handleRegisterToken` which invokes the `register` backend action without a `policyEngine` parameter. The backend then defaults to `address(0)` (line 767), which the vault contract rejects with `TokenRegistrationFailedNoPolicyEngine`.
+USDC is already registered on the vault contract with a third-party Policy Engine that denies deposits from your account. Although you deployed your own permissive PE (`0x8813...`), the system currently:
 
-### Changes
+1. **Backend** (`re-register-token` action): Pre-checks if a token is already registered and returns an error saying "registration is first-come-first-served and cannot be changed" -- never even attempting the on-chain call
+2. **Frontend**: Only shows "Check Eligibility" for registered tokens -- no option to re-register with your own PE
 
-**1. Backend: `supabase/functions/privacy-vault/index.ts`**
+### Solution
 
-- In the `register` action (line 762-800): Instead of defaulting to `address(0)` when no policy engine is provided, throw an error requiring a valid policy engine address. This prevents silently sending doomed transactions.
+**1. Backend: Remove the registration blocker in `re-register-token`**
 
-```text
-// OLD (line 767):
-const policyAddr = (policyEngine as string) || "0x0000000000000000000000000000000000000000";
+In `supabase/functions/privacy-vault/index.ts` (lines 894-948):
+- Remove the pre-check that queries `sPolicyEngines(address)` and returns a 400 error for already-registered tokens
+- Instead, just attempt the `register(address,address)` call directly on the vault contract
+- If the contract allows re-registration, it succeeds; if not, the transaction reverts with a clear on-chain error
+- This is safe because the vault contract itself enforces any real restrictions
 
-// NEW:
-const policyAddr = policyEngine as string;
-if (!policyAddr || policyAddr === "0x0000000000000000000000000000000000000000") {
-  throw new Error("A valid policy engine address is required. Deploy your own Policy Engine first.");
-}
-```
+**2. Frontend: Add "Re-register with My PE" button for registered tokens**
 
-**2. Frontend: `src/components/settings/PrivacyVaultSection.tsx`**
-
-Two fixes:
-
-a) **Persist deployed PE address** in localStorage so it survives page refreshes:
-- On mount, load `deployedPE` from `localStorage.getItem('privacy-vault-deployed-pe')`
-- After successful deployment, save to `localStorage.setItem('privacy-vault-deployed-pe', address)`
-
-b) **Remove the fallback "Register" button** that calls `handleRegisterToken` with no PE:
-- When no PE is deployed, show a message saying "Deploy a Policy Engine first" instead of a plain "Register" button
-- Remove or guard `handleRegisterToken` so it cannot be called without a PE
-- The button at line 765-773 (the else branch when `!deployedPE`) should be replaced with a prompt to deploy a PE
+In `src/components/settings/PrivacyVaultSection.tsx` (lines 784-812):
+- When a token is already registered AND the user has a deployed PE AND the current PE differs from the deployed PE, show a "Re-register with My PE" button
+- This calls `handleRegisterWithCustomPE` (which already exists and uses `re-register-token`)
+- Keep the existing "Check Eligibility" button alongside it
 
 ### Technical Details
 
-**localStorage persistence:**
-```text
-// On mount (in useEffect or initial state):
-const [deployedPE, setDeployedPE] = useState<string | null>(
-  () => localStorage.getItem('privacy-vault-deployed-pe')
-);
+**Backend change** (remove lines 899-918 in privacy-vault/index.ts):
 
-// After successful deploy:
-setDeployedPE(data.policy_engine);
-localStorage.setItem('privacy-vault-deployed-pe', data.policy_engine);
+```text
+// REMOVE: The pre-check + early return that blocks re-registration
+// Lines 899-918 that query sPolicyEngines and return 400 if already registered
+
+// KEEP: Everything from line 920 onwards (the actual register call)
 ```
 
-**Button replacement (lines 764-773):**
-Replace the plain "Register" button with a disabled button + tooltip explaining they need to deploy a PE first, or auto-expand the Deploy PE section.
+**Frontend change** (after line 810 in PrivacyVaultSection.tsx):
+
+Add a conditional button when `deployedPE` exists and `status.policyEngine.toLowerCase() !== deployedPE.toLowerCase()`:
+
+```text
+{deployedPE && status?.policyEngine &&
+ status.policyEngine.toLowerCase() !== deployedPE.toLowerCase() && (
+  <Button size="sm" variant="outline" ...
+    onClick={() => handleRegisterWithCustomPE(tok.address)}>
+    Re-register with My PE
+  </Button>
+)}
+```
 
 ### Expected Outcome
-- Users must deploy a PE before registering any token
-- The deployed PE address persists across page refreshes
-- No more `address(0)` sent to the vault contract
-- Clear user guidance when PE is not yet deployed
+
+- You can re-register USDC with your permissive PE (`0x8813...`)
+- After re-registration, the `checkDepositAllowed` pre-flight passes
+- Deposits succeed without "Policy Engine denied" errors
+
