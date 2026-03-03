@@ -892,54 +892,61 @@ serve(async (req) => {
       }
 
       case "re-register-token": {
-        // Re-register a token: unregister first (if already registered), then register with new PE
+        // Re-register a token with a new policy engine
         const { token: reRegToken, policyEngine: reRegPE } = params;
         if (!reRegToken || !reRegPE) throw new Error("token and policyEngine are required");
 
         const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
 
-        // Step 1: Try to unregister the token first (ignore revert if not registered)
-        const unregSelector = bytesToHex(keccak_256(new TextEncoder().encode("unregister(address)"))).slice(0, 10);
-        const unregData = unregSelector + padTo32(reRegToken as string);
+        // Step 1: Check current registration via sPolicyEngines(address)
+        const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("sPolicyEngines(address)"))).slice(0, 10);
+        const checkData = checkSelector + padTo32(reRegToken as string);
+        const checkResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
+        });
+        const checkResult = (await checkResp.json()).result || "0x" + "0".repeat(64);
+        const currentPE = "0x" + checkResult.slice(26).toLowerCase();
+        const isRegistered = currentPE !== "0x" + "0".repeat(40);
+        const targetPE = (reRegPE as string).toLowerCase();
 
-        let currentNonce: bigint;
-        let currentGasPrice: bigint;
-        [currentNonce, currentGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
-        const bufferedGasPrice = currentGasPrice * 12n / 10n;
+        console.log(`[PrivacyVault] re-register-token: token=${reRegToken}, currentPE=${currentPE}, targetPE=${targetPE}, registered=${isRegistered}`);
 
-        console.log(`[PrivacyVault] re-register-token: unregistering token=${reRegToken}, account=${accountAddr}`);
-
-        try {
-          const unregTx = signRawTransaction(currentNonce, bufferedGasPrice, 150000n, VAULT_CONTRACT, 0n, unregData, privateKeyHex);
-          const unregHash = await sendRawTransaction(unregTx);
-          console.log(`[PrivacyVault] unregister tx sent: ${unregHash}`);
-          const unregReceipt = await waitForReceipt(unregHash);
-          if ((unregReceipt.status as string) === "0x1") {
-            console.log(`[PrivacyVault] unregister succeeded`);
-            currentNonce = currentNonce + 1n;
-          } else {
-            console.log(`[PrivacyVault] unregister reverted (token may not have been registered), proceeding to register`);
-            currentNonce = currentNonce + 1n;
-          }
-        } catch (unregErr) {
-          console.log(`[PrivacyVault] unregister failed (${unregErr}), proceeding to register`);
-          // Re-fetch nonce in case the tx was mined
-          currentNonce = await getNonce(accountAddr);
+        // If already registered with the target PE, return success immediately
+        if (isRegistered && currentPE === targetPE) {
+          console.log(`[PrivacyVault] re-register-token: already registered with target PE, no action needed`);
+          return new Response(JSON.stringify({
+            success: true, already_registered: true, token: reRegToken, policy_engine: reRegPE,
+            message: "Token is already registered with this Policy Engine.",
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Step 2: Register with the new PE
+        // If registered with a different PE, the contract doesn't support re-registration
+        if (isRegistered) {
+          throw new Error(
+            `Token ${(reRegToken as string).slice(0, 10)}… is already registered with PE ${currentPE.slice(0, 10)}…. ` +
+            `The vault contract does not support changing the Policy Engine for an already-registered token. ` +
+            `Try depositing anyway — the existing PE may still allow deposits.`
+          );
+        }
+
+        // Not yet registered — proceed with registration
         const regSelector = bytesToHex(keccak_256(new TextEncoder().encode("register(address,address)"))).slice(0, 10);
         const regData = regSelector + padTo32(reRegToken as string) + padTo32(reRegPE as string);
 
+        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+        const bufferedGasPrice = gasPrice * 12n / 10n;
+
         console.log(`[PrivacyVault] re-register-token: registering token=${reRegToken}, policyEngine=${reRegPE}, account=${accountAddr}`);
 
-        const signedTx = signRawTransaction(currentNonce, bufferedGasPrice, 150000n, VAULT_CONTRACT, 0n, regData, privateKeyHex);
+        const signedTx = signRawTransaction(nonce, bufferedGasPrice, 150000n, VAULT_CONTRACT, 0n, regData, privateKeyHex);
         const txHash = await sendRawTransaction(signedTx);
         console.log(`[PrivacyVault] re-register-token tx sent: ${txHash}`);
 
         const receipt = await waitForReceipt(txHash);
         if ((receipt.status as string) !== "0x1") {
-          throw new Error(`Token registration reverted: ${txHash}. Unregister may have failed or the contract rejected the new PE.`);
+          throw new Error(`Token registration reverted: ${txHash}. The contract may have rejected the registration.`);
         }
 
         await serviceClient.from("agent_actions_log").insert({
