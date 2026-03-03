@@ -533,133 +533,56 @@ serve(async (req) => {
       }
 
       case "deposit": {
-        // Automated on-chain deposit with auto-setup: ensures token is registered before depositing
-        const { amount, token } = params;
-        if (!amount || !token) throw new Error("amount and token are required");
-
-        const isNativeETH = (token as string).toLowerCase() === "0x0000000000000000000000000000000000000000";
-        const WETH_ADDRESS = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
-        const effectiveToken = isNativeETH ? WETH_ADDRESS : (token as string);
-        const decimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
-        const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
+        // "Fund via Shielded Address" flow: no on-chain deposit from signing wallet.
+        // Instead, ensure the user has a shielded address and tell them to send tokens there.
+        const { token } = params;
+        const effectiveToken = token 
+          ? ((token as string).toLowerCase() === "0x0000000000000000000000000000000000000000" 
+              ? "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9" 
+              : (token as string))
+          : "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
         const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
 
-        console.log(`[PrivacyVault] On-chain deposit: token=${token}, effectiveToken=${effectiveToken}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
-
-        // --- AUTO-SETUP: ensureTokenRegistered ---
+        // Auto-setup: ensure token is registered so the indexer can credit deposits
         await ensureTokenRegistered(effectiveToken, userId, accountAddr, privateKeyHex, serviceClient);
 
-        // Pre-check: call checkDepositAllowed(depositor, token, amount) view function
-        const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("checkDepositAllowed(address,address,uint256)"))).slice(0, 10);
-        const checkData = checkSelector + padTo32(accountAddr) + padTo32(effectiveToken) + encodeUint256(amountBigInt);
-        
-        const checkResp = await fetch(SEPOLIA_RPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
-        });
-        const checkResult = await checkResp.json();
-        
-        const isRevert = (result: string | undefined): boolean => {
-          // Empty result (0x) means the PE doesn't implement checkDepositAllowed — treat as permissive (allowed)
-          if (!result || result === "0x") return false;
-          if (result.startsWith("0x08c379a2")) return true; // Error(string)
-          if (result.startsWith("0x4e487b71")) return true; // Panic
-          return false;
-        };
-        
-        const decodeRevertReason = (result: string): string => {
-          if (!result || result === "0x") return "Empty result (call reverted with no reason)";
-          if (result.startsWith("0x08c379a2") && result.length >= 138) {
-            try {
-              const lenHex = result.slice(74, 138);
-              const strLen = parseInt(lenHex, 16);
-              const strHex = result.slice(138, 138 + strLen * 2);
-              const bytes = new Uint8Array(strLen);
-              for (let i = 0; i < strLen; i++) {
-                bytes[i] = parseInt(strHex.slice(i * 2, i * 2 + 2), 16);
-              }
-              return new TextDecoder().decode(bytes);
-            } catch { return "Revert with undecodable Error(string)"; }
+        // Check if user has a shielded address; auto-generate one if not
+        const { data: existingAddresses } = await serviceClient
+          .from("privacy_shielded_addresses")
+          .select("shielded_address")
+          .eq("user_id", userId)
+          .limit(1);
+
+        let shieldedAddress: string;
+        if (existingAddresses && existingAddresses.length > 0) {
+          shieldedAddress = existingAddresses[0].shielded_address;
+        } else {
+          // Auto-generate a shielded address
+          const genTimestamp = BigInt(Math.floor(Date.now() / 1000));
+          const structHash = hashGenerateShieldedAddress(account, genTimestamp);
+          const auth = await signEip712(structHash, privateKeyHex);
+          const genResult = await callPrivacyAPI("/shielded-address", { account, timestamp: Number(genTimestamp), auth });
+          shieldedAddress = genResult.address as string;
+          if (shieldedAddress) {
+            await serviceClient.from("privacy_shielded_addresses").insert({
+              user_id: userId, shielded_address: shieldedAddress, label: "Auto-generated for deposits",
+            });
           }
-          if (result.startsWith("0x4e487b71")) return "Panic error";
-          return "Unknown revert data";
-        };
-
-        if (checkResult.error) {
-          const errMsg = typeof checkResult.error === 'object' ? JSON.stringify(checkResult.error) : String(checkResult.error);
-          console.error(`[PrivacyVault] checkDepositAllowed JSON-RPC error:`, errMsg);
-          throw new Error(`Deposit not allowed by policy engine. RPC error: ${errMsg}`);
         }
-        
-        if (isRevert(checkResult.result)) {
-          const reason = decodeRevertReason(checkResult.result || "0x");
-          console.error(`[PrivacyVault] checkDepositAllowed reverted. Result: ${checkResult.result}, Reason: ${reason}`);
-          throw new Error(`Deposit denied by policy engine for token ${effectiveToken}. Revert reason: ${reason}`);
-        }
-        
-        console.log(`[PrivacyVault] checkDepositAllowed passed, result: ${checkResult.result}`);
-
-        // Get nonce and gas price
-        const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
-        const bufferedGasPrice = gasPrice * 12n / 10n;
-
-        let currentNonce = nonce;
-        let wrapTxHash: string | undefined;
-        let approveTxHash: string | undefined;
-        let depositTxHash: string;
-
-        if (isNativeETH) {
-          const wrapData = "0xd0e30db0";
-          const wrapTx = signRawTransaction(currentNonce, bufferedGasPrice, 60000n, WETH_ADDRESS, amountBigInt, wrapData, privateKeyHex);
-          wrapTxHash = await sendRawTransaction(wrapTx);
-          console.log(`[PrivacyVault] Wrap ETH→WETH tx sent: ${wrapTxHash}`);
-          const wrapReceipt = await waitForReceipt(wrapTxHash);
-          if ((wrapReceipt.status as string) !== "0x1") {
-            throw new Error(`Wrap ETH→WETH transaction reverted: ${wrapTxHash}`);
-          }
-          currentNonce += 1n;
-        }
-
-        // Approve vault to spend the token
-        const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
-        const approveTx = signRawTransaction(currentNonce, bufferedGasPrice, 100000n, effectiveToken, 0n, approveData, privateKeyHex);
-        approveTxHash = await sendRawTransaction(approveTx);
-        console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
-        const approveReceipt = await waitForReceipt(approveTxHash);
-        if ((approveReceipt.status as string) !== "0x1") {
-          throw new Error(`Approve transaction reverted: ${approveTxHash}`);
-        }
-        currentNonce += 1n;
-
-        // deposit(token, amount) on the Vault contract
-        const depositData = "0x47e7ef24" + padTo32(effectiveToken) + encodeUint256(amountBigInt);
-        const depositTx = signRawTransaction(currentNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, 0n, depositData, privateKeyHex);
-        depositTxHash = await sendRawTransaction(depositTx);
-        console.log(`[PrivacyVault] Deposit tx sent: ${depositTxHash}`);
-        const depositReceipt = await waitForReceipt(depositTxHash);
-        if ((depositReceipt.status as string) !== "0x1") {
-          throw new Error(`Deposit transaction reverted on-chain: ${depositTxHash}`);
-        }
-        console.log(`[PrivacyVault] Deposit tx mined successfully`);
 
         await serviceClient.from("agent_actions_log").insert({
-          user_id: userId, action_type: "privacy-deposit",
-          params: { amount, token: effectiveToken, network: "ethereum-sepolia", wrap_tx: wrapTxHash, approve_tx: approveTxHash, deposit_tx: depositTxHash },
-          status: "executed",
-          result: { wrap_tx: wrapTxHash, approve_tx: approveTxHash, deposit_tx: depositTxHash },
+          user_id: userId, action_type: "privacy-deposit-info",
+          params: { token: effectiveToken, network: "ethereum-sepolia" },
+          status: "executed", result: { shielded_address: shieldedAddress },
         });
 
         return new Response(JSON.stringify({
           success: true,
-          method: "on-chain",
-          ...(wrapTxHash ? { wrap_tx: wrapTxHash } : {}),
-          approve_tx: approveTxHash,
-          deposit_tx: depositTxHash,
+          method: "shielded-address",
+          shielded_address: shieldedAddress,
+          token: effectiveToken,
           network: "ethereum-sepolia",
-          message: isNativeETH
-            ? "SepoliaETH wrapped to WETH and deposited on-chain. The indexer may take ~30 seconds to credit your privacy vault balance."
-            : "Deposit completed on-chain. The indexer may take ~30 seconds to credit your privacy vault balance.",
+          message: `Send tokens to your shielded address: ${shieldedAddress}. The vault indexer will automatically credit your balance within ~30 seconds.`,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -732,13 +655,32 @@ serve(async (req) => {
         }
         console.log(`[PrivacyVault] withdrawWithTicket tx mined successfully`);
 
+        // Step 3: Forward tokens from signing wallet to user-specified recipient
+        const recipient = params.recipient as string | undefined;
+        let forwardTxHash: string | undefined;
+        if (recipient && recipient.startsWith("0x") && recipient.length === 42) {
+          console.log(`[PrivacyVault] Forwarding withdrawn tokens to recipient: ${recipient}`);
+          const fwdNonce = await getNonce(accountAddr);
+          const fwdGasPrice = await getGasPrice();
+          const fwdBufferedGas = fwdGasPrice * 12n / 10n;
+          // ERC20 transfer(address,uint256)
+          const transferData = "0xa9059cbb" + padTo32(recipient) + encodeUint256(amountBigInt);
+          const fwdTx = signRawTransaction(fwdNonce, fwdBufferedGas, 100000n, token as string, 0n, transferData, privateKeyHex);
+          forwardTxHash = await sendRawTransaction(fwdTx);
+          console.log(`[PrivacyVault] Forward transfer tx sent: ${forwardTxHash}`);
+          const fwdReceipt = await waitForReceipt(forwardTxHash);
+          if ((fwdReceipt.status as string) !== "0x1") {
+            console.error(`[PrivacyVault] Forward transfer reverted: ${forwardTxHash}`);
+          }
+        }
+
         await serviceClient.from("agent_actions_log").insert({
           user_id: userId, action_type: "privacy-withdraw",
-          params: { amount, token, network: "ethereum-sepolia" },
-          status: "executed", result: { ...ticketResult, withdraw_tx: withdrawTxHash },
+          params: { amount, token, recipient: recipient || null, network: "ethereum-sepolia" },
+          status: "executed", result: { ...ticketResult, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash },
         });
 
-        return new Response(JSON.stringify({ success: true, withdraw_tx: withdrawTxHash, ticket_id: ticketResult.id, result: ticketResult }),
+        return new Response(JSON.stringify({ success: true, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash, ticket_id: ticketResult.id, result: ticketResult }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 

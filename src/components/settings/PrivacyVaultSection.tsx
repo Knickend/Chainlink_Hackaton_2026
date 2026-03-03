@@ -68,16 +68,16 @@ export function PrivacyVaultSection() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
-  const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
-  const [depositStatus, setDepositStatus] = useState<string | null>(null);
+  const [depositShieldedAddress, setDepositShieldedAddress] = useState<string | null>(null);
+  const [copiedDeposit, setCopiedDeposit] = useState(false);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [howOpen, setHowOpen] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawToken, setWithdrawToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
+  const [withdrawRecipient, setWithdrawRecipient] = useState('');
   const [withdrawResult, setWithdrawResult] = useState<Record<string, any> | null>(null);
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
@@ -238,9 +238,10 @@ export function PrivacyVaultSection() {
       const result = await invokePrivacy('withdraw', {
         amount: Number(withdrawAmount),
         token: withdrawToken,
+        recipient: withdrawRecipient || undefined,
       });
       setWithdrawResult(result);
-      toast({ title: 'Withdrawal Initiated', description: 'Tokens are being moved back on-chain to your account address.' });
+      toast({ title: 'Withdrawal Initiated', description: withdrawRecipient ? 'Tokens sent to your specified address.' : 'Tokens are being moved back on-chain.' });
       setWithdrawAmount('');
       await Promise.all([fetchBalances(), checkOnboardStatus()]);
     } catch (err) {
@@ -251,27 +252,21 @@ export function PrivacyVaultSection() {
   };
 
   const handleDeposit = async () => {
-    if (!depositAmount) return;
     setIsDepositing(true);
-    setDepositResult(null);
-    setDepositStatus('Setting up token…');
+    setDepositShieldedAddress(null);
     try {
-      setDepositStatus('Approving & depositing…');
       const result = await invokePrivacy('deposit', {
-        amount: Number(depositAmount),
         token: depositToken,
       });
-      if (result.deposit_tx) {
-        setDepositResult({ wrap_tx: result.wrap_tx, approve_tx: result.approve_tx, deposit_tx: result.deposit_tx });
+      if (result.shielded_address) {
+        setDepositShieldedAddress(result.shielded_address);
       }
-      toast({ title: 'Deposit Completed', description: 'On-chain deposit executed. Indexer may take ~30s to credit your balance.' });
-      setDepositAmount('');
-      await Promise.all([fetchBalances(), checkOnboardStatus(), fetchActivityLog()]);
+      toast({ title: 'Ready to Deposit', description: 'Send tokens to your shielded address below.' });
+      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
     } catch (err) {
-      toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      toast({ title: 'Setup Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsDepositing(false);
-      setDepositStatus(null);
     }
   };
 
@@ -343,8 +338,8 @@ export function PrivacyVaultSection() {
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
                   { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
-                  { step: 2, icon: ArrowDownToLine, title: 'Deposit', desc: 'Deposit tokens — setup is automatic behind the scenes' },
-                  { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw back on-chain' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Send Tokens', desc: 'Send tokens to your shielded address from any wallet or exchange' },
+                  { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw to any address' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/20 bg-primary/5 text-center w-full">
@@ -521,31 +516,31 @@ export function PrivacyVaultSection() {
         </Card>
       </motion.div>
 
-      {/* Deposit Tokens */}
+      {/* Deposit — Fund via Shielded Address */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowDownToLine className="w-4 h-4" />
-              Deposit to Privacy Vault
+              Fund Privacy Vault
             </CardTitle>
-            <CardDescription>Deposit ERC-20 tokens — token setup is handled automatically</CardDescription>
+            <CardDescription>Send tokens to your shielded address from any wallet or exchange</CardDescription>
           </CardHeader>
           <CardContent>
             {!showDeposit ? (
               <Button variant="outline" size="sm" onClick={() => setShowDeposit(true)}>
-                <ArrowDownToLine className="w-4 h-4 mr-2" /> Deposit Tokens
+                <ArrowDownToLine className="w-4 h-4 mr-2" /> Get Deposit Address
               </Button>
             ) : (
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label htmlFor="deposit-token">Token</Label>
+                  <Label htmlFor="deposit-token">Token to deposit</Label>
                   <Select value={depositToken} onValueChange={setDepositToken}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select token" />
                     </SelectTrigger>
                     <SelectContent>
-                      {COMMON_TOKENS.map((t) => (
+                      {COMMON_TOKENS.filter(t => t.address !== '0x0000000000000000000000000000000000000000').map((t) => (
                         <SelectItem key={t.address} value={t.address}>
                           {t.label}
                         </SelectItem>
@@ -553,63 +548,52 @@ export function PrivacyVaultSection() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="deposit-amount">Amount</Label>
-                  <Input
-                    id="deposit-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                  />
-                </div>
                 <p className="text-xs text-muted-foreground">
-                  ℹ️ Token registration and policy engine setup happen automatically on first deposit. Just pick a token and amount — everything else is handled for you.
+                  ℹ️ Token registration happens automatically. Just select a token and we'll provide your deposit address.
                 </p>
-                {isDepositing && depositStatus && (
+                {isDepositing && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    {depositStatus} This may take up to 90 seconds on first deposit.
+                    Setting up token… This may take up to 90 seconds on first use.
                   </div>
                 )}
-                {depositResult && (
-                  <div className="space-y-2 p-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10">
-                    <p className="text-xs font-semibold text-emerald-400">✅ Deposit completed on-chain</p>
-                    <div className="space-y-1">
-                      {depositResult.wrap_tx && (
-                        <p className="text-xs text-muted-foreground">
-                          Wrap TX:{' '}
-                          <a href={`https://sepolia.etherscan.io/tx/${depositResult.wrap_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
-                            {depositResult.wrap_tx.slice(0, 10)}…{depositResult.wrap_tx.slice(-8)}
-                          </a>
-                        </p>
-                      )}
-                      {depositResult.approve_tx && (
-                        <p className="text-xs text-muted-foreground">
-                          Approve TX:{' '}
-                          <a href={`https://sepolia.etherscan.io/tx/${depositResult.approve_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
-                            {depositResult.approve_tx.slice(0, 10)}…{depositResult.approve_tx.slice(-8)}
-                          </a>
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Deposit TX:{' '}
-                        <a href={`https://sepolia.etherscan.io/tx/${depositResult.deposit_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
-                          {depositResult.deposit_tx.slice(0, 10)}…{depositResult.deposit_tx.slice(-8)}
-                        </a>
-                      </p>
+                {depositShieldedAddress && (
+                  <div className="space-y-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
+                    <p className="text-xs font-semibold text-primary">✅ Send tokens to this address:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono bg-muted/50 p-2 rounded flex-1 break-all">
+                        {depositShieldedAddress}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(depositShieldedAddress);
+                          setCopiedDeposit(true);
+                          setTimeout(() => setCopiedDeposit(false), 2000);
+                        }}
+                      >
+                        {copiedDeposit ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      ℹ️ The indexer may take ~30 seconds to credit your privacy vault balance.
+                      Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. Your vault balance will update automatically within ~30 seconds.
                     </p>
+                    <Button variant="outline" size="sm" onClick={handleRefreshBalances} disabled={isRefreshing}>
+                      <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      Refresh Balance
+                    </Button>
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button onClick={handleDeposit} disabled={isDepositing || !depositAmount} size="sm">
-                    {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
-                    Deposit
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setShowDeposit(false); setDepositResult(null); }}>
+                  {!depositShieldedAddress && (
+                    <Button onClick={handleDeposit} disabled={isDepositing} size="sm">
+                      {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
+                      Get Deposit Address
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => { setShowDeposit(false); setDepositShieldedAddress(null); }}>
                     Cancel
                   </Button>
                 </div>
@@ -627,7 +611,7 @@ export function PrivacyVaultSection() {
               <ArrowUpFromLine className="w-4 h-4" />
               Withdraw from Privacy Vault
             </CardTitle>
-            <CardDescription>Move tokens from your vault balance back on-chain to your account address</CardDescription>
+            <CardDescription>Move tokens from your vault balance to any wallet address</CardDescription>
           </CardHeader>
           <CardContent>
             {!showWithdraw ? (
@@ -693,6 +677,18 @@ export function PrivacyVaultSection() {
                     return <p className="text-xs text-muted-foreground">No vault balance for this token</p>;
                   })()}
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="withdraw-recipient">Recipient Address</Label>
+                  <Input
+                    id="withdraw-recipient"
+                    placeholder="0x... (address to receive withdrawn tokens)"
+                    value={withdrawRecipient}
+                    onChange={(e) => setWithdrawRecipient(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the wallet address where you want to receive the withdrawn tokens.
+                  </p>
+                </div>
                 {isWithdrawing && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -714,11 +710,19 @@ export function PrivacyVaultSection() {
                           {withdrawResult.withdraw_tx.slice(0, 10)}…{withdrawResult.withdraw_tx.slice(-8)}
                         </a>
                       </p>
+                     )}
+                    {withdrawResult.forward_tx && (
+                      <p className="text-xs text-muted-foreground">
+                        Forward TX:{' '}
+                        <a href={`https://sepolia.etherscan.io/tx/${withdrawResult.forward_tx}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                          {withdrawResult.forward_tx.slice(0, 10)}…{withdrawResult.forward_tx.slice(-8)}
+                        </a>
+                      </p>
                     )}
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount} size="sm">
+                  <Button onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount || !withdrawRecipient} size="sm">
                     {isWithdrawing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpFromLine className="w-4 h-4 mr-2" />}
                     Withdraw
                   </Button>
