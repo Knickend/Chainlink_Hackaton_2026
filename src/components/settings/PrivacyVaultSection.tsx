@@ -91,6 +91,7 @@ export function PrivacyVaultSection() {
   const [isDeployingPE, setIsDeployingPE] = useState(false);
   const [showDeployPE, setShowDeployPE] = useState(false);
   const [manualPE, setManualPE] = useState('');
+  const [showChangePE, setShowChangePE] = useState(false);
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
@@ -703,6 +704,37 @@ export function PrivacyVaultSection() {
                             <p className="text-xs text-muted-foreground">
                               Use the "Register with My PE" buttons below for unregistered tokens.
                             </p>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-5 text-xs px-0"
+                              onClick={() => setShowChangePE(!showChangePE)}
+                            >
+                              Change PE Address
+                            </Button>
+                            {showChangePE && (
+                              <div className="flex gap-2 mt-2">
+                                <Input
+                                  placeholder="0x..."
+                                  value={manualPE}
+                                  onChange={(e) => setManualPE(e.target.value)}
+                                  className="h-7 text-xs font-mono"
+                                />
+                                <Button
+                                  size="sm"
+                                  className="h-7"
+                                  disabled={!manualPE?.match(/^0x[a-fA-F0-9]{40}$/)}
+                                  onClick={() => {
+                                    setDeployedPE(manualPE);
+                                    localStorage.setItem('privacy-vault-deployed-pe', manualPE);
+                                    setShowChangePE(false);
+                                    toast({ title: 'PE Address Updated' });
+                                  }}
+                                >
+                                  Set
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <>
