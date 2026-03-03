@@ -195,10 +195,15 @@ const initWorkflow = (cfg: Config) => {
             .result();
 
           if (response.statusCode !== 200) {
+            nodeRuntime.log(`❌ HTTP ${response.statusCode} from price_cache`);
+            const errBody = new TextDecoder().decode(response.body);
+            nodeRuntime.log(`   Response: ${errBody.slice(0, 500)}`);
             return "[]";
           }
 
-          return new TextDecoder().decode(response.body);
+          const body = new TextDecoder().decode(response.body);
+          nodeRuntime.log(`✅ HTTP 200 — ${body.length} bytes, preview: ${body.slice(0, 200)}`);
+          return body;
         },
         consensusIdenticalAggregation<string>(),
       )(cfg).result();
