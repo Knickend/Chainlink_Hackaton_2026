@@ -764,7 +764,10 @@ serve(async (req) => {
         const { token, policyEngine } = params;
         if (!token) throw new Error("token is required");
 
-        const policyAddr = (policyEngine as string) || "0x0000000000000000000000000000000000000000";
+        const policyAddr = policyEngine as string;
+        if (!policyAddr || policyAddr === "0x0000000000000000000000000000000000000000") {
+          throw new Error("A valid policy engine address is required. Deploy your own Policy Engine first.");
+        }
 
         // selector: keccak256("register(address,address)") first 4 bytes
         const selectorBytes = keccak_256(new TextEncoder().encode("register(address,address)"));
