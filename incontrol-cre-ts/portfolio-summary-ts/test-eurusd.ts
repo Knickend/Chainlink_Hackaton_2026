@@ -60,8 +60,8 @@ const initWorkflow = (config: TestConfig) => {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            apikey: config.supabaseApiKey,
-            Authorization: `Bearer ${config.supabaseApiKey}`,
+            apikey: supabaseApiKey,
+            Authorization: `Bearer ${supabaseApiKey}`,
           },
           timeout: "10s",
         }).result();
