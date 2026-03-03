@@ -1,10 +1,24 @@
+/**
+ * Portfolio Summary CRE Workflow
+ *
+ * Multi-asset price feed aggregator that fetches prices across asset types
+ * (crypto, stocks, forex, etc.) with CRE consensus verification.
+ * Optionally writes a portfolio snapshot attestation on-chain with --broadcast.
+ */
+
 import * as cre from "@chainlink/cre-sdk";
 import {
   Runner,
   HTTPClient,
   CronCapability,
+  EVMClient,
+  getNetwork,
+  hexToBase64,
+  bytesToHex,
+  TxStatus,
   consensusMedianAggregation,
 } from "@chainlink/cre-sdk";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 // Asset type definitions
 type AssetType = "crypto" | "stock" | "commodity" | "etf" | "bond" | "forex";
@@ -34,20 +48,11 @@ interface Config {
     timeout: number;
     consensusNodes: number;
   };
+  consumerAddress?: string;
+  gasLimit?: string;
 }
 
-// Price data response types
-interface PriceData {
-  symbol: string;
-  price: number;
-  change24h?: number;
-  changePercent?: number;
-  volume?: number;
-  marketCap?: number;
-  timestamp: number;
-  type: AssetType;
-}
-
+// Result types
 interface WorkflowResult {
   success: boolean;
   timestamp: number;
@@ -63,16 +68,11 @@ interface WorkflowResult {
 }
 
 // Helper function to check market hours
-function isWithinMarketHours(
-  marketHours?: WorkflowConfig["marketHours"]
-): boolean {
-  if (!marketHours) return true; // 24/7 markets (crypto, forex)
-
-  const now = new Date();
-  const currentHour = now.getHours();
-  const [startHour] = marketHours.start.split(':').map(Number);
-  const [endHour] = marketHours.end.split(':').map(Number);
-
+function isWithinMarketHours(marketHours?: WorkflowConfig["marketHours"]): boolean {
+  if (!marketHours) return true;
+  const currentHour = new Date().getHours();
+  const [startHour] = marketHours.start.split(":").map(Number);
+  const [endHour] = marketHours.end.split(":").map(Number);
   return currentHour >= startHour && currentHour < endHour;
 }
 
@@ -90,12 +90,10 @@ function parseConfig(c: unknown): Config {
   try {
     if (typeof c === "string") return JSON.parse(c) as Config;
     if (c && typeof c === "object" && (c as any).type === "Buffer" && Array.isArray((c as any).data)) {
-      const s = String.fromCharCode(...((c as any).data as number[]));
-      return JSON.parse(s) as Config;
+      return JSON.parse(String.fromCharCode(...((c as any).data as number[]))) as Config;
     }
     if (Array.isArray(c) && c.every((x) => typeof x === "number")) {
-      const s = String.fromCharCode(...(c as unknown as number[]));
-      return JSON.parse(s) as Config;
+      return JSON.parse(String.fromCharCode(...(c as unknown as number[]))) as Config;
     }
     try {
       if (typeof TextDecoder !== "undefined" && c && (c as any).buffer instanceof ArrayBuffer) {
@@ -105,6 +103,70 @@ function parseConfig(c: unknown): Config {
     return c as unknown as Config;
   } catch {
     return {} as Config;
+  }
+}
+
+/**
+ * Write a portfolio snapshot attestation on-chain.
+ * Requires a consumer contract implementing IReceiver on Sepolia.
+ */
+function writeSnapshotAttestation(
+  runtime: cre.Runtime,
+  config: Config,
+  totalPrices: number,
+  successCount: number,
+): string | null {
+  if (!config.consumerAddress) {
+    runtime.log("⚠️ No consumerAddress configured — skipping on-chain write");
+    return null;
+  }
+
+  try {
+    const network = getNetwork({
+      chainFamily: "evm",
+      chainSelectorName: "ethereum-testnet-sepolia",
+      isTestnet: true,
+    });
+
+    if (!network) {
+      runtime.log("❌ Sepolia network not found");
+      return null;
+    }
+
+    const evmClient = new EVMClient(network.chainSelector.selector);
+
+    // ABI-encode: (uint256 totalPrices, uint256 successCount, uint256 timestamp)
+    const reportData = encodeAbiParameters(
+      parseAbiParameters("uint256 totalPrices, uint256 successCount, uint256 timestamp"),
+      [BigInt(totalPrices), BigInt(successCount), BigInt(Math.floor(Date.now() / 1000))],
+    );
+
+    const reportResponse = runtime.report({
+      encodedPayload: hexToBase64(reportData),
+      encoderName: "evm",
+      signingAlgo: "ecdsa",
+      hashingAlgo: "keccak256",
+    }).result();
+
+    const writeResult = evmClient.writeReport(runtime, {
+      receiver: config.consumerAddress,
+      report: reportResponse,
+      gasConfig: {
+        gasLimit: config.gasLimit || "300000",
+      },
+    }).result();
+
+    if (writeResult.txStatus === TxStatus.SUCCESS) {
+      const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+      runtime.log(`🔗 Portfolio snapshot attestation tx: ${txHash}`);
+      return txHash;
+    }
+
+    runtime.log(`❌ On-chain write failed: status ${writeResult.txStatus}`);
+    return null;
+  } catch (error) {
+    runtime.log(`❌ EVM write error: ${error}`);
+    return null;
   }
 }
 
@@ -131,7 +193,6 @@ const initWorkflow = (config: Config) => {
         continue;
       }
 
-      // Check market hours for stocks/ETFs
       if (!isWithinMarketHours(workflow.marketHours)) {
         runtime.log(`[Portfolio] ${workflow.name}: Outside market hours, skipping`);
         continue;
@@ -140,31 +201,25 @@ const initWorkflow = (config: Config) => {
       runtime.log(`[Portfolio] Processing: ${workflow.name.toUpperCase()} (${workflow.type}, ${workflow.symbols.length} symbols)`);
 
       try {
-        // Process symbols in chunks to avoid API limits
         const symbolChunks = chunkArray(workflow.symbols, 10);
         let successfulFetches = 0;
         const errors: string[] = [];
 
         for (let i = 0; i < symbolChunks.length; i++) {
           const chunk = symbolChunks[i];
-          runtime.log(`[Portfolio] Processing chunk ${i + 1}/${symbolChunks.length}: ${chunk.join(', ')}`);
+          runtime.log(`[Portfolio] Processing chunk ${i + 1}/${symbolChunks.length}: ${chunk.join(", ")}`);
 
           try {
-            // Fetch with consensus across oracle nodes
-            // Returns a number (count of prices) — consensusMedianAggregation is correct
             const chunkRaw = runtime.runInNodeMode(
               (nodeRuntime: cre.NodeRuntime) => {
                 const httpClient = new HTTPClient();
-
-                // Build query parameters
                 const queryParams = new URLSearchParams({
                   type: workflow.type,
-                  symbols: chunk.join(','),
+                  symbols: chunk.join(","),
                 });
 
                 const fullUrl = `${config.supabaseApiUrl}?${queryParams}`;
 
-                // Make authenticated request
                 const response = httpClient.sendRequest(nodeRuntime, {
                   url: fullUrl,
                   method: "GET",
@@ -181,7 +236,6 @@ const initWorkflow = (config: Config) => {
                 }
 
                 const responseText = new TextDecoder().decode(response.body);
-                // Return count of prices as simple number for consensus
                 try {
                   const parsed = JSON.parse(responseText);
                   if (parsed && parsed.data && Array.isArray(parsed.data)) {
@@ -195,7 +249,6 @@ const initWorkflow = (config: Config) => {
 
             const count = typeof chunkRaw === "number" ? chunkRaw : (typeof chunkRaw === "string" ? parseInt(chunkRaw, 10) || 0 : 0);
             successfulFetches += count;
-
             runtime.log(`[Portfolio] Chunk ${i + 1} successful: ${count} prices fetched`);
           } catch (error) {
             const errorMsg = `Chunk ${i + 1} failed: ${error}`;
@@ -204,13 +257,10 @@ const initWorkflow = (config: Config) => {
           }
         }
 
-        // Calculate statistics
         const failedFetches = workflow.symbols.length - successfulFetches;
-
         runtime.log(`[Portfolio] ${workflow.name} Summary: ${successfulFetches}/${workflow.symbols.length} successful, ${failedFetches} failed`);
 
-        // Create result object
-        const result: WorkflowResult = {
+        allResults.push({
           success: successfulFetches > 0,
           timestamp: Date.now(),
           assetType: workflow.type,
@@ -222,12 +272,9 @@ const initWorkflow = (config: Config) => {
             failedFetches,
           },
           errors: errors.length > 0 ? errors : undefined,
-        };
-
-        allResults.push(result);
+        });
       } catch (error) {
         runtime.log(`[Portfolio] Workflow ${workflow.name} failed: ${error}`);
-
         allResults.push({
           success: false,
           timestamp: Date.now(),
@@ -246,7 +293,14 @@ const initWorkflow = (config: Config) => {
 
     // Final summary
     const totalSuccess = allResults.filter((r) => r.success).length;
-    runtime.log(`[Portfolio] COMPLETE: ${totalSuccess}/${allResults.length} workflows succeeded`);
+    const totalPrices = allResults.reduce((sum, r) => sum + r.priceCount, 0);
+    runtime.log(`[Portfolio] COMPLETE: ${totalSuccess}/${allResults.length} workflows succeeded, ${totalPrices} total prices`);
+
+    // Write portfolio snapshot attestation on-chain (only with --broadcast)
+    const txHash = writeSnapshotAttestation(runtime, config, totalPrices, totalSuccess);
+    if (txHash) {
+      runtime.log(`[Portfolio] On-chain snapshot tx: ${txHash}`);
+    }
 
     return allResults;
   };
