@@ -66,12 +66,9 @@ export function PrivacyVaultSection() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [showTransfer, setShowTransfer] = useState(false);
-  const [showDeposit, setShowDeposit] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
-  const [isDepositingToVault, setIsDepositingToVault] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
-  const [depositShieldedAddress, setDepositShieldedAddress] = useState<string | null>(null);
-  const [copiedDeposit, setCopiedDeposit] = useState(false);
   const [depositResult, setDepositResult] = useState<Record<string, any> | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [howOpen, setHowOpen] = useState(false);
@@ -254,46 +251,29 @@ export function PrivacyVaultSection() {
   };
 
   const handleDeposit = async () => {
+    if (!depositAmount || Number(depositAmount) <= 0) {
+      toast({ title: 'Invalid Amount', description: 'Please enter a valid deposit amount.', variant: 'destructive' });
+      return;
+    }
     setIsDepositing(true);
-    setDepositShieldedAddress(null);
     setDepositResult(null);
     try {
       const result = await invokePrivacy('deposit', {
         token: depositToken,
+        amount: Number(depositAmount),
       });
-      if (result.shielded_address) {
-        setDepositShieldedAddress(result.shielded_address);
-      }
-      toast({ title: 'Ready to Deposit', description: 'Send tokens to your shielded address below.' });
+      setDepositResult(result);
+      const tokenLabel = COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens';
+      toast({ title: 'Deposit Successful', description: `Deposited ${depositAmount} ${tokenLabel} into the Privacy Vault.` });
+      setDepositAmount('');
       await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
     } catch (err) {
-      toast({ title: 'Setup Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsDepositing(false);
     }
   };
 
-  const handleDepositToVault = async (shieldedAddr: string, tokenAddress: string, tokenSymbol: string) => {
-    setIsDepositingToVault(true);
-    setDepositResult(null);
-    try {
-      const result = await invokePrivacy('deposit-from-shielded', {
-        token: tokenAddress,
-        shielded_address: shieldedAddr,
-      });
-      if (result.balance === 0) {
-        toast({ title: 'No Balance', description: 'No tokens found on this shielded address.', variant: 'destructive' });
-        return;
-      }
-      setDepositResult(result);
-      toast({ title: 'Deposit Successful', description: `Deposited ${result.amount} ${tokenSymbol} into the Privacy Vault.` });
-      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
-    } catch (err) {
-      toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setIsDepositingToVault(false);
-    }
-  };
 
   const copyAddress = (address: string, id: string) => {
     navigator.clipboard.writeText(address);
@@ -464,29 +444,8 @@ export function PrivacyVaultSection() {
                          </p>
                         </div>
                       ))}
-                       {(onchainTokenBalances[addr.shielded_address]?.length ?? 0) > 0 && (
-                         <p className="text-[10px] text-muted-foreground mt-0.5 italic">
-                           Click "Deposit to Vault" to move on-chain tokens into the private ledger.
-                         </p>
-                       )}
                    </div>
                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                     {onchainTokenBalances[addr.shielded_address]?.map((tok, ti) => (
-                       <Button
-                         key={ti}
-                         variant="outline"
-                         size="sm"
-                         className="text-xs h-7"
-                         disabled={isDepositingToVault}
-                         onClick={() => {
-                           const tokenEntry = ERC20_TOKENS_TO_CHECK.find(t => t.symbol === tok.symbol);
-                           if (tokenEntry) handleDepositToVault(addr.shielded_address, tokenEntry.address, tok.symbol);
-                         }}
-                       >
-                         {isDepositingToVault ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ArrowDownToLine className="w-3 h-3 mr-1" />}
-                         Deposit {tok.symbol}
-                       </Button>
-                     ))}
                      <Button
                        variant="ghost"
                        size="icon"
@@ -561,89 +520,77 @@ export function PrivacyVaultSection() {
         </Card>
       </motion.div>
 
-      {/* Deposit — Fund via Shielded Address */}
+      {/* Deposit — Direct Deposit to Vault */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowDownToLine className="w-4 h-4" />
-              Fund Privacy Vault
+              Deposit to Privacy Vault
             </CardTitle>
-            <CardDescription>Send tokens to your shielded address from any wallet or exchange</CardDescription>
+            <CardDescription>Deposit tokens into the vault from the signing wallet's pooled liquidity</CardDescription>
           </CardHeader>
           <CardContent>
-            {!showDeposit ? (
-              <Button variant="outline" size="sm" onClick={() => setShowDeposit(true)}>
-                <ArrowDownToLine className="w-4 h-4 mr-2" /> Get Deposit Address
-              </Button>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="deposit-token">Token to deposit</Label>
-                  <Select value={depositToken} onValueChange={setDepositToken}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select token" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COMMON_TOKENS.filter(t => t.address !== '0x0000000000000000000000000000000000000000').map((t) => (
-                        <SelectItem key={t.address} value={t.address}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  ℹ️ Token registration happens automatically. Just select a token and we'll provide your deposit address.
-                </p>
-                {isDepositing && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Setting up token… This may take up to 90 seconds on first use.
-                  </div>
-                )}
-                {depositShieldedAddress && (
-                  <div className="space-y-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
-                    <p className="text-xs font-semibold text-primary">✅ Send tokens to this address:</p>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs font-mono bg-muted/50 p-2 rounded flex-1 break-all">
-                        {depositShieldedAddress}
-                      </code>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() => {
-                          navigator.clipboard.writeText(depositShieldedAddress);
-                          setCopiedDeposit(true);
-                          setTimeout(() => setCopiedDeposit(false), 2000);
-                        }}
-                      >
-                        {copiedDeposit ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
-                      </Button>
-                    </div>
-                     <p className="text-xs text-muted-foreground">
-                       Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. After sending, click <strong>"Deposit to Vault"</strong> on the shielded address above to move tokens into the private ledger.
-                     </p>
-                     <Button variant="outline" size="sm" onClick={handleRefreshBalances} disabled={isRefreshing}>
-                       <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                       Refresh Balances
-                     </Button>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  {!depositShieldedAddress && (
-                    <Button onClick={handleDeposit} disabled={isDepositing} size="sm">
-                      {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
-                      Get Deposit Address
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="sm" onClick={() => { setShowDeposit(false); setDepositShieldedAddress(null); }}>
-                    Cancel
-                  </Button>
-                </div>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="deposit-token">Token</Label>
+                <Select value={depositToken} onValueChange={setDepositToken}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select token" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMON_TOKENS.filter(t => t.address !== '0x0000000000000000000000000000000000000000').map((t) => (
+                      <SelectItem key={t.address} value={t.address}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+              <div className="space-y-2">
+                <Label htmlFor="deposit-amount">Amount</Label>
+                <Input
+                  id="deposit-amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                />
+              </div>
+              {isDepositing && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Processing deposit… This may take up to 90 seconds (approve + deposit).
+                </div>
+              )}
+              {depositResult && (
+                <div className="space-y-2 p-3 rounded-lg border border-primary/30 bg-primary/5">
+                  <p className="text-xs font-semibold text-primary flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Deposit Complete
+                  </p>
+                  {depositResult.approveTxHash && (
+                    <p className="text-xs text-muted-foreground">
+                      Approve tx:{' '}
+                      <a href={`https://sepolia.etherscan.io/tx/${depositResult.approveTxHash}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                        {depositResult.approveTxHash.slice(0, 10)}…
+                      </a>
+                    </p>
+                  )}
+                  {depositResult.depositTxHash && (
+                    <p className="text-xs text-muted-foreground">
+                      Deposit tx:{' '}
+                      <a href={`https://sepolia.etherscan.io/tx/${depositResult.depositTxHash}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                        {depositResult.depositTxHash.slice(0, 10)}…
+                      </a>
+                    </p>
+                  )}
+                </div>
+              )}
+              <Button onClick={handleDeposit} disabled={isDepositing || !depositAmount} size="sm">
+                {isDepositing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
+                Deposit to Vault
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
