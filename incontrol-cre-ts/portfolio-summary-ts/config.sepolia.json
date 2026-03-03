@@ -1,6 +1,6 @@
 {
   "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed",
-  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
+  "supabaseAnonKeySecret": "SUPABASE_ANON_KEY",
   "workflows": [
     {
       "name": "crypto-prices",
