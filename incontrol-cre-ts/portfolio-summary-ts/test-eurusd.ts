@@ -16,7 +16,7 @@ import {
 
 interface TestConfig {
   supabaseApiUrl: string;
-  supabaseApiKey: string;
+  supabaseAnonKeySecret: string;
 }
 
 /** Parse config from raw WASM input */
@@ -48,6 +48,8 @@ const initWorkflow = (config: TestConfig) => {
   const handler = async (runtime: cre.Runtime) => {
     runtime.log("🧪 TEST: Fetching EUR/USD price via live API");
 
+    const supabaseApiKey = runtime.getSecret({ id: config.supabaseAnonKeySecret || "SUPABASE_ANON_KEY" });
+
     const price = runtime.runInNodeMode(
       (nodeRuntime: cre.NodeRuntime) => {
         const httpClient = new HTTPClient();
@@ -58,8 +60,8 @@ const initWorkflow = (config: TestConfig) => {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            apikey: config.supabaseApiKey,
-            Authorization: `Bearer ${config.supabaseApiKey}`,
+            apikey: supabaseApiKey,
+            Authorization: `Bearer ${supabaseApiKey}`,
           },
           timeout: "10s",
         }).result();
