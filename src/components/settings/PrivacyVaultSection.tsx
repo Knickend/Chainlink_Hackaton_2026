@@ -68,9 +68,11 @@ export function PrivacyVaultSection() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
+  const [isDepositingToVault, setIsDepositingToVault] = useState(false);
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositShieldedAddress, setDepositShieldedAddress] = useState<string | null>(null);
   const [copiedDeposit, setCopiedDeposit] = useState(false);
+  const [depositResult, setDepositResult] = useState<Record<string, any> | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [howOpen, setHowOpen] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -160,7 +162,7 @@ export function PrivacyVaultSection() {
         .from('agent_actions_log')
         .select('id, action_type, status, created_at, result, params')
         .eq('user_id', user.id)
-        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw', 'privacy-deposit', 'auto-deploy-policy-engine', 'auto-register-token'])
+        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw', 'privacy-deposit', 'privacy-deposit-info', 'auto-deploy-policy-engine', 'auto-register-token'])
         .order('created_at', { ascending: false })
         .limit(10);
       if (!error && data) {
@@ -254,6 +256,7 @@ export function PrivacyVaultSection() {
   const handleDeposit = async () => {
     setIsDepositing(true);
     setDepositShieldedAddress(null);
+    setDepositResult(null);
     try {
       const result = await invokePrivacy('deposit', {
         token: depositToken,
@@ -267,6 +270,28 @@ export function PrivacyVaultSection() {
       toast({ title: 'Setup Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsDepositing(false);
+    }
+  };
+
+  const handleDepositToVault = async (shieldedAddr: string, tokenAddress: string, tokenSymbol: string) => {
+    setIsDepositingToVault(true);
+    setDepositResult(null);
+    try {
+      const result = await invokePrivacy('deposit-from-shielded', {
+        token: tokenAddress,
+        shielded_address: shieldedAddr,
+      });
+      if (result.balance === 0) {
+        toast({ title: 'No Balance', description: 'No tokens found on this shielded address.', variant: 'destructive' });
+        return;
+      }
+      setDepositResult(result);
+      toast({ title: 'Deposit Successful', description: `Deposited ${result.amount} ${tokenSymbol} into the Privacy Vault.` });
+      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
+    } catch (err) {
+      toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsDepositingToVault(false);
     }
   };
 
@@ -338,7 +363,7 @@ export function PrivacyVaultSection() {
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
                   { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
-                  { step: 2, icon: ArrowDownToLine, title: 'Send Tokens', desc: 'Send tokens to your shielded address from any wallet or exchange' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Deposit to Vault', desc: 'Send tokens to your shielded address, then click "Deposit to Vault" to move them into the private ledger' },
                   { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw to any address' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
@@ -432,44 +457,61 @@ export function PrivacyVaultSection() {
                         On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
-                    {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
-                      <p key={i} className="text-xs text-primary">
-                        On-chain: {tok.amount.toFixed(6)} {tok.symbol}
-                      </p>
-                    ))}
-                    <p className="text-[10px] text-muted-foreground mt-0.5 italic">
-                      These are tokens held directly on this address, not inside the Privacy Vault.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => copyAddress(addr.shielded_address, addr.id)}
-                    >
-                      {copiedId === addr.id ? (
-                        <Check className="w-3.5 h-3.5 text-primary" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </Button>
-                    <a
-                      href={`https://sepolia.etherscan.io/address/${addr.shielded_address}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </Button>
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+                     {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
+                       <div key={i} className="flex items-center gap-2 mt-1">
+                         <p className="text-xs text-primary">
+                           On-chain: {tok.amount.toFixed(6)} {tok.symbol}
+                         </p>
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           className="h-6 text-[10px] px-2"
+                           disabled={isDepositingToVault}
+                           onClick={() => {
+                             const tokenEntry = ERC20_TOKENS_TO_CHECK.find(t => t.symbol === tok.symbol);
+                             if (tokenEntry) {
+                               handleDepositToVault(addr.shielded_address, tokenEntry.address, tok.symbol);
+                             }
+                           }}
+                         >
+                           {isDepositingToVault ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ArrowDownToLine className="w-3 h-3 mr-1" />}
+                           Deposit to Vault
+                         </Button>
+                       </div>
+                     ))}
+                     <p className="text-[10px] text-muted-foreground mt-0.5 italic">
+                       Tokens on this address must be deposited to the vault before private transfers.
+                     </p>
+                   </div>
+                   <div className="flex items-center gap-1 shrink-0 ml-2">
+                     <Button
+                       variant="ghost"
+                       size="icon"
+                       className="h-8 w-8"
+                       onClick={() => copyAddress(addr.shielded_address, addr.id)}
+                     >
+                       {copiedId === addr.id ? (
+                         <Check className="w-3.5 h-3.5 text-primary" />
+                       ) : (
+                         <Copy className="w-3.5 h-3.5" />
+                       )}
+                     </Button>
+                     <a
+                       href={`https://sepolia.etherscan.io/address/${addr.shielded_address}`}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                     >
+                       <Button variant="ghost" size="icon" className="h-8 w-8">
+                         <ExternalLink className="w-3.5 h-3.5" />
+                       </Button>
+                     </a>
+                   </div>
+                 </div>
+               ))}
+             </CardContent>
+           </Card>
+         </motion.div>
+       )}
 
       {/* Privacy Balances */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
@@ -577,13 +619,13 @@ export function PrivacyVaultSection() {
                         {copiedDeposit ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. Your vault balance will update automatically within ~30 seconds.
-                    </p>
-                    <Button variant="outline" size="sm" onClick={handleRefreshBalances} disabled={isRefreshing}>
-                      <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                      Refresh Balance
-                    </Button>
+                     <p className="text-xs text-muted-foreground">
+                       Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. Then use the <strong>"Deposit to Vault"</strong> button next to your shielded address balance above to move tokens into the private ledger.
+                     </p>
+                     <Button variant="outline" size="sm" onClick={handleRefreshBalances} disabled={isRefreshing}>
+                       <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                       Refresh Balances
+                     </Button>
                   </div>
                 )}
                 <div className="flex gap-2">
