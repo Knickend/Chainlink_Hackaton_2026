@@ -90,6 +90,7 @@ export function PrivacyVaultSection() {
   );
   const [isDeployingPE, setIsDeployingPE] = useState(false);
   const [showDeployPE, setShowDeployPE] = useState(false);
+  const [manualPE, setManualPE] = useState('');
   // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
@@ -704,23 +705,50 @@ export function PrivacyVaultSection() {
                             </p>
                           </div>
                         ) : (
-                          <Button
-                            size="sm"
-                            disabled={isDeployingPE}
-                            onClick={handleDeployPolicyEngine}
-                          >
-                            {isDeployingPE ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                Deploying… (may take ~60s)
-                              </>
-                            ) : (
-                              <>
-                                <Rocket className="w-4 h-4 mr-2" />
-                                Deploy My Policy Engine
-                              </>
-                            )}
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              disabled={isDeployingPE}
+                              onClick={handleDeployPolicyEngine}
+                            >
+                              {isDeployingPE ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                  Deploying… (may take ~60s)
+                                </>
+                              ) : (
+                                <>
+                                  <Rocket className="w-4 h-4 mr-2" />
+                                  Deploy My Policy Engine
+                                </>
+                              )}
+                            </Button>
+                            <div className="mt-3 space-y-2">
+                              <p className="text-xs text-muted-foreground">
+                                Already deployed a PE? Paste its address:
+                              </p>
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="0x..."
+                                  value={manualPE}
+                                  onChange={(e) => setManualPE(e.target.value)}
+                                  className="h-7 text-xs font-mono"
+                                />
+                                <Button
+                                  size="sm"
+                                  className="h-7"
+                                  disabled={!manualPE?.match(/^0x[a-fA-F0-9]{40}$/)}
+                                  onClick={() => {
+                                    setDeployedPE(manualPE);
+                                    localStorage.setItem('privacy-vault-deployed-pe', manualPE);
+                                    toast({ title: 'PE Address Set', description: `Using ${manualPE.slice(0, 14)}…` });
+                                  }}
+                                >
+                                  Set
+                                </Button>
+                              </div>
+                            </div>
+                          </>
                         )}
                       </div>
                     </CollapsibleContent>
