@@ -1,7 +1,7 @@
 {
   "supabaseUrl": "https://edtudwkmswyjxamkdkbu.supabase.co",
   "supabaseServiceRoleKey": "${SUPABASE_SERVICE_ROLE_KEY}",
-  "feedType": "crypto",
+  "feedType": "mixed",
   "consumerAddress": "0xB60D27f47155446783Ee52C743Af78B3996817a5",
   "gasLimit": "300000",
   "symbols": [
