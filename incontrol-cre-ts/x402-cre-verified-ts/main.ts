@@ -187,6 +187,7 @@ const initWorkflow = (cfg: Config) => {
     } catch (e) {
       runtime.log("❌ SUPABASE_SERVICE_ROLE_KEY secret not available — HTTP requests will likely fail");
     }
+ 
     try {
       // Fetch price data with consensus — returns JSON string
       const rawJson = runtime.runInNodeMode(
