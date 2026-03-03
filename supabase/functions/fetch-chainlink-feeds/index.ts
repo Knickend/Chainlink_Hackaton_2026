@@ -169,7 +169,7 @@ serve(async (req) => {
         const dbResults = dbCached.map((row: any) => {
           const sym = row.symbol as string;
           const colonIdx = sym.indexOf(':');
-          const network = colonIdx > -1 ? sym.substring(0, colonIdx) : '';
+          const network = colonIdx > -1 ? sym.substring(0, colonIdx) : 'sepolia';
           const pair = colonIdx > -1 ? sym.substring(colonIdx + 1) : sym;
           const price = Number(row.price);
           return {
