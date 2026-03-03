@@ -896,27 +896,7 @@ serve(async (req) => {
         const { token: reRegToken, policyEngine: reRegPE } = params;
         if (!reRegToken || !reRegPE) throw new Error("token and policyEngine are required");
 
-        // First check if already registered
-        const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("sPolicyEngines(address)"))).slice(0, 10);
-        const checkData = checkSelector + padTo32(reRegToken as string);
-        const checkResp = await fetch(SEPOLIA_RPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
-        });
-        const checkResult = await checkResp.json();
-        const existingPE = checkResult.result || "0x" + "0".repeat(64);
-        const alreadyRegistered = existingPE !== "0x" + "0".repeat(64) && existingPE !== "0x";
-
-        if (alreadyRegistered) {
-          const currentPE = "0x" + existingPE.slice(26);
-          return new Response(JSON.stringify({
-            success: false,
-            error: `Token is already registered with policy engine ${currentPE}. Registration is first-come-first-served and cannot be changed.`,
-            current_policy_engine: currentPE,
-          }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-
+        // Attempt registration directly — let the contract enforce any restrictions
         // Register with our custom PE
         const regSelector = bytesToHex(keccak_256(new TextEncoder().encode("register(address,address)"))).slice(0, 10);
         const regData = regSelector + padTo32(reRegToken as string) + padTo32(reRegPE as string);
