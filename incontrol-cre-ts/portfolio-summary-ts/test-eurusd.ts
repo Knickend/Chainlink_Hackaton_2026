@@ -16,7 +16,7 @@ import {
 
 interface TestConfig {
   supabaseApiUrl: string;
-  supabaseApiKey: string;
+  supabaseAnonKeySecret: string;
 }
 
 /** Parse config from raw WASM input */
