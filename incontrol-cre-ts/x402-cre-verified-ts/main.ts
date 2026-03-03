@@ -22,8 +22,8 @@ import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 // Configuration interface
 interface Config {
-  supabaseUrl: string;
-  supabaseServiceRoleKey: string;
+  supabaseUrl?: string;       // Can be overridden by secret
+  supabaseServiceRoleKey?: string; // Ignored — use runtime.getSecret() instead
   symbols: string[];
   feedType: string;
   consumerAddress?: string;
