@@ -561,9 +561,10 @@ serve(async (req) => {
         const checkResult = await checkResp.json();
         
         const isRevert = (result: string | undefined): boolean => {
-          if (!result || result === "0x") return true;
-          if (result.startsWith("0x08c379a2")) return true;
-          if (result.startsWith("0x4e487b71")) return true;
+          // Empty result (0x) means the PE doesn't implement checkDepositAllowed — treat as permissive (allowed)
+          if (!result || result === "0x") return false;
+          if (result.startsWith("0x08c379a2")) return true; // Error(string)
+          if (result.startsWith("0x4e487b71")) return true; // Panic
           return false;
         };
         
