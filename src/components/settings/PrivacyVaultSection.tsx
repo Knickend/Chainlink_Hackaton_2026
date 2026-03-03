@@ -85,7 +85,9 @@ export function PrivacyVaultSection() {
   const [showRegistration, setShowRegistration] = useState(false);
 
   // Deploy Policy Engine
-  const [deployedPE, setDeployedPE] = useState<string | null>(null);
+  const [deployedPE, setDeployedPE] = useState<string | null>(
+    () => localStorage.getItem('privacy-vault-deployed-pe')
+  );
   const [isDeployingPE, setIsDeployingPE] = useState(false);
   const [showDeployPE, setShowDeployPE] = useState(false);
   // Onboarding status
@@ -321,6 +323,7 @@ export function PrivacyVaultSection() {
     try {
       const data = await invokePrivacy('deploy-policy-engine');
       setDeployedPE(data.policy_engine);
+      localStorage.setItem('privacy-vault-deployed-pe', data.policy_engine);
       toast({ title: 'Policy Engine Deployed', description: `Deployed at ${data.policy_engine?.slice(0, 14)}… — TX: ${data.tx_hash?.slice(0, 10)}…` });
     } catch (err) {
       toast({ title: 'Deployment Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
@@ -762,15 +765,19 @@ export function PrivacyVaultSection() {
                               Register with My PE
                             </Button>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isRegistering}
-                              onClick={() => handleRegisterToken(tok.address)}
-                            >
-                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                              Register
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs text-amber-400 border-amber-600/30">
+                                <Info className="w-3 h-3 mr-1" />
+                                Deploy a Policy Engine first
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setShowDeployPE(true)}
+                              >
+                                Deploy PE
+                              </Button>
+                            </div>
                           )}
                         </div>
                       )}
