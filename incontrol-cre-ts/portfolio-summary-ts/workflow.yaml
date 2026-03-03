@@ -48,3 +48,4 @@ test-settings:
   workflow-artifacts:
     workflow-path: "./test-eurusd.ts"
     config-path: "./config.test.json"
+    secrets-path: "./secrets.yaml"
