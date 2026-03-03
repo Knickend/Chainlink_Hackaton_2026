@@ -834,32 +834,32 @@ serve(async (req) => {
 
         // Step 3: Extract creation bytecode by stripping original constructor args
         // Original constructor: ERC1967Proxy(address implementation, bytes memory _data)
-        // _data was initialize(uint8) = 36 bytes
-        // ABI encoding: 32 (addr) + 32 (offset=64) + 32 (length=36) + 64 (data padded) = 160 bytes = 320 hex chars
-        const CONSTRUCTOR_ARGS_HEX_LEN = 320;
+        // _data was initialize(uint8,address) = 68 bytes
+        // ABI encoding: 32 (addr) + 32 (offset=64) + 32 (length=68) + 96 (data padded) = 192 bytes = 384 hex chars
+        const CONSTRUCTOR_ARGS_HEX_LEN = 384;
         const creationCode = fullInput.slice(0, fullInput.length - CONSTRUCTOR_ARGS_HEX_LEN);
         console.log(`[PrivacyVault] deploy-policy-engine: creation code length = ${(creationCode.length - 2) / 2} bytes`);
 
-        // Step 4: Build our constructor args
-        // initialize(uint8) selector
-        const initSelector = bytesToHex(keccak_256(new TextEncoder().encode("initialize(uint8)"))).slice(0, 10);
-        // _data = initSelector + abi.encode(uint8(0)) = 4 + 32 = 36 bytes
-        const initData = initSelector.slice(2) + encodeUint256(0); // 8 + 64 = 72 hex chars = 36 bytes
-        // Pad initData to 64 bytes (next multiple of 32): 36 bytes → 64 bytes = 128 hex chars
-        const initDataPadded = initData.padEnd(128, "0");
+        // Step 4: Derive account address (needed for constructor args)
+        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+
+        // Step 5: Build our constructor args
+        // initialize(uint8,address) selector = 0x85ee7ba6
+        const initSelector = "85ee7ba6";
+        // _data = selector + abi.encode(uint8(0)) + abi.encode(address(accountAddr)) = 4 + 32 + 32 = 68 bytes
+        const initData = initSelector + encodeUint256(0) + padTo32(accountAddr);
+        // 8 + 64 + 64 = 136 hex chars = 68 bytes, pad to 96 bytes (next multiple of 32) = 192 hex chars
+        const initDataPadded = initData.padEnd(192, "0");
 
         // ABI encode (address impl, bytes _data):
         // word 0: impl address padded
         // word 1: offset to bytes = 0x40 (64)
-        // word 2: bytes length = 0x24 (36)
-        // word 3-4: bytes data padded to 64 bytes
-        const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(36) + initDataPadded;
+        // word 2: bytes length = 0x44 (68)
+        // word 3-5: bytes data padded to 96 bytes
+        const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(68) + initDataPadded;
 
         const deployData = creationCode + constructorArgs;
         console.log(`[PrivacyVault] deploy-policy-engine: total deploy data length = ${(deployData.length - 2) / 2} bytes`);
-
-        // Step 5: Sign and send contract creation transaction
-        const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
         const [nonce, gasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
         const bufferedGasPrice = gasPrice * 12n / 10n;
 
