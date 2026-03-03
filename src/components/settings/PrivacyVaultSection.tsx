@@ -363,7 +363,7 @@ export function PrivacyVaultSection() {
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
                   { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
-                  { step: 2, icon: ArrowDownToLine, title: 'Send Tokens', desc: 'Send tokens to your shielded address — they are automatically credited to your private balance within ~30 seconds' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Send & Deposit', desc: 'Send tokens to your shielded address, then click "Deposit to Vault" to move them into the private ledger' },
                   { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw to any address' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
@@ -464,11 +464,29 @@ export function PrivacyVaultSection() {
                          </p>
                         </div>
                       ))}
-                      <p className="text-[10px] text-muted-foreground mt-0.5 italic">
-                        Tokens sent here are automatically credited to your Privacy Vault balance within ~30 seconds.
-                      </p>
+                       {(onchainTokenBalances[addr.shielded_address]?.length ?? 0) > 0 && (
+                         <p className="text-[10px] text-muted-foreground mt-0.5 italic">
+                           Click "Deposit to Vault" to move on-chain tokens into the private ledger.
+                         </p>
+                       )}
                    </div>
                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                     {onchainTokenBalances[addr.shielded_address]?.map((tok, ti) => (
+                       <Button
+                         key={ti}
+                         variant="outline"
+                         size="sm"
+                         className="text-xs h-7"
+                         disabled={isDepositingToVault}
+                         onClick={() => {
+                           const tokenEntry = ERC20_TOKENS_TO_CHECK.find(t => t.symbol === tok.symbol);
+                           if (tokenEntry) handleDepositToVault(addr.shielded_address, tokenEntry.address, tok.symbol);
+                         }}
+                       >
+                         {isDepositingToVault ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ArrowDownToLine className="w-3 h-3 mr-1" />}
+                         Deposit {tok.symbol}
+                       </Button>
+                     ))}
                      <Button
                        variant="ghost"
                        size="icon"
@@ -605,7 +623,7 @@ export function PrivacyVaultSection() {
                       </Button>
                     </div>
                      <p className="text-xs text-muted-foreground">
-                       Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. Tokens will be <strong>automatically credited</strong> to your Privacy Vault balance within ~30 seconds.
+                       Send <strong>{COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens'}</strong> to this address from any wallet or exchange. After sending, click <strong>"Deposit to Vault"</strong> on the shielded address above to move tokens into the private ledger.
                      </p>
                      <Button variant="outline" size="sm" onClick={handleRefreshBalances} disabled={isRefreshing}>
                        <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
