@@ -1,0 +1,1 @@
+ALTER TABLE agent_wallets ADD COLUMN IF NOT EXISTS deployed_pe_address text;

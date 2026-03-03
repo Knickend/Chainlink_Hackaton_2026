@@ -89,6 +89,7 @@ export type Database = {
           created_at: string
           daily_reset_at: string
           daily_spent: number
+          deployed_pe_address: string | null
           enabled_skills: string[]
           id: string
           is_authenticated: boolean
@@ -107,6 +108,7 @@ export type Database = {
           created_at?: string
           daily_reset_at?: string
           daily_spent?: number
+          deployed_pe_address?: string | null
           enabled_skills?: string[]
           id?: string
           is_authenticated?: boolean
@@ -125,6 +127,7 @@ export type Database = {
           created_at?: string
           daily_reset_at?: string
           daily_spent?: number
+          deployed_pe_address?: string | null
           enabled_skills?: string[]
           id?: string
           is_authenticated?: boolean

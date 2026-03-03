@@ -291,6 +291,132 @@ async function callPrivacyAPI(path: string, body: Record<string, unknown>): Prom
   return await resp.json();
 }
 
+// --- Auto-Setup: ensureTokenRegistered ---
+// Checks if a token is registered on the vault. If not, auto-deploys a PE (if needed) and registers.
+async function ensureTokenRegistered(
+  token: string,
+  userId: string,
+  accountAddr: string,
+  privateKeyHex: string,
+  serviceClient: ReturnType<typeof createClient>
+): Promise<void> {
+  // Step 1: Check if token is already registered via sPolicyEngines(address)
+  const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("sPolicyEngines(address)"))).slice(0, 10);
+  const checkData = checkSelector + padTo32(token);
+  const checkResp = await fetch(SEPOLIA_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: VAULT_CONTRACT, data: checkData }, "latest"], id: 1 }),
+  });
+  const checkResult = (await checkResp.json()).result || "0x" + "0".repeat(64);
+  const currentPE = "0x" + checkResult.slice(26).toLowerCase();
+  const isRegistered = currentPE !== "0x" + "0".repeat(40);
+
+  if (isRegistered) {
+    console.log(`[PrivacyVault] ensureTokenRegistered: token ${token} already registered with PE ${currentPE}`);
+    return;
+  }
+
+  console.log(`[PrivacyVault] ensureTokenRegistered: token ${token} NOT registered, auto-setting up...`);
+
+  // Step 2: Get or deploy Policy Engine
+  const { data: wallet } = await serviceClient
+    .from("agent_wallets")
+    .select("deployed_pe_address")
+    .eq("user_id", userId)
+    .single();
+
+  let peAddress = wallet?.deployed_pe_address;
+
+  if (!peAddress) {
+    console.log(`[PrivacyVault] ensureTokenRegistered: No PE found, deploying new one...`);
+
+    // Deploy PE (reuse existing logic)
+    const EXISTING_PROXY = "0xa4e2ced7d7727078aa5d7bc154a00c1950551b00";
+    const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+    const CREATION_TX_HASH = "0x9f93e85c5cb43c3fc38455ea790c1de1f812da4ebfa2c9d8f3295fe247863e98";
+
+    const storageResp = await fetch(SEPOLIA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getStorageAt", params: [EXISTING_PROXY, IMPL_SLOT, "latest"], id: 1 }),
+    });
+    const storageData = await storageResp.json();
+    if (!storageData.result || storageData.result === "0x" + "0".repeat(64)) {
+      throw new Error("Could not read implementation address from existing proxy");
+    }
+    const implAddress = "0x" + storageData.result.slice(26);
+
+    const txResp = await fetch(SEPOLIA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionByHash", params: [CREATION_TX_HASH], id: 1 }),
+    });
+    const txData = await txResp.json();
+    if (!txData.result?.input) {
+      throw new Error("Could not fetch creation transaction input data");
+    }
+    const fullInput = txData.result.input as string;
+    const CONSTRUCTOR_ARGS_HEX_LEN = 384;
+    const creationCode = fullInput.slice(0, fullInput.length - CONSTRUCTOR_ARGS_HEX_LEN);
+
+    const initSelector = "85ee7ba6";
+    const initData = initSelector + encodeUint256(0) + padTo32(accountAddr);
+    const initDataPadded = initData.padEnd(192, "0");
+    const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(68) + initDataPadded;
+    const deployData = creationCode + constructorArgs;
+
+    const [deployNonce, deployGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+    const deployBufferedGas = deployGasPrice * 12n / 10n;
+    const deploySignedTx = signRawTransaction(deployNonce, deployBufferedGas, 2000000n, "", 0n, deployData, privateKeyHex);
+    const deployTxHash = await sendRawTransaction(deploySignedTx);
+    console.log(`[PrivacyVault] ensureTokenRegistered: PE deploy tx sent: ${deployTxHash}`);
+
+    const deployReceipt = await waitForReceipt(deployTxHash, 40);
+    if ((deployReceipt.status as string) !== "0x1") {
+      throw new Error(`Auto PE deployment reverted: ${deployTxHash}`);
+    }
+
+    peAddress = deployReceipt.contractAddress as string;
+    console.log(`[PrivacyVault] ensureTokenRegistered: PE deployed at ${peAddress}`);
+
+    // Store PE address in agent_wallets
+    await serviceClient
+      .from("agent_wallets")
+      .update({ deployed_pe_address: peAddress })
+      .eq("user_id", userId);
+
+    await serviceClient.from("agent_actions_log").insert({
+      user_id: userId, action_type: "auto-deploy-policy-engine",
+      params: { implementation: implAddress, network: "ethereum-sepolia" },
+      status: "executed", result: { policy_engine: peAddress, tx_hash: deployTxHash },
+    });
+  }
+
+  // Step 3: Register token with PE
+  console.log(`[PrivacyVault] ensureTokenRegistered: Registering token ${token} with PE ${peAddress}`);
+  const regSelector = bytesToHex(keccak_256(new TextEncoder().encode("register(address,address)"))).slice(0, 10);
+  const regData = regSelector + padTo32(token) + padTo32(peAddress);
+
+  const [regNonce, regGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
+  const regBufferedGas = regGasPrice * 12n / 10n;
+  const regSignedTx = signRawTransaction(regNonce, regBufferedGas, 150000n, VAULT_CONTRACT, 0n, regData, privateKeyHex);
+  const regTxHash = await sendRawTransaction(regSignedTx);
+  console.log(`[PrivacyVault] ensureTokenRegistered: register tx sent: ${regTxHash}`);
+
+  const regReceipt = await waitForReceipt(regTxHash);
+  if ((regReceipt.status as string) !== "0x1") {
+    throw new Error(`Auto token registration reverted: ${regTxHash}`);
+  }
+  console.log(`[PrivacyVault] ensureTokenRegistered: token ${token} registered successfully`);
+
+  await serviceClient.from("agent_actions_log").insert({
+    user_id: userId, action_type: "auto-register-token",
+    params: { token, policyEngine: peAddress, network: "ethereum-sepolia" },
+    status: "executed", result: { tx_hash: regTxHash },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -407,13 +533,12 @@ serve(async (req) => {
       }
 
       case "deposit": {
-        // Automated on-chain deposit: for native ETH, wrap to WETH first, then approve+deposit WETH
+        // Automated on-chain deposit with auto-setup: ensures token is registered before depositing
         const { amount, token } = params;
         if (!amount || !token) throw new Error("amount and token are required");
 
         const isNativeETH = (token as string).toLowerCase() === "0x0000000000000000000000000000000000000000";
         const WETH_ADDRESS = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
-        // For native ETH deposits, we wrap to WETH then deposit WETH
         const effectiveToken = isNativeETH ? WETH_ADDRESS : (token as string);
         const decimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
         const amountBigInt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
@@ -421,8 +546,10 @@ serve(async (req) => {
 
         console.log(`[PrivacyVault] On-chain deposit: token=${token}, effectiveToken=${effectiveToken}, amount=${amountBigInt}, account=${accountAddr}, native=${isNativeETH}`);
 
+        // --- AUTO-SETUP: ensureTokenRegistered ---
+        await ensureTokenRegistered(effectiveToken, userId, accountAddr, privateKeyHex, serviceClient);
+
         // Pre-check: call checkDepositAllowed(depositor, token, amount) view function
-        // selector: keccak256("checkDepositAllowed(address,address,uint256)") first 4 bytes
         const checkSelector = bytesToHex(keccak_256(new TextEncoder().encode("checkDepositAllowed(address,address,uint256)"))).slice(0, 10);
         const checkData = checkSelector + padTo32(accountAddr) + padTo32(effectiveToken) + encodeUint256(amountBigInt);
         
@@ -433,12 +560,9 @@ serve(async (req) => {
         });
         const checkResult = await checkResp.json();
         
-        // Robust revert detection for eth_call
         const isRevert = (result: string | undefined): boolean => {
           if (!result || result === "0x") return true;
-          // Error(string) selector
           if (result.startsWith("0x08c379a2")) return true;
-          // Panic(uint256) selector
           if (result.startsWith("0x4e487b71")) return true;
           return false;
         };
@@ -447,7 +571,6 @@ serve(async (req) => {
           if (!result || result === "0x") return "Empty result (call reverted with no reason)";
           if (result.startsWith("0x08c379a2") && result.length >= 138) {
             try {
-              // Decode Error(string): skip selector (4 bytes) + offset (32 bytes) + length (32 bytes) = 68 bytes = 136 hex chars + "0x"
               const lenHex = result.slice(74, 138);
               const strLen = parseInt(lenHex, 16);
               const strHex = result.slice(138, 138 + strLen * 2);
@@ -465,13 +588,13 @@ serve(async (req) => {
         if (checkResult.error) {
           const errMsg = typeof checkResult.error === 'object' ? JSON.stringify(checkResult.error) : String(checkResult.error);
           console.error(`[PrivacyVault] checkDepositAllowed JSON-RPC error:`, errMsg);
-          throw new Error(`Deposit not allowed by policy engine. Your account (${accountAddr}) may need to be whitelisted for this token on the ACE policy engine. RPC error: ${errMsg}`);
+          throw new Error(`Deposit not allowed by policy engine. RPC error: ${errMsg}`);
         }
         
         if (isRevert(checkResult.result)) {
           const reason = decodeRevertReason(checkResult.result || "0x");
           console.error(`[PrivacyVault] checkDepositAllowed reverted. Result: ${checkResult.result}, Reason: ${reason}`);
-          throw new Error(`Deposit denied by policy engine. Your account (${accountAddr}) may need to be whitelisted for token ${effectiveToken}. Revert reason: ${reason}`);
+          throw new Error(`Deposit denied by policy engine for token ${effectiveToken}. Revert reason: ${reason}`);
         }
         
         console.log(`[PrivacyVault] checkDepositAllowed passed, result: ${checkResult.result}`);
@@ -486,42 +609,36 @@ serve(async (req) => {
         let depositTxHash: string;
 
         if (isNativeETH) {
-          // Step 1: Wrap ETH → WETH by calling WETH.deposit() (selector 0xd0e30db0) with value
           const wrapData = "0xd0e30db0";
           const wrapTx = signRawTransaction(currentNonce, bufferedGasPrice, 60000n, WETH_ADDRESS, amountBigInt, wrapData, privateKeyHex);
           wrapTxHash = await sendRawTransaction(wrapTx);
           console.log(`[PrivacyVault] Wrap ETH→WETH tx sent: ${wrapTxHash}`);
-
           const wrapReceipt = await waitForReceipt(wrapTxHash);
           if ((wrapReceipt.status as string) !== "0x1") {
             throw new Error(`Wrap ETH→WETH transaction reverted: ${wrapTxHash}`);
           }
-          console.log(`[PrivacyVault] Wrap tx mined successfully`);
           currentNonce += 1n;
         }
 
-        // Step 2: Approve vault to spend the token
+        // Approve vault to spend the token
         const approveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(amountBigInt);
         const approveTx = signRawTransaction(currentNonce, bufferedGasPrice, 100000n, effectiveToken, 0n, approveData, privateKeyHex);
         approveTxHash = await sendRawTransaction(approveTx);
         console.log(`[PrivacyVault] Approve tx sent: ${approveTxHash}`);
-
         const approveReceipt = await waitForReceipt(approveTxHash);
         if ((approveReceipt.status as string) !== "0x1") {
           throw new Error(`Approve transaction reverted: ${approveTxHash}`);
         }
-        console.log(`[PrivacyVault] Approve tx mined successfully`);
         currentNonce += 1n;
 
-        // Step 3: deposit(token, amount) on the Vault contract
+        // deposit(token, amount) on the Vault contract
         const depositData = "0x47e7ef24" + padTo32(effectiveToken) + encodeUint256(amountBigInt);
         const depositTx = signRawTransaction(currentNonce, bufferedGasPrice, 200000n, VAULT_CONTRACT, 0n, depositData, privateKeyHex);
         depositTxHash = await sendRawTransaction(depositTx);
         console.log(`[PrivacyVault] Deposit tx sent: ${depositTxHash}`);
-
         const depositReceipt = await waitForReceipt(depositTxHash);
         if ((depositReceipt.status as string) !== "0x1") {
-          throw new Error(`Deposit transaction reverted on-chain: ${depositTxHash}. The ACE policy engine likely rejected the deposit. Your account may need to be whitelisted for this token. Check the policy engine associated with this token via Token Registration.`);
+          throw new Error(`Deposit transaction reverted on-chain: ${depositTxHash}`);
         }
         console.log(`[PrivacyVault] Deposit tx mined successfully`);
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, ArrowUpFromLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal, Rocket } from 'lucide-react';
+import { Shield, Plus, Copy, Check, Loader2, Eye, Send, RefreshCw, ExternalLink, ArrowDownToLine, ArrowUpFromLine, CheckCircle2, AlertTriangle, Clock, ChevronDown, ArrowRight, Info, Wallet, BookOpen, SendHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,6 +71,7 @@ export function PrivacyVaultSection() {
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositResult, setDepositResult] = useState<{ wrap_tx?: string; approve_tx?: string; deposit_tx: string } | null>(null);
+  const [depositStatus, setDepositStatus] = useState<string | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [howOpen, setHowOpen] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -78,21 +79,6 @@ export function PrivacyVaultSection() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawToken, setWithdrawToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [withdrawResult, setWithdrawResult] = useState<Record<string, any> | null>(null);
-
-  // Token registration
-  const [tokenRegStatus, setTokenRegStatus] = useState<Record<string, { registered: boolean; policyEngine: string; loading: boolean }>>({});
-  const [registeringToken, setRegisteringToken] = useState<string | null>(null);
-  const [showRegistration, setShowRegistration] = useState(false);
-
-  // Deploy Policy Engine
-  const [deployedPE, setDeployedPE] = useState<string | null>(
-    () => localStorage.getItem('privacy-vault-deployed-pe')
-  );
-  const [isDeployingPE, setIsDeployingPE] = useState(false);
-  const [showDeployPE, setShowDeployPE] = useState(false);
-  const [manualPE, setManualPE] = useState('');
-  const [showChangePE, setShowChangePE] = useState(false);
-  // Onboarding status
   const [onboardStatus, setOnboardStatus] = useState<'loading' | 'onboarded' | 'not-onboarded' | 'error'>('loading');
 
   // Transfer form
@@ -101,7 +87,6 @@ export function PrivacyVaultSection() {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferToken, setTransferToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
 
-  // Compute max available balance for selected token + from address
   const maxAmount = (() => {
     if (!fromAddress) return 0;
     if (transferToken === '0x0000000000000000000000000000000000000000') {
@@ -175,7 +160,7 @@ export function PrivacyVaultSection() {
         .from('agent_actions_log')
         .select('id, action_type, status, created_at, result, params')
         .eq('user_id', user.id)
-        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw'])
+        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw', 'privacy-deposit', 'auto-deploy-policy-engine', 'auto-register-token'])
         .order('created_at', { ascending: false })
         .limit(10);
       if (!error && data) {
@@ -205,47 +190,10 @@ export function PrivacyVaultSection() {
     setIsRefreshing(false);
   };
 
-  const checkTokenRegistration = useCallback(async () => {
-    if (!user) return;
-    const tokens = ERC20_TOKENS_TO_CHECK;
-    const newStatus: Record<string, { registered: boolean; policyEngine: string; loading: boolean }> = {};
-    tokens.forEach(t => { newStatus[t.address] = { registered: false, policyEngine: '', loading: true }; });
-    setTokenRegStatus(newStatus);
-
-    await Promise.all(tokens.map(async (tok) => {
-      try {
-        const data = await invokePrivacy('check-registration', { token: tok.address });
-        setTokenRegStatus(prev => ({
-          ...prev,
-          [tok.address]: { registered: data.registered, policyEngine: data.policy_engine || '', loading: false },
-        }));
-      } catch {
-        setTokenRegStatus(prev => ({
-          ...prev,
-          [tok.address]: { registered: false, policyEngine: '', loading: false },
-        }));
-      }
-    }));
-  }, [user, invokePrivacy]);
-
-  const handleRegisterToken = async (tokenAddress: string) => {
-    setRegisteringToken(tokenAddress);
-    try {
-      const result = await invokePrivacy('register', { token: tokenAddress });
-      toast({ title: 'Token Registered', description: `Transaction: ${result.tx_hash?.slice(0, 10)}…` });
-      await checkTokenRegistration();
-    } catch (err) {
-      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setRegisteringToken(null);
-    }
-  };
-
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog(), checkTokenRegistration()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog, checkTokenRegistration]);
-
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -302,76 +250,13 @@ export function PrivacyVaultSection() {
     }
   };
 
-  const [checkingEligibility, setCheckingEligibility] = useState<string | null>(null);
-
-  const handleCheckEligibility = async (tokenAddress: string) => {
-    setCheckingEligibility(tokenAddress);
-    try {
-      const data = await invokePrivacy('check-deposit-allowed', { token: tokenAddress, amount: 1 });
-      if (data.allowed) {
-        toast({ title: 'Deposit Allowed', description: `Your account is eligible to deposit this token.` });
-      } else {
-        toast({ title: 'Deposit Denied', description: data.reason || 'Your account may need to be whitelisted on the ACE policy engine.', variant: 'destructive' });
-      }
-    } catch (err) {
-      toast({ title: 'Eligibility Check Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setCheckingEligibility(null);
-    }
-  };
-
-  const handleDeployPolicyEngine = async () => {
-    setIsDeployingPE(true);
-    try {
-      const data = await invokePrivacy('deploy-policy-engine');
-      setDeployedPE(data.policy_engine);
-      localStorage.setItem('privacy-vault-deployed-pe', data.policy_engine);
-      toast({ title: 'Policy Engine Deployed', description: `Deployed at ${data.policy_engine?.slice(0, 14)}… — TX: ${data.tx_hash?.slice(0, 10)}…` });
-    } catch (err) {
-      toast({ title: 'Deployment Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setIsDeployingPE(false);
-    }
-  };
-
-  const handleRegisterWithCustomPE = async (tokenAddress: string) => {
-    if (!deployedPE) {
-      toast({ title: 'No Policy Engine', description: 'Deploy your own Policy Engine first.', variant: 'destructive' });
-      return;
-    }
-    setRegisteringToken(tokenAddress);
-    try {
-      const result = await invokePrivacy('re-register-token', { token: tokenAddress, policyEngine: deployedPE });
-      if (result.success === false) {
-        toast({ title: 'Registration Failed', description: result.error || 'Token already registered', variant: 'destructive' });
-      } else {
-        toast({ title: 'Token Registered', description: `Registered with your PE. TX: ${result.tx_hash?.slice(0, 10)}…` });
-      }
-      await checkTokenRegistration();
-    } catch (err) {
-      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setRegisteringToken(null);
-    }
-  };
-
   const handleDeposit = async () => {
     if (!depositAmount) return;
     setIsDepositing(true);
     setDepositResult(null);
+    setDepositStatus('Setting up token…');
     try {
-      // Pre-flight: check if deposit is allowed by policy engine
-      const preCheck = await invokePrivacy('check-deposit-allowed', { token: depositToken, amount: Number(depositAmount) });
-      if (!preCheck.allowed) {
-        toast({
-          title: 'Deposit Denied by Policy Engine',
-          description: preCheck.reason || 'Your account may need to be whitelisted for this token on the ACE policy engine.',
-          variant: 'destructive',
-        });
-        setIsDepositing(false);
-        return;
-      }
-
+      setDepositStatus('Approving & depositing…');
       const result = await invokePrivacy('deposit', {
         amount: Number(depositAmount),
         token: depositToken,
@@ -381,12 +266,12 @@ export function PrivacyVaultSection() {
       }
       toast({ title: 'Deposit Completed', description: 'On-chain deposit executed. Indexer may take ~30s to credit your balance.' });
       setDepositAmount('');
-      // Re-check onboard status after deposit
-      await Promise.all([fetchBalances(), checkOnboardStatus()]);
+      await Promise.all([fetchBalances(), checkOnboardStatus(), fetchActivityLog()]);
     } catch (err) {
       toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setIsDepositing(false);
+      setDepositStatus(null);
     }
   };
 
@@ -455,12 +340,11 @@ export function PrivacyVaultSection() {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent className="space-y-4 pt-0">
-              {/* Flow diagram */}
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
-                  { step: 1, icon: ArrowDownToLine, title: 'Deposit', desc: 'ERC-20 tokens from your account address' },
-                  { step: 2, icon: BookOpen, title: 'Vault Balance', desc: 'Protocol internal ledger (not on-chain)' },
-                  { step: 3, icon: SendHorizontal, title: 'Private Transfer', desc: 'Off-chain transfer to any recipient' },
+                  { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Deposit', desc: 'Deposit tokens — setup is automatic behind the scenes' },
+                  { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw back on-chain' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-primary/20 bg-primary/5 text-center w-full">
@@ -478,7 +362,6 @@ export function PrivacyVaultSection() {
                 ))}
               </div>
 
-              {/* Key notes */}
               <div className="space-y-2 text-xs text-muted-foreground">
                 <p className="flex items-start gap-2">
                   <Shield className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
@@ -486,17 +369,13 @@ export function PrivacyVaultSection() {
                 </p>
                 <p className="flex items-start gap-2">
                   <Wallet className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                  <span>Deposits move tokens from your <strong className="text-foreground">account address</strong> into the protocol's internal ledger</span>
+                  <span>All signing happens <strong className="text-foreground">server-side</strong> — no MetaMask or external wallet needed</span>
                 </p>
                 <p className="flex items-start gap-2">
                   <SendHorizontal className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                   <span>Private transfers happen off-chain via <strong className="text-foreground">EIP-712 signatures</strong> — no visible on-chain transaction</span>
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 flex items-start gap-2">
-                <ArrowUpFromLine className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                <span><strong className="text-foreground">Withdrawals</strong> reverse step 1 — moving tokens from the vault ledger back on-chain to your account address</span>
-              </p>
             </CardContent>
           </CollapsibleContent>
         </Card>
@@ -642,259 +521,6 @@ export function PrivacyVaultSection() {
         </Card>
       </motion.div>
 
-      {/* Token Registration */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33 }}>
-        <Collapsible open={showRegistration} onOpenChange={setShowRegistration}>
-          <Card className="glass-card border-primary/20">
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary" />
-                    <CardTitle className="text-base">Token Registration</CardTitle>
-                    <Badge variant="outline" className="text-xs">Prerequisite</Badge>
-                  </div>
-                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showRegistration ? 'rotate-180' : ''}`} />
-                </div>
-                <CardDescription className="text-left">
-                  Tokens must be registered on the vault contract before deposits, transfers, or withdrawals work
-                </CardDescription>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="space-y-3 pt-0">
-                {/* Deploy Policy Engine Card */}
-                <Collapsible open={showDeployPE} onOpenChange={setShowDeployPE}>
-                  <div className="rounded-lg border border-primary/20 bg-primary/5">
-                    <CollapsibleTrigger asChild>
-                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-accent/30 transition-colors">
-                        <div className="flex items-center gap-2">
-                          <Rocket className="w-4 h-4 text-primary" />
-                          <span className="text-sm font-medium">Deploy My Policy Engine</span>
-                          {deployedPE && (
-                            <Badge className="text-xs gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600/30">
-                              <CheckCircle2 className="w-3 h-3" /> Deployed
-                            </Badge>
-                          )}
-                        </div>
-                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showDeployPE ? 'rotate-180' : ''}`} />
-                      </div>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="px-3 pb-3 space-y-3">
-                        <p className="text-xs text-muted-foreground">
-                          Deploy a permissive PolicyEngine (defaults to "Allowed") so you can register unregistered tokens (like WETH) without needing third-party whitelisting.
-                        </p>
-                        {deployedPE ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 p-2 rounded border border-emerald-600/30 bg-emerald-600/10">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold text-emerald-400">Policy Engine Deployed</p>
-                                <a
-                                  href={`https://sepolia.etherscan.io/address/${deployedPE}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs font-mono text-primary hover:underline truncate block"
-                                >
-                                  {deployedPE}
-                                </a>
-                              </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              Use the "Register with My PE" buttons below for unregistered tokens.
-                            </p>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-5 text-xs px-0"
-                              onClick={() => setShowChangePE(!showChangePE)}
-                            >
-                              Change PE Address
-                            </Button>
-                            {showChangePE && (
-                              <div className="flex gap-2 mt-2">
-                                <Input
-                                  placeholder="0x..."
-                                  value={manualPE}
-                                  onChange={(e) => setManualPE(e.target.value)}
-                                  className="h-7 text-xs font-mono"
-                                />
-                                <Button
-                                  size="sm"
-                                  className="h-7"
-                                  disabled={!manualPE?.match(/^0x[a-fA-F0-9]{40}$/)}
-                                  onClick={() => {
-                                    setDeployedPE(manualPE);
-                                    localStorage.setItem('privacy-vault-deployed-pe', manualPE);
-                                    setShowChangePE(false);
-                                    toast({ title: 'PE Address Updated' });
-                                  }}
-                                >
-                                  Set
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              disabled={isDeployingPE}
-                              onClick={handleDeployPolicyEngine}
-                            >
-                              {isDeployingPE ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                  Deploying… (may take ~60s)
-                                </>
-                              ) : (
-                                <>
-                                  <Rocket className="w-4 h-4 mr-2" />
-                                  Deploy My Policy Engine
-                                </>
-                              )}
-                            </Button>
-                            <div className="mt-3 space-y-2">
-                              <p className="text-xs text-muted-foreground">
-                                Already deployed a PE? Paste its address:
-                              </p>
-                              <div className="flex gap-2">
-                                <Input
-                                  placeholder="0x..."
-                                  value={manualPE}
-                                  onChange={(e) => setManualPE(e.target.value)}
-                                  className="h-7 text-xs font-mono"
-                                />
-                                <Button
-                                  size="sm"
-                                  className="h-7"
-                                  disabled={!manualPE?.match(/^0x[a-fA-F0-9]{40}$/)}
-                                  onClick={() => {
-                                    setDeployedPE(manualPE);
-                                    localStorage.setItem('privacy-vault-deployed-pe', manualPE);
-                                    toast({ title: 'PE Address Set', description: `Using ${manualPE.slice(0, 14)}…` });
-                                  }}
-                                >
-                                  Set
-                                </Button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </CollapsibleContent>
-                  </div>
-                </Collapsible>
-
-                {/* Token list */}
-                {ERC20_TOKENS_TO_CHECK.map((tok) => {
-                  const status = tokenRegStatus[tok.address];
-                  const isLoading = status?.loading ?? true;
-                  const isRegistered = status?.registered ?? false;
-                  const isRegistering = registeringToken === tok.address;
-
-                  return (
-                    <div key={tok.address} className="flex items-center justify-between p-3 rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium">{tok.symbol}</span>
-                        {isLoading ? (
-                          <Badge variant="outline" className="text-xs gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Checking…
-                          </Badge>
-                        ) : isRegistered ? (
-                          <Badge className="text-xs gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600/30 hover:bg-emerald-600/30">
-                            <CheckCircle2 className="w-3 h-3" /> Registered
-                          </Badge>
-                        ) : (
-                          <Badge className="text-xs gap-1 bg-amber-600/20 text-amber-400 border-amber-600/30 hover:bg-amber-600/30">
-                            <AlertTriangle className="w-3 h-3" /> Not Registered
-                          </Badge>
-                        )}
-                      </div>
-                      {!isRegistered && !isLoading && (
-                        <div className="flex items-center gap-2">
-                          {deployedPE ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isRegistering}
-                              onClick={() => handleRegisterWithCustomPE(tok.address)}
-                            >
-                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Rocket className="w-3 h-3 mr-1" />}
-                              Register with My PE
-                            </Button>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs text-amber-400 border-amber-600/30">
-                                <Info className="w-3 h-3 mr-1" />
-                                Deploy a Policy Engine first
-                              </Badge>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setShowDeployPE(true)}
-                              >
-                                Deploy PE
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {isRegistered && (
-                        <div className="flex items-center gap-2">
-                          {status?.policyEngine && (
-                            <a
-                              href={`https://sepolia.etherscan.io/address/${status.policyEngine}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-muted-foreground font-mono truncate max-w-[140px] hover:text-primary hover:underline"
-                              title={status.policyEngine}
-                            >
-                              Policy: {status.policyEngine.slice(0, 8)}…
-                            </a>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-[10px] px-2"
-                            disabled={checkingEligibility === tok.address}
-                            onClick={() => handleCheckEligibility(tok.address)}
-                          >
-                            {checkingEligibility === tok.address ? (
-                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                            ) : (
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                            )}
-                            Check Eligibility
-                          </Button>
-                          {deployedPE && status?.policyEngine &&
-                           status.policyEngine.toLowerCase() !== deployedPE.toLowerCase() && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 text-[10px] px-2"
-                              disabled={isRegistering}
-                              onClick={() => handleRegisterWithCustomPE(tok.address)}
-                            >
-                              {isRegistering ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                              Re-register with My PE
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <p className="text-xs text-muted-foreground">
-                  ℹ️ Tokens already registered by others use their policy engine (first-come-first-served). Deploy your own PE above to register unregistered tokens with permissive rules.
-                </p>
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
-      </motion.div>
-
       {/* Deposit Tokens */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <Card className="glass-card">
@@ -903,7 +529,7 @@ export function PrivacyVaultSection() {
               <ArrowDownToLine className="w-4 h-4" />
               Deposit to Privacy Vault
             </CardTitle>
-            <CardDescription>Deposit ERC-20 tokens into the Convergence protocol to onboard your account and enable private transfers</CardDescription>
+            <CardDescription>Deposit ERC-20 tokens — token setup is handled automatically</CardDescription>
           </CardHeader>
           <CardContent>
             {!showDeposit ? (
@@ -938,12 +564,12 @@ export function PrivacyVaultSection() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  ℹ️ This will execute an on-chain deposit on Sepolia. For ERC-20 tokens, an <strong>approve</strong> step runs first. For SepoliaETH, the deposit sends native ETH directly. Ensure the vault account holds enough balance and ETH for gas.
+                  ℹ️ Token registration and policy engine setup happen automatically on first deposit. Just pick a token and amount — everything else is handled for you.
                 </p>
-                {isDepositing && (
+                {isDepositing && depositStatus && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Signing &amp; broadcasting on-chain transactions… This may take up to 60 seconds.
+                    {depositStatus} This may take up to 90 seconds on first deposit.
                   </div>
                 )}
                 {depositResult && (
@@ -974,7 +600,7 @@ export function PrivacyVaultSection() {
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      ℹ️ The Convergence indexer may take ~30 seconds to detect the deposit and credit your privacy vault balance.
+                      ℹ️ The indexer may take ~30 seconds to credit your privacy vault balance.
                     </p>
                   </div>
                 )}
@@ -1067,9 +693,6 @@ export function PrivacyVaultSection() {
                     return <p className="text-xs text-muted-foreground">No vault balance for this token</p>;
                   })()}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  ℹ️ This withdraws tokens from the Privacy Vault's internal ledger back on-chain to your account address. The protocol will process the withdrawal via signed request.
-                </p>
                 {isWithdrawing && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-muted/30">
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -1228,16 +851,18 @@ export function PrivacyVaultSection() {
                   if (result?.approve_tx) txHashes.push({ label: 'Approve', hash: result.approve_tx });
                   if (result?.deposit_tx) txHashes.push({ label: 'Deposit', hash: result.deposit_tx });
                   if (result?.transfer_tx) txHashes.push({ label: 'Transfer', hash: result.transfer_tx });
+                  if (result?.tx_hash) txHashes.push({ label: 'TX', hash: result.tx_hash });
+                  if (result?.policy_engine) txHashes.push({ label: 'PE', hash: result.policy_engine });
                   return (
                     <div key={entry.id} className="p-3 rounded-lg border border-border space-y-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs capitalize">
-                            {entry.action_type.replace('privacy-vault-', '').replace('-', ' ')}
+                            {entry.action_type.replace('privacy-vault-', '').replace('privacy-', '').replace('auto-', '⚡ ').replace(/-/g, ' ')}
                           </Badge>
                           <Badge
                             variant="outline"
-                            className={`text-xs ${entry.status === 'success' ? 'text-emerald-400 border-emerald-600/30' : entry.status === 'error' ? 'text-destructive border-destructive/30' : 'text-muted-foreground'}`}
+                            className={`text-xs ${entry.status === 'success' || entry.status === 'executed' ? 'text-emerald-400 border-emerald-600/30' : entry.status === 'error' ? 'text-destructive border-destructive/30' : 'text-muted-foreground'}`}
                           >
                             {entry.status}
                           </Badge>
@@ -1251,7 +876,7 @@ export function PrivacyVaultSection() {
                           {txHashes.map((tx) => (
                             <a
                               key={tx.hash}
-                              href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                              href={`https://sepolia.etherscan.io/${tx.label === 'PE' ? 'address' : 'tx'}/${tx.hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono"
