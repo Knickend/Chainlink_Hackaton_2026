@@ -168,18 +168,25 @@ const initWorkflow = (cfg: Config) => {
     runtime.log(`📊 Feed type: ${cfg.feedType}`);
     runtime.log(`🔗 Symbols: ${(cfg.symbols || []).join(", ")}`);
 
-    try {
-      // Fetch price data with consensus — returns JSON string
-      const rawJson = runtime.runInNodeMode(
-        (nodeRuntime: cre.NodeRuntime) => {
-          const httpClient = new HTTPClient();
+    // Fetch secrets via CRE secrets management (not from config)
+    let supabaseUrl = cfg.supabaseUrl || "";
+    let serviceRoleKey = "";
 
-          const symbolFilter = (cfg.symbols || [])
-            .map((s) => `"${s}"`)
-            .join(",");
-          // Query by specific symbols only — no asset_type filter
-          // since symbols span multiple types (crypto, chainlink)
-          const queryUrl = `${cfg.supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
+    try {
+      const urlSecret = runtime.getSecret({ id: "SUPABASE_URL" }).result();
+      supabaseUrl = urlSecret.value || supabaseUrl;
+      runtime.log("✅ SUPABASE_URL loaded from secrets");
+    } catch (e) {
+      runtime.log(`⚠️ SUPABASE_URL secret not found, using config value: ${supabaseUrl}`);
+    }
+
+    try {
+      const keySecret = runtime.getSecret({ id: "SUPABASE_SERVICE_ROLE_KEY" }).result();
+      serviceRoleKey = keySecret.value;
+      runtime.log("✅ SUPABASE_SERVICE_ROLE_KEY loaded from secrets");
+    } catch (e) {
+      runtime.log("❌ SUPABASE_SERVICE_ROLE_KEY secret not available — HTTP requests will likely fail");
+    }
 
           const response = httpClient
             .sendRequest(nodeRuntime, {
