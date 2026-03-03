@@ -22,8 +22,8 @@ import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 // Configuration interface
 interface Config {
-  supabaseUrl: string;
-  supabaseServiceRoleKey: string;
+  supabaseUrl?: string;       // Can be overridden by secret
+  supabaseServiceRoleKey?: string; // Ignored — use runtime.getSecret() instead
   symbols: string[];
   feedType: string;
   consumerAddress?: string;
@@ -168,6 +168,26 @@ const initWorkflow = (cfg: Config) => {
     runtime.log(`📊 Feed type: ${cfg.feedType}`);
     runtime.log(`🔗 Symbols: ${(cfg.symbols || []).join(", ")}`);
 
+    // Fetch secrets via CRE secrets management (not from config)
+    let supabaseUrl = cfg.supabaseUrl || "";
+    let serviceRoleKey = "";
+
+    try {
+      const urlSecret = runtime.getSecret({ id: "SUPABASE_URL" }).result();
+      supabaseUrl = urlSecret.value || supabaseUrl;
+      runtime.log("✅ SUPABASE_URL loaded from secrets");
+    } catch (e) {
+      runtime.log(`⚠️ SUPABASE_URL secret not found, using config value: ${supabaseUrl}`);
+    }
+
+    try {
+      const keySecret = runtime.getSecret({ id: "SUPABASE_SERVICE_ROLE_KEY" }).result();
+      serviceRoleKey = keySecret.value;
+      runtime.log("✅ SUPABASE_SERVICE_ROLE_KEY loaded from secrets");
+    } catch (e) {
+      runtime.log("❌ SUPABASE_SERVICE_ROLE_KEY secret not available — HTTP requests will likely fail");
+    }
+ 
     try {
       // Fetch price data with consensus — returns JSON string
       const rawJson = runtime.runInNodeMode(
@@ -177,9 +197,10 @@ const initWorkflow = (cfg: Config) => {
           const symbolFilter = (cfg.symbols || [])
             .map((s) => `"${s}"`)
             .join(",");
-          // Query by specific symbols only — no asset_type filter
-          // since symbols span multiple types (crypto, chainlink)
-          const queryUrl = `${cfg.supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
+          const queryUrl = `${supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
+
+          nodeRuntime.log(`🔗 Query URL: ${queryUrl}`);
+          nodeRuntime.log(`🔑 Auth key length: ${serviceRoleKey.length}`);
 
           const response = httpClient
             .sendRequest(nodeRuntime, {
@@ -187,8 +208,8 @@ const initWorkflow = (cfg: Config) => {
               method: "GET",
               headers: {
                 "Content-Type": "application/json",
-                apikey: cfg.supabaseServiceRoleKey,
-                Authorization: `Bearer ${cfg.supabaseServiceRoleKey}`,
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
               },
               timeout: "10s",
             })
