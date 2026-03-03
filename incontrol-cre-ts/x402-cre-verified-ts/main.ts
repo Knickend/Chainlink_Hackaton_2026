@@ -187,6 +187,19 @@ const initWorkflow = (cfg: Config) => {
     } catch (e) {
       runtime.log("❌ SUPABASE_SERVICE_ROLE_KEY secret not available — HTTP requests will likely fail");
     }
+    try {
+      // Fetch price data with consensus — returns JSON string
+      const rawJson = runtime.runInNodeMode(
+        (nodeRuntime: cre.NodeRuntime) => {
+          const httpClient = new HTTPClient();
+
+          const symbolFilter = (cfg.symbols || [])
+            .map((s) => `"${s}"`)
+            .join(",");
+          const queryUrl = `${supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
+
+          nodeRuntime.log(`🔗 Query URL: ${queryUrl}`);
+          nodeRuntime.log(`🔑 Auth key length: ${serviceRoleKey.length}`);
 
           const response = httpClient
             .sendRequest(nodeRuntime, {
@@ -194,8 +207,8 @@ const initWorkflow = (cfg: Config) => {
               method: "GET",
               headers: {
                 "Content-Type": "application/json",
-                apikey: cfg.supabaseServiceRoleKey,
-                Authorization: `Bearer ${cfg.supabaseServiceRoleKey}`,
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
               },
               timeout: "10s",
             })
