@@ -48,6 +48,8 @@ const initWorkflow = (config: TestConfig) => {
   const handler = async (runtime: cre.Runtime) => {
     runtime.log("🧪 TEST: Fetching EUR/USD price via live API");
 
+    const supabaseApiKey = runtime.getSecret({ id: config.supabaseAnonKeySecret || "SUPABASE_ANON_KEY" });
+
     const price = runtime.runInNodeMode(
       (nodeRuntime: cre.NodeRuntime) => {
         const httpClient = new HTTPClient();
