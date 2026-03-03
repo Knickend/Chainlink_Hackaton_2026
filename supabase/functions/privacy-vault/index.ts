@@ -588,54 +588,42 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Amount provided → perform on-chain approve + deposit from signing wallet
+        // Amount provided → verify shielded address balance; protocol indexer auto-credits
         const depositDecimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
-        const depositAmountBigInt = BigInt(Math.round(Number(amount) * (10 ** depositDecimals)));
-        console.log(`[PrivacyVault] deposit: performing on-chain approve+deposit for ${amount} (${depositAmountBigInt}) of ${effectiveToken}`);
+        console.log(`[PrivacyVault] deposit: checking shielded address balance for ${effectiveToken}`);
 
-        // Step 1: approve(vault, amount) from signing wallet
-        const approveSelector = "0x095ea7b3"; // approve(address,uint256)
-        const approveData = approveSelector + padTo32(VAULT_CONTRACT) + encodeUint256(depositAmountBigInt);
-        const [approveNonce, approveGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
-        const approveBufferedGas = approveGasPrice * 12n / 10n;
-        const approveTx = signRawTransaction(approveNonce, approveBufferedGas, 100000n, effectiveToken, 0n, approveData, privateKeyHex);
-        const approveTxHash = await sendRawTransaction(approveTx);
-        console.log(`[PrivacyVault] deposit: approve tx sent: ${approveTxHash}`);
-        const approveReceipt = await waitForReceipt(approveTxHash);
-        if ((approveReceipt.status as string) !== "0x1") {
-          throw new Error(`Approve transaction reverted: ${approveTxHash}`);
-        }
+        // Read on-chain ERC20 balance of the shielded address
+        const balCheckData = "0x70a08231" + padTo32(shieldedAddress!);
+        const balCheckResp = await fetch(SEPOLIA_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_call", params: [{ to: effectiveToken, data: balCheckData }, "latest"], id: 1 }),
+        });
+        const balCheckResult = await balCheckResp.json();
+        const shieldedRawBalance = BigInt(balCheckResult.result || "0x0");
+        const shieldedHumanBalance = Number(shieldedRawBalance) / Math.pow(10, depositDecimals);
 
-        // Step 2: deposit(token, amount) on vault contract from signing wallet
-        const depositSelector = bytesToHex(keccak_256(new TextEncoder().encode("deposit(address,uint256)"))).slice(0, 10);
-        const depositData = depositSelector + padTo32(effectiveToken) + encodeUint256(depositAmountBigInt);
-        const [depositNonce, depositGasPrice] = await Promise.all([getNonce(accountAddr), getGasPrice()]);
-        const depositBufferedGas = depositGasPrice * 12n / 10n;
-        const depositTx = signRawTransaction(depositNonce, depositBufferedGas, 200000n, VAULT_CONTRACT, 0n, "0x" + depositData.slice(2), privateKeyHex);
-        const depositTxHash = await sendRawTransaction(depositTx);
-        console.log(`[PrivacyVault] deposit: deposit tx sent: ${depositTxHash}`);
-        const depositReceipt = await waitForReceipt(depositTxHash);
-        if ((depositReceipt.status as string) !== "0x1") {
-          throw new Error(`Deposit transaction reverted: ${depositTxHash}. The signing wallet may not have sufficient token balance.`);
-        }
-        console.log(`[PrivacyVault] deposit: on-chain deposit successful`);
+        // Ensure token is registered so the indexer can process it
+        const depositAccountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
+        await ensureTokenRegistered(effectiveToken, userId, depositAccountAddr, privateKeyHex, serviceClient);
 
         await serviceClient.from("agent_actions_log").insert({
-          user_id: userId, action_type: "privacy-deposit",
-          params: { amount, token: effectiveToken, network: "ethereum-sepolia" },
-          status: "executed", result: { approve_tx: approveTxHash, deposit_tx: depositTxHash, shielded_address: shieldedAddress },
+          user_id: userId, action_type: "privacy-deposit-info",
+          params: { amount: Number(amount), token: effectiveToken, shielded_balance: shieldedHumanBalance, network: "ethereum-sepolia" },
+          status: "executed", result: { shielded_address: shieldedAddress, shielded_balance: shieldedHumanBalance },
         });
 
         return new Response(JSON.stringify({
           success: true,
-          method: "on-chain-deposit",
-          approve_tx: approveTxHash,
-          deposit_tx: depositTxHash,
+          method: "auto-credit",
           shielded_address: shieldedAddress,
+          shielded_balance: shieldedHumanBalance,
           token: effectiveToken,
-          amount: Number(amount),
+          amount: shieldedHumanBalance,
           network: "ethereum-sepolia",
-          message: `Successfully deposited ${amount} tokens into the Privacy Vault.`,
+          message: shieldedRawBalance > 0n
+            ? `Found ${shieldedHumanBalance} tokens on your shielded address. The protocol indexer will automatically credit your private balance within ~30 seconds. Click "Refresh Balances" to check.`
+            : `No tokens found on your shielded address yet. Send tokens to ${shieldedAddress} and they will be auto-credited to your private balance.`,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -678,42 +666,36 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Ensure token is registered
+        // Ensure token is registered so the indexer can process it
         await ensureTokenRegistered(dfsEffective, userId, dfsAccountAddr, privateKeyHex, serviceClient);
 
-        // approve(vault, amount)
-        const dfsApproveData = "0x095ea7b3" + padTo32(VAULT_CONTRACT) + encodeUint256(rawBalance);
-        const [dfsApproveNonce, dfsApproveGas] = await Promise.all([getNonce(dfsAccountAddr), getGasPrice()]);
-        const dfsApproveTx = signRawTransaction(dfsApproveNonce, dfsApproveGas * 12n / 10n, 100000n, dfsEffective, 0n, dfsApproveData, privateKeyHex);
-        const dfsApproveTxHash = await sendRawTransaction(dfsApproveTx);
-        console.log(`[PrivacyVault] deposit-from-shielded: approve tx: ${dfsApproveTxHash}`);
-        const dfsApproveReceipt = await waitForReceipt(dfsApproveTxHash);
-        if ((dfsApproveReceipt.status as string) !== "0x1") throw new Error(`Approve reverted: ${dfsApproveTxHash}`);
-
-        // deposit(token, amount)
-        const dfsDepositSelector = bytesToHex(keccak_256(new TextEncoder().encode("deposit(address,uint256)"))).slice(0, 10);
-        const dfsDepositData = dfsDepositSelector + padTo32(dfsEffective) + encodeUint256(rawBalance);
-        const [dfsDepositNonce, dfsDepositGas] = await Promise.all([getNonce(dfsAccountAddr), getGasPrice()]);
-        const dfsDepositTx = signRawTransaction(dfsDepositNonce, dfsDepositGas * 12n / 10n, 200000n, VAULT_CONTRACT, 0n, "0x" + dfsDepositData.slice(2), privateKeyHex);
-        const dfsDepositTxHash = await sendRawTransaction(dfsDepositTx);
-        console.log(`[PrivacyVault] deposit-from-shielded: deposit tx: ${dfsDepositTxHash}`);
-        const dfsDepositReceipt = await waitForReceipt(dfsDepositTxHash);
-        if ((dfsDepositReceipt.status as string) !== "0x1") throw new Error(`Deposit reverted: ${dfsDepositTxHash}`);
+        // Protocol indexer auto-credits tokens sent to shielded addresses
+        // Optionally fetch current private balance
+        let privateBalances: unknown = null;
+        try {
+          const balTimestamp = BigInt(Math.floor(Date.now() / 1000));
+          const balStructHash = hashRetrieveBalances(dfsAccountAddr, balTimestamp);
+          const balAuth = await signEip712(balStructHash, privateKeyHex);
+          privateBalances = await callPrivacyAPI("/balances", { account: dfsAccountAddr, timestamp: Number(balTimestamp), auth: balAuth });
+        } catch (e) {
+          console.log(`[PrivacyVault] deposit-from-shielded: could not fetch private balances: ${e}`);
+        }
 
         await serviceClient.from("agent_actions_log").insert({
-          user_id: userId, action_type: "privacy-deposit",
-          params: { amount: humanBalance, token: dfsEffective, shielded_address: targetAddr, network: "ethereum-sepolia" },
-          status: "executed", result: { approve_tx: dfsApproveTxHash, deposit_tx: dfsDepositTxHash },
+          user_id: userId, action_type: "privacy-deposit-info",
+          params: { token: dfsEffective, shielded_address: targetAddr, shielded_balance: humanBalance, network: "ethereum-sepolia" },
+          status: "executed", result: { shielded_balance: humanBalance, private_balances: privateBalances },
         });
 
         return new Response(JSON.stringify({
           success: true,
-          approve_tx: dfsApproveTxHash,
-          deposit_tx: dfsDepositTxHash,
+          method: "auto-credit",
+          balance: humanBalance,
           amount: humanBalance,
           token: dfsEffective,
           shielded_address: targetAddr,
-          message: `Deposited ${humanBalance} tokens from shielded address into the Privacy Vault.`,
+          private_balances: privateBalances,
+          message: `Found ${humanBalance} tokens on your shielded address. The protocol indexer will automatically credit your private balance within ~30 seconds. Click "Refresh Balances" to check.`,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
