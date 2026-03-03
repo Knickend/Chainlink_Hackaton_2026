@@ -1,72 +1,60 @@
 
 
-## Fix: Policy Engine Deployment - Wrong Constructor Args
+## Fix: WETH Registration Failing with Zero Policy Engine
 
-### Root Cause (Two Bugs)
+### Root Cause
 
-1. **Wrong CONSTRUCTOR_ARGS_HEX_LEN**: The original creation tx used 68 bytes of `_data` (not 36), making the total constructor args 384 hex chars (6 words), not 320 (5 words). Stripping only 320 chars leaves 1 word of old data in the creation code, corrupting the deployed bytecode.
+The registration failed because the vault contract received `address(0)` as the policy engine. This happened because the "Register" button (shown when no PE is deployed) calls `handleRegisterToken` which invokes the `register` backend action without a `policyEngine` parameter. The backend then defaults to `address(0)` (line 767), which the vault contract rejects with `TokenRegistrationFailedNoPolicyEngine`.
 
-2. **Wrong `initialize` selector**: The actual PolicyEngine uses `initialize(uint8,address)` (selector `0x85ee7ba6`) with two parameters: `defaultResult` and `admin`. Our code computed the selector for `initialize(uint8)` (`0x4351e6b6`) which doesn't exist on the contract.
+### Changes
 
-### Evidence
+**1. Backend: `supabase/functions/privacy-vault/index.ts`**
 
-Original tx constructor args (from `0x9f93...`):
-```text
-word 0: impl address (013f9b3a...)
-word 1: offset = 0x40 (64)
-word 2: length = 0x44 (68 bytes)  <-- NOT 0x24 (36 bytes)
-word 3: 85ee7ba6 + uint8(1)       <-- selector is 85ee7ba6, NOT 4351e6b6
-word 4: address arg               <-- second parameter (admin)
-word 5: padding
-Total = 6 words = 384 hex chars
-```
-
-Our failed tx had `4351e6b6` (wrong selector) and only stripped 320 chars (leaving corruption).
-
-### Fix in `supabase/functions/privacy-vault/index.ts`
-
-In the `deploy-policy-engine` case (around lines 838-856):
-
-1. Change `CONSTRUCTOR_ARGS_HEX_LEN` from `320` to `384`
-2. Use the correct selector `0x85ee7ba6` for `initialize(uint8,address)` instead of computing `keccak256("initialize(uint8)")`
-3. Build `_data` as 68 bytes: `85ee7ba6` + `encode(uint8 0)` + `encode(address deployer)` = 4 + 32 + 32 = 68 bytes
-4. Update the ABI-encoded bytes:
-   - Length = 68 (0x44) instead of 36 (0x24)
-   - initData = 68 bytes padded to 96 bytes (3 words = 192 hex chars)
-   - Total constructor args = address(32) + offset(32) + length(32) + data(96) = 192 bytes = 384 hex chars
-
-### Specific Code Changes
+- In the `register` action (line 762-800): Instead of defaulting to `address(0)` when no policy engine is provided, throw an error requiring a valid policy engine address. This prevents silently sending doomed transactions.
 
 ```text
-// OLD (line 839):
-const CONSTRUCTOR_ARGS_HEX_LEN = 320;
+// OLD (line 767):
+const policyAddr = (policyEngine as string) || "0x0000000000000000000000000000000000000000";
 
 // NEW:
-const CONSTRUCTOR_ARGS_HEX_LEN = 384;
-
-// OLD (lines 845-849):
-const initSelector = bytesToHex(keccak256(...("initialize(uint8)"))).slice(0,10);
-const initData = initSelector.slice(2) + encodeUint256(0);
-const initDataPadded = initData.padEnd(128, "0");
-
-// NEW:
-const initSelector = "85ee7ba6";  // initialize(uint8,address)
-const accountAddr = "0x" + deriveAddress(privateKeyHex).slice(2);
-const initData = initSelector + encodeUint256(0) + padTo32(accountAddr);
-// 8 + 64 + 64 = 136 hex chars = 68 bytes, pad to 96 bytes = 192 hex chars
-const initDataPadded = initData.padEnd(192, "0");
-
-// OLD (line 856):
-const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(36) + initDataPadded;
-
-// NEW:
-const constructorArgs = padTo32(implAddress) + encodeUint256(64) + encodeUint256(68) + initDataPadded;
+const policyAddr = policyEngine as string;
+if (!policyAddr || policyAddr === "0x0000000000000000000000000000000000000000") {
+  throw new Error("A valid policy engine address is required. Deploy your own Policy Engine first.");
+}
 ```
 
-Note: `accountAddr` derivation must move before this block (it's currently at line 862, after the constructor args construction). Move it earlier or derive it inline.
+**2. Frontend: `src/components/settings/PrivacyVaultSection.tsx`**
+
+Two fixes:
+
+a) **Persist deployed PE address** in localStorage so it survives page refreshes:
+- On mount, load `deployedPE` from `localStorage.getItem('privacy-vault-deployed-pe')`
+- After successful deployment, save to `localStorage.setItem('privacy-vault-deployed-pe', address)`
+
+b) **Remove the fallback "Register" button** that calls `handleRegisterToken` with no PE:
+- When no PE is deployed, show a message saying "Deploy a Policy Engine first" instead of a plain "Register" button
+- Remove or guard `handleRegisterToken` so it cannot be called without a PE
+- The button at line 765-773 (the else branch when `!deployedPE`) should be replaced with a prompt to deploy a PE
+
+### Technical Details
+
+**localStorage persistence:**
+```text
+// On mount (in useEffect or initial state):
+const [deployedPE, setDeployedPE] = useState<string | null>(
+  () => localStorage.getItem('privacy-vault-deployed-pe')
+);
+
+// After successful deploy:
+setDeployedPE(data.policy_engine);
+localStorage.setItem('privacy-vault-deployed-pe', data.policy_engine);
+```
+
+**Button replacement (lines 764-773):**
+Replace the plain "Register" button with a disabled button + tooltip explaining they need to deploy a PE first, or auto-expand the Deploy PE section.
 
 ### Expected Outcome
-- Correct creation bytecode (no corruption from leftover old constructor args)
-- Correct `initialize(uint8,address)` call with `defaultResult=0` (Allowed) and `admin=ourAccount`
-- Proxy deployment succeeds, giving us a permissive PolicyEngine we control
-
+- Users must deploy a PE before registering any token
+- The deployed PE address persists across page refreshes
+- No more `address(0)` sent to the vault contract
+- Clear user guidance when PE is not yet deployed
