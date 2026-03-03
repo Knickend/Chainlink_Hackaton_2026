@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   optimizeDeps: {
     force: true,
+    exclude: ["@chainlink/cre-sdk"],
   },
   resolve: {
     alias: {
