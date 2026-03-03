@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.api-conf-price-feed]
 verify_jwt = false
+
+[functions.get-service-key]
+verify_jwt = false
