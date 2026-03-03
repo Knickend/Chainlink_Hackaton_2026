@@ -1,78 +1,45 @@
 
 
-## Fix Deposit Flow: Backend Wallet Signs On-Chain Deposit on Behalf of User
+## Fix: Remove On-Chain Approve+Deposit — Shielded Address IS the Deposit
 
 ### Problem
-The current `deposit` action only returns the shielded address and tells the user to send tokens there. But the vault protocol doesn't auto-credit balances from shielded addresses — an actual on-chain `vault.deposit(token, amount)` transaction is required. The signing wallet `0x8E6B...` must perform this on-chain deposit on behalf of the user.
+The `deposit` and `deposit-from-shielded` actions call `approve(vault, amount)` + `vault.deposit(token, amount)` from the signing wallet `0x8E6B...`. This fails because the signing wallet doesn't hold the user's tokens — the tokens sit on the **shielded address**. Since shielded addresses are receive-only (no private key to sign from), neither can the signing wallet do `transferFrom` on the shielded address.
 
-### Correct Workflow
-1. User generates a shielded address
-2. User sends tokens to their shielded address from any external wallet/exchange
-3. Backend detects the token balance on the shielded address, then `0x8E6B...` calls `approve(vault, amount)` + `vault.deposit(token, amount)` on-chain — but the deposit is credited to the **user's account** (the account derived from the private key, which is associated with their shielded addresses)
-4. Private transfers and withdrawals work via the API + on-chain ticket redemption as before
+### Root Cause Understanding
+In the Chainlink ACE Privacy Vault protocol, **sending tokens to a shielded address IS the deposit**. The protocol's off-chain indexer detects incoming tokens on shielded addresses and automatically credits them to the associated account's private balance. No separate on-chain `vault.deposit()` call is needed or possible via this path.
 
-### Key Insight
-The deposit **does** need `approve + deposit` on-chain, but the tokens come from the **shielded address balance**, not from `0x8E6B...`'s own balance. However, since shielded addresses are receive-only (no private key to sign from them), the actual mechanism is:
-- The signing wallet `0x8E6B...` is the **account** registered with the vault protocol
-- When users send tokens to their shielded address, the protocol's indexer associates those tokens with the account `0x8E6B...`
-- The backend then calls `deposit(token, amount)` from `0x8E6B...` to move those indexed tokens into the private vault ledger
+The `vault.deposit()` contract method exists for **direct deposits** (when the caller itself holds tokens), which is not the shielded-address flow.
 
-So the deposit action should:
-1. Check the user's shielded address on-chain balance for the selected token
-2. Call `ensureTokenRegistered` (existing)
-3. Call `approve(vault, amount)` from the signing wallet
-4. Call `vault.deposit(token, amount)` from the signing wallet
-5. The vault credits the private balance to the account
+### Solution
 
-### Backend Changes (`supabase/functions/privacy-vault/index.ts`)
+**Backend (`supabase/functions/privacy-vault/index.ts`)**:
 
-**`deposit` action** — Restore the on-chain approve+deposit flow but with the correct understanding:
-- Accept `amount` and `token` parameters
-- If no amount specified, read the shielded address's on-chain ERC20 balance and deposit all of it
-- Call `ensureTokenRegistered(token)` first
-- Call `approve(vaultContract, amount)` signed by `0x8E6B...`
-- Call `deposit(token, amount)` on the vault contract signed by `0x8E6B...`
-- The vault protocol associates this deposit with the account and increments the private ledger
-- Log the result
+1. **`deposit` action** — Remove the entire on-chain approve+deposit branch (lines ~591-639). When `amount` is provided, instead of on-chain tx, just verify the shielded address balance via `eth_call` (ERC20 `balanceOf`) and inform the user that the protocol will auto-credit their private balance. Return a success with instructions to check `/balances` after ~30 seconds.
 
-**Keep the "get deposit address" sub-flow** — if no `amount` param is provided, just return the shielded address (existing behavior). If `amount` is provided, perform the on-chain deposit.
+2. **`deposit-from-shielded` action** — Remove the on-chain approve+deposit logic (lines ~684-710). Replace with: read the on-chain balance of the shielded address, and if tokens are present, return a message confirming the protocol indexer will credit them. Optionally call the `/balances` API to show current private balance.
 
-Add a new action `"deposit-from-shielded"` that:
-1. Reads the on-chain ERC20 balance of the user's shielded address
-2. If balance > 0, performs approve + deposit from the signing wallet for that amount
-3. Returns the tx hashes
+3. **Keep `ensureTokenRegistered`** — still needed so the token is set up in the policy engine before the indexer processes the deposit.
 
-### Frontend Changes (`src/components/settings/PrivacyVaultSection.tsx`)
+**Frontend (`src/components/settings/PrivacyVaultSection.tsx`)**:
 
-**Deposit section** — Two-phase UX:
-1. Phase 1 (current): "Get Deposit Address" shows shielded address + copy button
-2. Phase 2 (new): Add a "Deposit to Vault" button that appears when the shielded address has a token balance. This calls the backend `deposit` action with `amount` to trigger the on-chain approve+deposit flow.
-3. Show token balances on shielded addresses (already fetched via `onchain-erc20-balance`) with a "Deposit to Vault" button next to each balance
+1. Remove the "Deposit to Vault" button from the shielded addresses list — it's no longer needed since deposits are automatic.
+2. Update the deposit section to show: "Tokens sent to your shielded address will be automatically credited to your Privacy Vault balance within ~30 seconds."
+3. Add a "Check Balance" / "Refresh" prompt after showing the shielded address.
 
-**Update deposit handler**: Change `handleDeposit` to support both flows:
-- "Get Address" flow (no amount) — existing
-- "Deposit to Vault" flow (with amount + token) — new, triggers on-chain deposit
-
-### Technical Details
+### Flow After Fix
 
 ```text
-User sends USDC to shielded address
+User sends USDC to shielded address (from external wallet/exchange)
       |
       v
-Frontend shows balance on shielded address (already implemented)
+Protocol indexer detects tokens on shielded address
       |
       v
-User clicks "Deposit to Vault" 
+Private balance auto-credited (no on-chain tx from 0x8E6B...)
       |
       v
-Backend: ensureTokenRegistered(USDC)
-Backend: 0x8E6B... signs approve(vault, amount) tx
-Backend: 0x8E6B... signs deposit(USDC, amount) tx  
-      |
-      v
-Vault credits private balance to account 0x8E6B...
-      |
-      v
-Private balance updated, user can now transfer/withdraw
+User clicks "Refresh Balances" to see updated private balance
 ```
+
+The signing wallet `0x8E6B...` is only used for: PE deployment, token registration, signing EIP-712 messages for API calls, and withdrawal ticket redemption.
 
