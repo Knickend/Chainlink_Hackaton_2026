@@ -1,5 +1,27 @@
 {
-  "supabaseApiUrl": "https://api.exchangerate.host/convert?from=EUR&to=USD",
-  "supabaseApiKey": "test-key",
-  "testPrice": 1.0945
+  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed",
+  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
+  "workflows": [
+    {
+      "name": "crypto-prices",
+      "type": "crypto",
+      "symbols": ["BTC", "ETH", "SOL"],
+      "schedule": "0 */5 * * * *",
+      "enabled": true,
+      "priority": "high"
+    },
+    {
+      "name": "forex-prices",
+      "type": "forex",
+      "symbols": ["EUR/USD", "GBP/USD"],
+      "schedule": "0 */3 * * * *",
+      "enabled": true,
+      "priority": "high"
+    }
+  ],
+  "general": {
+    "maxRetries": 2,
+    "timeout": 15000,
+    "consensusNodes": 3
+  }
 }

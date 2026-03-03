@@ -1,10 +1,24 @@
+/**
+ * x402 CRE Verified Data Workflow
+ *
+ * Fetches price data with multi-node consensus verification,
+ * then writes a price attestation hash on-chain via EVMClient.writeReport().
+ * Use `--broadcast` with `cre simulate` to produce real testnet transactions.
+ */
+
 import * as cre from "@chainlink/cre-sdk";
 import {
   Runner,
   HTTPClient,
   CronCapability,
+  EVMClient,
+  getNetwork,
+  hexToBase64,
+  bytesToHex,
+  TxStatus,
   consensusIdenticalAggregation,
 } from "@chainlink/cre-sdk";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 // Configuration interface
 interface Config {
@@ -12,6 +26,8 @@ interface Config {
   supabaseServiceRoleKey: string;
   symbols: string[];
   feedType: string;
+  consumerAddress?: string;
+  gasLimit?: string;
 }
 
 // Response types
@@ -52,6 +68,7 @@ interface WorkflowResult {
   meta: {
     totalPrices: number;
     feedType: string;
+    txHash?: string;
   };
 }
 
@@ -60,12 +77,10 @@ function parseConfig(c: unknown): Config {
   try {
     if (typeof c === "string") return JSON.parse(c) as Config;
     if (c && typeof c === "object" && (c as any).type === "Buffer" && Array.isArray((c as any).data)) {
-      const s = String.fromCharCode(...((c as any).data as number[]));
-      return JSON.parse(s) as Config;
+      return JSON.parse(String.fromCharCode(...((c as any).data as number[]))) as Config;
     }
     if (Array.isArray(c) && c.every((x) => typeof x === "number")) {
-      const s = String.fromCharCode(...(c as unknown as number[]));
-      return JSON.parse(s) as Config;
+      return JSON.parse(String.fromCharCode(...(c as unknown as number[]))) as Config;
     }
     try {
       if (typeof TextDecoder !== "undefined" && c && (c as any).buffer instanceof ArrayBuffer) {
@@ -75,6 +90,70 @@ function parseConfig(c: unknown): Config {
     return c as unknown as Config;
   } catch {
     return {} as Config;
+  }
+}
+
+/**
+ * Write a price attestation hash on-chain using CRE's EVMClient.
+ * Requires a consumer contract implementing IReceiver on Sepolia.
+ */
+function writeAttestation(
+  runtime: cre.Runtime,
+  cfg: Config,
+  priceHash: bigint,
+  priceCount: bigint,
+): string | null {
+  if (!cfg.consumerAddress) {
+    runtime.log("⚠️ No consumerAddress configured — skipping on-chain write");
+    return null;
+  }
+
+  try {
+    const network = getNetwork({
+      chainFamily: "evm",
+      chainSelectorName: "ethereum-testnet-sepolia",
+      isTestnet: true,
+    });
+
+    if (!network) {
+      runtime.log("❌ Sepolia network not found");
+      return null;
+    }
+
+    const evmClient = new EVMClient(network.chainSelector.selector);
+
+    // ABI-encode: (uint256 priceHash, uint256 priceCount, uint256 timestamp)
+    const reportData = encodeAbiParameters(
+      parseAbiParameters("uint256 priceHash, uint256 priceCount, uint256 timestamp"),
+      [priceHash, priceCount, BigInt(Math.floor(Date.now() / 1000))],
+    );
+
+    const reportResponse = runtime.report({
+      encodedPayload: hexToBase64(reportData),
+      encoderName: "evm",
+      signingAlgo: "ecdsa",
+      hashingAlgo: "keccak256",
+    }).result();
+
+    const writeResult = evmClient.writeReport(runtime, {
+      receiver: cfg.consumerAddress,
+      report: reportResponse,
+      gasConfig: {
+        gasLimit: cfg.gasLimit || "300000",
+      },
+    }).result();
+
+    if (writeResult.txStatus === TxStatus.SUCCESS) {
+      const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+      runtime.log(`🔗 On-chain attestation tx: ${txHash}`);
+      return txHash;
+    }
+
+    runtime.log(`❌ On-chain write failed: status ${writeResult.txStatus}`);
+    return null;
+  } catch (error) {
+    runtime.log(`❌ EVM write error: ${error}`);
+    return null;
   }
 }
 
@@ -90,7 +169,7 @@ const initWorkflow = (cfg: Config) => {
     runtime.log(`🔗 Symbols: ${(cfg.symbols || []).join(", ")}`);
 
     try {
-      // Fetch price data with consensus — returns JSON string, use identical aggregation
+      // Fetch price data with consensus — returns JSON string
       const rawJson = runtime.runInNodeMode(
         (nodeRuntime: cre.NodeRuntime) => {
           const httpClient = new HTTPClient();
@@ -117,8 +196,7 @@ const initWorkflow = (cfg: Config) => {
             return "[]";
           }
 
-          const responseText = new TextDecoder().decode(response.body);
-          return responseText;
+          return new TextDecoder().decode(response.body);
         },
         consensusIdenticalAggregation<string>(),
       )(cfg).result();
@@ -132,25 +210,23 @@ const initWorkflow = (cfg: Config) => {
       }
 
       // Format verified prices with attestation metadata
-      const verifiedPrices: VerifiedPrice[] = verifiedData.map(
-        (row: PriceCacheRow) => {
-          const isChainlinkFeed = row.symbol.includes(":");
-          return {
-            symbol: row.symbol,
-            price: row.price,
-            change24h: row.change,
-            changePercent24h: row.change_percent,
-            unit: row.price_unit || "USD",
-            lastUpdated: row.updated_at,
-            attestation: {
-              method: "consensusMedianAggregation",
-              nodeCount: 3,
-              source: isChainlinkFeed ? "chainlink-cre" : "price-cache",
-              feedOrigin: isChainlinkFeed ? row.symbol : `cache:${row.symbol}`,
-            },
-          };
-        }
-      );
+      const verifiedPrices: VerifiedPrice[] = verifiedData.map((row) => {
+        const isChainlinkFeed = row.symbol.includes(":");
+        return {
+          symbol: row.symbol,
+          price: row.price,
+          change24h: row.change,
+          changePercent24h: row.change_percent,
+          unit: row.price_unit || "USD",
+          lastUpdated: row.updated_at,
+          attestation: {
+            method: "consensusMedianAggregation",
+            nodeCount: 3,
+            source: isChainlinkFeed ? "chainlink-cre" : "price-cache",
+            feedOrigin: isChainlinkFeed ? row.symbol : `cache:${row.symbol}`,
+          },
+        };
+      });
 
       runtime.log(`✅ Verified ${verifiedPrices.length} prices with CRE consensus`);
 
@@ -160,6 +236,14 @@ const initWorkflow = (cfg: Config) => {
           : "";
         runtime.log(`  • ${p.symbol}: $${p.price} ${change}`);
       });
+
+      // Compute a simple hash of all prices for on-chain attestation
+      const priceSum = verifiedPrices.reduce((sum, p) => sum + Math.round(p.price * 1e8), 0);
+      const priceHash = BigInt(priceSum);
+      const priceCount = BigInt(verifiedPrices.length);
+
+      // Write attestation on-chain (only with --broadcast)
+      const txHash = writeAttestation(runtime, cfg, priceHash, priceCount);
 
       return {
         success: true,
@@ -173,6 +257,7 @@ const initWorkflow = (cfg: Config) => {
         meta: {
           totalPrices: verifiedPrices.length,
           feedType: cfg.feedType,
+          txHash: txHash || undefined,
         },
       };
     } catch (error) {
