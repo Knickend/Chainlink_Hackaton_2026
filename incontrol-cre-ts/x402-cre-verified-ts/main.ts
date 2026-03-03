@@ -177,7 +177,9 @@ const initWorkflow = (cfg: Config) => {
           const symbolFilter = (cfg.symbols || [])
             .map((s) => `"${s}"`)
             .join(",");
-          const queryUrl = `${cfg.supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&asset_type=eq.${cfg.feedType}&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
+          // Query by specific symbols only — no asset_type filter
+          // since symbols span multiple types (crypto, chainlink)
+          const queryUrl = `${cfg.supabaseUrl}/rest/v1/price_cache?select=symbol,price,change,change_percent,asset_type,price_unit,updated_at&symbol=in.(${symbolFilter})&order=updated_at.desc&limit=50`;
 
           const response = httpClient
             .sendRequest(nodeRuntime, {
