@@ -1,108 +1,58 @@
 
 
-## Simplify Privacy Vault UX
+## Redesign Deposit/Withdraw to Use Shielded Addresses
 
 ### Problem
-The current Privacy Vault flow exposes blockchain infrastructure details to end users who shouldn't need to care about them:
-- Deploying a Policy Engine contract
-- Manually registering each token
-- Understanding "re-registration" and policy engine addresses
-- Pasting PE addresses into localStorage
 
-Additionally, no MetaMask wallet is needed -- all signing already happens server-side via the `PRIVACY_VAULT_PRIVATE_KEY` secret. But the current UI structure implies the user needs external wallet interaction.
+The current deposit flow calls `approve()` + `deposit()` on-chain from the signing wallet (`0x8E6B...`), which has no token balance. The signing wallet is only meant for infrastructure operations (PE deployment, token registration). Users fund the vault by sending tokens to their **shielded addresses** — the vault protocol picks them up automatically via its indexer.
 
-### Solution: Auto-Setup on First Deposit
+The Etherscan screenshot confirms: the deposit tx failed with "ERC20: transfer amount exceeds balance" because the signing wallet tried to transferFrom itself to the vault contract.
 
-Move all token registration and PE deployment logic into the backend, triggered automatically when a user deposits. The user never sees or thinks about it.
+### Solution
+
+**Replace the on-chain deposit action with a "Fund via Shielded Address" flow:**
+
+1. **Remove** the entire on-chain deposit logic (approve + deposit + wrap transactions)
+2. **Replace with instructions**: show the user their shielded address and tell them to send tokens there from any wallet/exchange
+3. The Privacy Vault protocol's indexer will automatically credit the balance
+
+**For withdrawals**: withdrawals already go through the API ticket system, but the redeemed tokens currently go to the signing wallet. Change the withdraw to send tokens to a user-specified destination address (or their shielded address).
 
 ### Backend Changes (`supabase/functions/privacy-vault/index.ts`)
 
-1. **New helper function: `ensureTokenRegistered(token, privateKeyHex)`**
-   - Calls `sPolicyEngines(address)` to check registration
-   - If already registered, returns immediately
-   - If not registered:
-     - Checks if a PE address is stored in the `agent_wallets` table for this user (new column or JSON field)
-     - If no PE exists, auto-deploys one (reuses existing `deploy-policy-engine` logic) and stores the address
-     - Registers the token with the PE (reuses existing `register` logic)
-   - All transparent to the user
+**`deposit` action** — Replace the entire on-chain approve+deposit flow with:
+- Ensure the user has at least one shielded address (auto-generate one if not)
+- Return the shielded address + instructions for sending tokens there
+- Keep `ensureTokenRegistered` so the token is ready when funds arrive
 
-2. **Modify the `deposit` action**:
-   - Before the existing approve+deposit flow, call `ensureTokenRegistered()`
-   - If auto-registration happens, log it in `agent_actions_log`
-
-3. **Remove the need for separate `register`, `re-register-token`, and `deploy-policy-engine` actions from being user-facing** (keep them internally but they won't be called from the frontend)
+**`withdraw` action** — After redeeming the ticket on-chain (which sends tokens to the signing wallet), add a follow-up ERC20 transfer from the signing wallet to a user-specified `recipient` address. If no recipient specified, return the signing wallet balance info.
 
 ### Frontend Changes (`src/components/settings/PrivacyVaultSection.tsx`)
 
-1. **Remove entirely**:
-   - The "Token Registration" collapsible section (~150 lines)
-   - The "Deploy My Policy Engine" collapsible and all PE-related state
-   - The `manualPE`, `showChangePE`, `deployedPE` state variables and localStorage logic
-   - The `checkTokenRegistration`, `handleRegisterToken`, `handleRegisterWithCustomPE`, `handleDeployPolicyEngine`, `handleCheckEligibility` functions
+**Deposit section** — Replace the amount+token form with:
+- Display the user's shielded address (or generate one)
+- A "Copy Address" button
+- Instructions: "Send tokens to this address from any wallet or exchange. Your vault balance will update automatically within ~30 seconds."
+- A "Refresh Balance" button
 
-2. **Remove state variables**: `tokenRegStatus`, `registeringToken`, `showRegistration`, `deployedPE`, `isDeployingPE`, `showDeployPE`, `manualPE`, `showChangePE`, `checkingEligibility`
+**Withdraw section** — Add a `recipient` address field so withdrawn tokens are sent to the user's chosen address, not left in the signing wallet.
 
-3. **Simplify the "How It Works" section**: Update to 3 simple steps:
-   - Step 1: Generate a shielded address (for receiving)
-   - Step 2: Deposit tokens (auto-setup happens behind the scenes)
-   - Step 3: Transfer privately or withdraw
-
-4. **Update deposit UX**: Add a note saying "Token setup is automatic" instead of requiring pre-registration. If auto-setup runs during deposit, show a brief status message like "Setting up token... Approving... Depositing..."
-
-5. **Keep intact**: Generate Shielded Address, Privacy Balances, Deposit, Withdraw, Private Transfer, Activity Log sections
-
-### Database Migration
-
-Add a `deployed_pe_address` column to the `agent_wallets` table to persist the auto-deployed PE address server-side (replacing the fragile localStorage approach):
-
-```sql
-ALTER TABLE agent_wallets 
-ADD COLUMN IF NOT EXISTS deployed_pe_address text;
-```
-
-### Summary of UX After Changes
-
-The user sees 5 simple cards:
-1. **Privacy Vault header** (status badge)
-2. **How It Works** (3-step explainer)
-3. **Generate Shielded Address** (label + generate button)
-4. **Privacy Vault Balances** (with refresh)
-5. **Deposit / Withdraw / Private Transfer** (just pick token, amount, go)
-
-No mention of Policy Engines, token registration, re-registration, or contract addresses. Everything "just works" on first deposit.
+**"How It Works" update** — Step 2 changes from "Deposit tokens" to "Send tokens to your shielded address"
 
 ### Technical Details
 
-The `ensureTokenRegistered` function flow:
-
+Current deposit flow (broken):
 ```text
-ensureTokenRegistered(token, userId, privateKeyHex, serviceClient)
-  |
-  +-- eth_call sPolicyEngines(token) 
-  |     |
-  |     +-- registered? -> return (done)
-  |     |
-  |     +-- not registered:
-  |           |
-  |           +-- SELECT deployed_pe_address FROM agent_wallets WHERE user_id = ?
-  |           |     |
-  |           |     +-- has PE? -> use it
-  |           |     +-- no PE? -> deploy new PE (existing logic)
-  |           |                   UPDATE agent_wallets SET deployed_pe_address = ?
-  |           |
-  |           +-- register(token, pe_address) on-chain
-  |           +-- INSERT agent_actions_log (auto-register)
-  |
-  +-- return
+signing wallet --approve--> vault contract --transferFrom--> vault  ← FAILS (no balance)
 ```
 
-The deposit action becomes:
+New flow:
 ```text
-deposit(token, amount)
-  |
-  +-- ensureTokenRegistered(token)  // NEW: auto-setup
-  +-- checkDepositAllowed()          // existing
-  +-- approve()                      // existing
-  +-- deposit()                      // existing
+user's external wallet --send tokens--> shielded address --> vault indexer credits balance
+```
+
+For withdrawals:
+```text
+vault --ticket redemption--> signing wallet --transfer--> user's specified recipient
 ```
 
