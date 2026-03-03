@@ -177,6 +177,9 @@ const initWorkflow = (config: Config) => {
 
   const handler = async (runtime: cre.Runtime) => {
     runtime.log("[Portfolio] Starting Multi-Asset Price Feed Workflow");
+
+    // Resolve API key from secrets (CRE configs don't support env var interpolation)
+    const supabaseApiKey = runtime.getSecret({ id: config.supabaseAnonKeySecret || "SUPABASE_ANON_KEY" });
     runtime.log(`[Portfolio] Total workflows configured: ${config.workflows?.length ?? 0}`);
 
     const allResults: WorkflowResult[] = [];
