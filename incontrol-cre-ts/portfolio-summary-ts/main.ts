@@ -226,10 +226,10 @@ const initWorkflow = (config: Config) => {
                 const response = httpClient.sendRequest(nodeRuntime, {
                   url: fullUrl,
                   method: "GET",
-                  headers: {
+                headers: {
                     "Content-Type": "application/json",
-                    apikey: config.supabaseApiKey,
-                    Authorization: `Bearer ${config.supabaseApiKey}`,
+                    apikey: supabaseApiKey,
+                    Authorization: `Bearer ${supabaseApiKey}`,
                   },
                   timeout: "10s",
                 }).result();
