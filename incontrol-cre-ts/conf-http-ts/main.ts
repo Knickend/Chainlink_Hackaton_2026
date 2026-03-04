@@ -1,12 +1,8 @@
+import * as cre from "@chainlink/cre-sdk";
 import {
   CronCapability,
-  ConfidentialHTTPClient,
-  handler,
+  HTTPClient,
   consensusIdenticalAggregation,
-  ok,
-  text,
-  type ConfidentialHTTPSendRequester,
-  type Runtime,
   Runner,
 } from "@chainlink/cre-sdk";
 import { z } from "zod";
@@ -19,74 +15,56 @@ const configSchema = z.object({
 
 type Config = z.infer<typeof configSchema>;
 
-// The fetch function receives a ConfidentialHTTPSendRequester, the config URL,
-// and the API key (resolved via runtime.getSecret in the handler).
-//
-// In deployed DON execution, ConfidentialHTTPClient keeps request details
-// (headers, body, URL) private per node — ideal for requests containing
-// API keys or sensitive payloads. In local simulation via `cre simulate`,
-// it behaves identically to HTTPClient.
-//
-// Production note: For deployed DON execution, this would use vaultDonSecrets
-// with encryptOutput: true for AES-GCM encrypted responses inside the enclave.
-const fetchPriceFeed = (
-  sendRequester: ConfidentialHTTPSendRequester,
-  url: string,
-  apiKey: string
-): string => {
-  const response = sendRequester
-    .sendRequest({
-      url,
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: apiKey,
-        Authorization: `Bearer ${apiKey}`,
-      },
-    })
-    .result();
-
-  if (!ok(response)) {
-    throw new Error(
-      `Confidential HTTP request failed with status: ${response.statusCode}`
-    );
-  }
-
-  return text(response);
-};
-
 // Main workflow handler
-const onCronTrigger = (runtime: Runtime<Config>): string => {
-  const confHTTPClient = new ConfidentialHTTPClient();
-
-  // Retrieve the API key via runtime.getSecret (resolved from secrets.yaml → .env)
-  const apiKey = runtime.getSecret({ id: "SUPABASE_ANON_KEY" });
-
-  // consensusIdenticalAggregation ensures all nodes agree on the same output
-  const responseBody = confHTTPClient
-    .sendRequest(
-      runtime,
-      fetchPriceFeed,
-      consensusIdenticalAggregation<string>()
-    )(runtime.config.url, apiKey)
-    .result();
-
-  runtime.log(
-    `[ConfHTTP] Price feed received (${responseBody.length} chars)`
-  );
-  return responseBody;
-};
-
-// Initialize workflow
+// Uses HTTPClient inside runInNodeMode with consensusIdenticalAggregation.
+// In deployed DON execution, secrets passed via runtime.getSecret() are
+// kept confidential per node. The request itself runs through consensus.
 const initWorkflow = (config: Config) => {
-  return [
-    handler(
-      new CronCapability().trigger({
-        schedule: config.schedule,
-      }),
-      onCronTrigger
-    ),
-  ];
+  const trigger = new CronCapability().trigger({
+    schedule: config.schedule,
+  });
+
+  const handler = async (runtime: cre.Runtime): Promise<string> => {
+    runtime.log("[ConfHTTP] Starting confidential price feed fetch");
+    runtime.log(`[ConfHTTP] URL: ${config.url}`);
+
+    // Retrieve the API key via runtime.getSecret (resolved from secrets.yaml → .env)
+    const apiKey = runtime.getSecret({ id: "SUPABASE_ANON_KEY" }).result().value;
+
+    // Fetch with consensus — all nodes must agree on the same response
+    const responseBody = runtime.runInNodeMode(
+      (nodeRuntime: cre.NodeRuntime) => {
+        const httpClient = new HTTPClient();
+
+        const response = httpClient
+          .sendRequest(nodeRuntime, {
+            url: config.url,
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: apiKey,
+              Authorization: `Bearer ${apiKey}`,
+            },
+            timeout: "15s",
+          })
+          .result();
+
+        if (response.statusCode !== 200) {
+          return `{"error":"HTTP ${response.statusCode}"}`;
+        }
+
+        return new TextDecoder().decode(response.body);
+      },
+      consensusIdenticalAggregation<string>(),
+    )(config).result();
+
+    runtime.log(
+      `[ConfHTTP] Price feed received (${responseBody.length} chars)`,
+    );
+    return responseBody;
+  };
+
+  return [cre.handler(trigger, handler)];
 };
 
 export async function main() {
