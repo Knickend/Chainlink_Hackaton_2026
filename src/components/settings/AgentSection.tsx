@@ -85,6 +85,7 @@ export function AgentSection() {
               <Wallet className="w-5 h-5" />
               Agentic Wallet
               {status.connected && <Badge variant="secondary">Connected</Badge>}
+              {status.connected && <Badge variant="outline" className="text-xs">Base Sepolia</Badge>}
             </CardTitle>
             <div className="flex items-center justify-between">
               <CardDescription>
