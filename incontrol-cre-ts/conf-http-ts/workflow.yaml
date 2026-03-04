@@ -1,9 +1,10 @@
 # ==========================================================================
 # CRE WORKFLOW SETTINGS FILE — Confidential HTTP Price Feed
 # ==========================================================================
-# Uses ConfidentialHTTPClient with encryptOutput: true to fetch price data
-# inside a CRE enclave. Response is AES-GCM encrypted — only the caller
-# with the shared key can decrypt it.
+# Uses ConfidentialHTTPClient to fetch price data with per-node request
+# confidentiality. In local simulation (cre simulate), behaves like
+# HTTPClient. In deployed DON execution, request details (headers, body,
+# URL) are kept private per node.
 
 # ==========================================================================
 staging-settings:
@@ -12,7 +13,7 @@ staging-settings:
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
-    secrets-path: "./secrets.staging.yaml"
+    secrets-path: "./secrets.production.yaml"
 
 # ==========================================================================
 production-settings:
@@ -30,3 +31,4 @@ test-settings:
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.test.json"
+    secrets-path: "./secrets.test.yaml"
