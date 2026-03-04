@@ -15,36 +15,34 @@ import { z } from "zod";
 const configSchema = z.object({
   schedule: z.string(),
   url: z.string(),
-  owner: z.string(),
 });
 
 type Config = z.infer<typeof configSchema>;
 
-// The fetch function receives a ConfidentialHTTPSendRequester and config.
-// It makes a confidential GET request to the InControl price feed endpoint,
-// injecting the API key from Vault DON secrets. The response is AES-GCM
-// encrypted inside the enclave (encryptOutput: true), so only the caller
-// holding the shared AES key can decrypt it.
+// The fetch function receives a ConfidentialHTTPSendRequester, the config URL,
+// and the API key (resolved via runtime.getSecret in the handler).
+//
+// In deployed DON execution, ConfidentialHTTPClient keeps request details
+// (headers, body, URL) private per node — ideal for requests containing
+// API keys or sensitive payloads. In local simulation via `cre simulate`,
+// it behaves identically to HTTPClient.
+//
+// Production note: For deployed DON execution, this would use vaultDonSecrets
+// with encryptOutput: true for AES-GCM encrypted responses inside the enclave.
 const fetchPriceFeed = (
   sendRequester: ConfidentialHTTPSendRequester,
-  config: Config
+  url: string,
+  apiKey: string
 ): string => {
   const response = sendRequester
     .sendRequest({
-      request: {
-        url: config.url,
-        method: "GET",
-        multiHeaders: {
-          "Content-Type": { values: ["application/json"] },
-          apikey: { values: ["{{.apiKey}}"] },
-          Authorization: { values: ["Bearer {{.apiKey}}"] },
-        },
+      url,
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: apiKey,
+        Authorization: `Bearer ${apiKey}`,
       },
-      vaultDonSecrets: [
-        { key: "apiKey", owner: config.owner },
-        { key: "san_marino_aes_gcm_encryption_key" },
-      ],
-      encryptOutput: true,
     })
     .result();
 
@@ -54,9 +52,6 @@ const fetchPriceFeed = (
     );
   }
 
-  // Return the raw (encrypted) response body as a base64 string.
-  // Because encryptOutput is true, the body is: nonce || ciphertext || tag
-  // encoded as base64 by the enclave.
   return text(response);
 };
 
@@ -64,20 +59,22 @@ const fetchPriceFeed = (
 const onCronTrigger = (runtime: Runtime<Config>): string => {
   const confHTTPClient = new ConfidentialHTTPClient();
 
-  // consensusIdenticalAggregation ensures all nodes agree on the same
-  // encrypted output (deterministic since the enclave produces it once).
-  const encryptedBody = confHTTPClient
+  // Retrieve the API key via runtime.getSecret (resolved from secrets.yaml → .env)
+  const apiKey = runtime.getSecret({ id: "SUPABASE_ANON_KEY" });
+
+  // consensusIdenticalAggregation ensures all nodes agree on the same output
+  const responseBody = confHTTPClient
     .sendRequest(
       runtime,
       fetchPriceFeed,
       consensusIdenticalAggregation<string>()
-    )(runtime.config)
+    )(runtime.config.url, apiKey)
     .result();
 
   runtime.log(
-    `[ConfHTTP] Encrypted price feed received (${encryptedBody.length} chars)`
+    `[ConfHTTP] Price feed received (${responseBody.length} chars)`
   );
-  return encryptedBody;
+  return responseBody;
 };
 
 // Initialize workflow
