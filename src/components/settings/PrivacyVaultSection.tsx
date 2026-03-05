@@ -473,12 +473,15 @@ export function PrivacyVaultSection() {
                    </div>
                  </div>
                ))}
-             </CardContent>
-           </Card>
-         </motion.div>
-       )}
+              <p className="text-xs text-muted-foreground mt-3 px-1">
+                ℹ️ On-chain balances on shielded addresses represent <strong>pending inbound tokens</strong> that will be swept into the vault by the executor. Your actual spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
+              </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
-      {/* Privacy Balances */}
+       {/* Privacy Balances */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <Card className="glass-card">
           <CardHeader>
