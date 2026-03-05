@@ -596,7 +596,7 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Amount provided → perform on-chain approve + deposit from signing wallet (pooled liquidity)
+        // Protocol liquidity: executor wallet signs approve + deposit on behalf of user
         const depositDecimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
         const depositAmount = Number(amount);
         const rawAmount = BigInt(Math.round(depositAmount * (10 ** depositDecimals)));
