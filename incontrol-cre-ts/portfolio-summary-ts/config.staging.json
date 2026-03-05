@@ -39,7 +39,7 @@
       "type": "bond",
       "symbols": ["US10Y", "US30Y"],
       "schedule": "0 */30 * * * *",
-      "enabled": true,
+      "enabled": false,
       "priority": "low"
     },
     {

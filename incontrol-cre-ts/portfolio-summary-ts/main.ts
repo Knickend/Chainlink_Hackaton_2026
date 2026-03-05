@@ -64,7 +64,7 @@ interface WorkflowResult {
     successfulFetches: number;
     failedFetches: number;
   };
-  errors?: string[];
+  errors: string[];
 }
 
 // Helper function to check market hours
@@ -179,7 +179,13 @@ const initWorkflow = (config: Config) => {
     runtime.log("[Portfolio] Starting Multi-Asset Price Feed Workflow");
 
     // Resolve API key from secrets (CRE configs don't support env var interpolation)
-    const supabaseApiKey = runtime.getSecret({ id: config.supabaseAnonKeySecret || "SUPABASE_ANON_KEY" });
+    let supabaseApiKey = "";
+    try {
+      supabaseApiKey = runtime.getSecret({ id: config.supabaseAnonKeySecret || "SUPABASE_ANON_KEY" }).result().value;
+      runtime.log("[Portfolio] API key loaded from secrets");
+    } catch (e) {
+      runtime.log("[Portfolio] Failed to load API key from secrets");
+    }
     runtime.log(`[Portfolio] Total workflows configured: ${config.workflows?.length ?? 0}`);
 
     const allResults: WorkflowResult[] = [];
@@ -216,12 +222,7 @@ const initWorkflow = (config: Config) => {
             const chunkRaw = runtime.runInNodeMode(
               (nodeRuntime: cre.NodeRuntime) => {
                 const httpClient = new HTTPClient();
-                const queryParams = new URLSearchParams({
-                  type: workflow.type,
-                  symbols: chunk.join(","),
-                });
-
-                const fullUrl = `${config.supabaseApiUrl}?${queryParams}`;
+                const fullUrl = `${config.supabaseApiUrl}?type=${encodeURIComponent(workflow.type)}&symbols=${encodeURIComponent(chunk.join(","))}`;
 
                 const response = httpClient.sendRequest(nodeRuntime, {
                   url: fullUrl,
@@ -274,7 +275,7 @@ const initWorkflow = (config: Config) => {
             successfulFetches,
             failedFetches,
           },
-          errors: errors.length > 0 ? errors : undefined,
+          errors: errors.length > 0 ? errors : [],
         });
       } catch (error) {
         runtime.log(`[Portfolio] Workflow ${workflow.name} failed: ${error}`);

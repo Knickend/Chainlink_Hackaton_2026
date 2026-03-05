@@ -44,8 +44,8 @@ interface PriceCacheRow {
 interface VerifiedPrice {
   symbol: string;
   price: number;
-  change24h: number | null;
-  changePercent24h: number | null;
+  change24h: number;
+  changePercent24h: number;
   unit: string;
   lastUpdated: string;
   attestation: {
@@ -69,6 +69,7 @@ interface WorkflowResult {
     totalPrices: number;
     feedType: string;
     txHash?: string;
+    priceHash?: string;
   };
 }
 
@@ -243,8 +244,8 @@ const initWorkflow = (cfg: Config) => {
         return {
           symbol: row.symbol,
           price: row.price,
-          change24h: row.change,
-          changePercent24h: row.change_percent,
+          change24h: row.change ?? 0,
+          changePercent24h: row.change_percent ?? 0,
           unit: row.price_unit || "USD",
           lastUpdated: row.updated_at,
           attestation: {
@@ -285,7 +286,8 @@ const initWorkflow = (cfg: Config) => {
         meta: {
           totalPrices: verifiedPrices.length,
           feedType: cfg.feedType,
-          txHash: txHash || undefined,
+          txHash: txHash || "",
+          priceHash: priceHash.toString(),
         },
       };
     } catch (error) {
