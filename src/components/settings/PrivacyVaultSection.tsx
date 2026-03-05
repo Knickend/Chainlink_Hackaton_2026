@@ -80,13 +80,16 @@ export function PrivacyVaultSection() {
 
   const maxAmount = (() => {
     if (!fromAddress) return 0;
-    if (transferToken === '0x0000000000000000000000000000000000000000') {
-      return onchainBalances[fromAddress] ?? 0;
-    }
-    const tok = ERC20_TOKENS_TO_CHECK.find(t => t.address === transferToken);
-    if (!tok) return 0;
-    const entry = onchainTokenBalances[fromAddress]?.find(b => b.symbol === tok.symbol);
-    return entry?.amount ?? 0;
+    // Private transfers spend from the vault ledger, not on-chain balances
+    const tokenInfo = COMMON_TOKENS.find(t => t.address === transferToken);
+    if (!tokenInfo) return 0;
+    const tokenKey = Object.keys(TOKEN_DECIMALS).find(
+      k => TOKEN_DECIMALS[k].symbol === tokenInfo.label
+    );
+    if (!tokenKey) return 0;
+    const match = balances.find(b => b.token.toLowerCase() === tokenKey.toLowerCase());
+    if (!match) return 0;
+    return Number(match.amount) / Math.pow(10, TOKEN_DECIMALS[tokenKey].decimals);
   })();
 
   const invokePrivacy = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
@@ -412,16 +415,25 @@ export function PrivacyVaultSection() {
                     </p>
                     {onchainBalances[addr.shielded_address] !== undefined && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Pending inbound: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
+                        On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
-                     {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
-                       <div key={i} className="flex items-center gap-2 mt-1">
-                         <p className="text-xs text-muted-foreground">
-                            Pending inbound: {tok.amount.toFixed(6)} {tok.symbol}
-                          </p>
-                        </div>
-                      ))}
+                     {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => {
+                       const vaultHasToken = balances.some(b => {
+                         const tokenKey = Object.keys(TOKEN_DECIMALS).find(k => TOKEN_DECIMALS[k].symbol === tok.symbol);
+                         return tokenKey && b.token.toLowerCase() === tokenKey.toLowerCase() && Number(b.amount) > 0;
+                       });
+                       return (
+                         <div key={i} className="flex items-center gap-2 mt-1">
+                           <p className="text-xs text-muted-foreground">
+                             On-chain: {tok.amount.toFixed(6)} {tok.symbol}
+                           </p>
+                           {vaultHasToken && (
+                             <span className="text-[10px] text-primary font-medium">(credited to vault ✓)</span>
+                           )}
+                         </div>
+                       );
+                     })}
                    </div>
                    <div className="flex items-center gap-1 shrink-0 ml-2">
                      <Button
@@ -449,8 +461,8 @@ export function PrivacyVaultSection() {
                  </div>
                ))}
               <p className="text-xs text-muted-foreground mt-3 px-1">
-                ℹ️ On-chain balances on shielded addresses represent <strong>pending inbound tokens</strong> that will be swept into the vault by the executor. Your actual spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
-              </p>
+                 ℹ️ On-chain balances remain on shielded addresses after deposit. The executor credits your vault using pooled liquidity. Your spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
+               </p>
               </CardContent>
             </Card>
           </motion.div>
