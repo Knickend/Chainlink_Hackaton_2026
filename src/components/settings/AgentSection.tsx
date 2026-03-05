@@ -308,17 +308,17 @@ export function AgentSection() {
         </motion.div>
       )}
 
-      {/* Activity Log */}
-      {status.connected && logs.length > 0 && (
+      {/* Privacy Vault */}
+      {status.connected && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <AgentActivityLog logs={logs} />
+          <PrivacyVaultSection />
         </motion.div>
       )}
 
-      {/* Privacy Vault */}
-      {status.connected && (
+      {/* Activity Log — unified for all agent + privacy actions */}
+      {status.connected && logs.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-          <PrivacyVaultSection />
+          <AgentActivityLog logs={logs} />
         </motion.div>
       )}
     </div>

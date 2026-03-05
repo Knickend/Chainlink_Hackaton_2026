@@ -29,14 +29,6 @@ const TOKEN_DECIMALS: Record<string, { symbol: string; decimals: number }> = {
   '0x0000000000000000000000000000000000000000': { symbol: 'SepoliaETH', decimals: 18 },
 };
 
-interface ActivityLogEntry {
-  id: string;
-  action_type: string;
-  status: string;
-  created_at: string;
-  result: Record<string, any> | null;
-  params: Record<string, any>;
-}
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
