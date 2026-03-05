@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as secp256k1 from "https://esm.sh/@noble/secp256k1@2.1.0";
+import { Resend } from "npm:resend@^2.0.0";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.4.0/sha3";
 import { hmac } from "https://esm.sh/@noble/hashes@1.4.0/hmac";
 import { sha256 } from "https://esm.sh/@noble/hashes@1.4.0/sha256";
@@ -29,12 +30,84 @@ const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 const VAULT_CONTRACT = EIP712_DOMAIN.verifyingContract;
 const CHAIN_ID = BigInt(EIP712_DOMAIN.chainId);
 
+// --- Architecture Note ---
+// The PRIVACY_VAULT_PRIVATE_KEY derives the "infra wallet" (0x8E6B…).
+// This is a protocol liquidity + executor wallet, NOT a custody wallet.
+// It holds pooled inventory backing all user vault balances and signs
+// approve, deposit, withdrawWithTicket, and ERC-20 transfer transactions.
+// Individual user balances are tracked off-chain in the database and
+// on-chain in the Privacy Vault's internal ledger.
+
 const TOKEN_DECIMALS: Record<string, number> = {
   "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
   "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
   "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": 18, // WETH
   "0x0000000000000000000000000000000000000000": 18, // ETH
 };
+
+const TOKEN_SYMBOLS: Record<string, string> = {
+  "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": "USDC",
+  "0x779877a7b0d9e8603169ddbd7836e478b4624789": "LINK",
+  "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": "WETH",
+  "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": "WETH",
+  "0x0000000000000000000000000000000000000000": "ETH",
+};
+
+function resolveTokenSymbol(tokenAddress: string): string {
+  return TOKEN_SYMBOLS[tokenAddress.toLowerCase()] || tokenAddress.slice(0, 10) + "…";
+}
+
+// --- Privacy Vault Email Notifications ---
+
+async function sendPrivacyVaultEmail(
+  email: string,
+  subject: string,
+  activityIcon: string,
+  activityTitle: string,
+  rows: Array<{ label: string; value: string; link?: string }>,
+) {
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey || !email) return;
+
+  const resend = new Resend(resendKey);
+  const timestamp = new Date().toUTCString();
+
+  const rowsHtml = rows
+    .map(r => {
+      const val = r.link
+        ? `<a href="${r.link}" style="color:#10b981;text-decoration:none;font-family:monospace;font-size:13px;">${r.value}</a>`
+        : `<span style="font-weight:600;">${r.value}</span>`;
+      return `<tr><td style="padding:8px 0;color:#a1a1aa;">${r.label}</td><td style="padding:8px 0;">${val}</td></tr>`;
+    })
+    .join("");
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:0;">
+      <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:24px 32px;border-radius:12px 12px 0 0;text-align:center;">
+        <h1 style="margin:0;font-size:22px;color:#fff;">InControl</h1>
+      </div>
+      <div style="background:#18181b;padding:32px;border-radius:0 0 12px 12px;">
+        <h2 style="margin:0 0 16px;color:#fafafa;">${activityIcon} ${activityTitle}</h2>
+        <table style="width:100%;border-collapse:collapse;">${rowsHtml}
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Time</td><td style="padding:8px 0;font-weight:600;">${timestamp}</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #27272a;margin:24px 0;">
+        <p style="margin:0;font-size:13px;color:#52525b;text-align:center;">Privacy Vault activity notification from InControl.</p>
+      </div>
+    </div>`;
+
+  try {
+    await resend.emails.send({
+      from: "InControl <noreply@incontrol.finance>",
+      to: [email],
+      subject: `InControl: ${subject}`,
+      html,
+    });
+    console.log(`[PrivacyVault] Email sent to ${email}: ${subject}`);
+  } catch (e) {
+    console.error(`[PrivacyVault] Email send failed:`, e);
+  }
+}
 
 // --- Utility functions ---
 
@@ -502,6 +575,15 @@ serve(async (req) => {
           status: "executed", result,
         });
 
+        // Fire-and-forget email notification
+        const ptSymbol = resolveTokenSymbol(token as string);
+        const ptRecipient = (recipient as string).slice(0, 10) + "…" + (recipient as string).slice(-8);
+        sendPrivacyVaultEmail(user.email || "", "Private Transfer Sent", "🔒", "Private Transfer Sent", [
+          { label: "Token", value: ptSymbol },
+          { label: "Amount", value: `${amount} ${ptSymbol}` },
+          { label: "Recipient", value: ptRecipient },
+        ]).catch(() => {});
+
         return new Response(JSON.stringify({ success: true, result }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -588,7 +670,7 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Amount provided → perform on-chain approve + deposit from signing wallet (pooled liquidity)
+        // Protocol liquidity: executor wallet signs approve + deposit on behalf of user
         const depositDecimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
         const depositAmount = Number(amount);
         const rawAmount = BigInt(Math.round(depositAmount * (10 ** depositDecimals)));
@@ -631,6 +713,15 @@ serve(async (req) => {
           params: { amount: depositAmount, token: effectiveToken, network: "ethereum-sepolia" },
           status: "executed", result: { approve_tx: approveTxHash, deposit_tx: depositTxHash, amount: depositAmount },
         });
+
+        // Fire-and-forget email notification
+        const depSymbol = resolveTokenSymbol(effectiveToken);
+        sendPrivacyVaultEmail(user.email || "", "Privacy Vault Deposit", "💰", "Deposit Confirmed", [
+          { label: "Token", value: depSymbol },
+          { label: "Amount", value: `${depositAmount} ${depSymbol}` },
+          { label: "Approve Tx", value: approveTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${approveTxHash}` },
+          { label: "Deposit Tx", value: depositTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${depositTxHash}` },
+        ]).catch(() => {});
 
         return new Response(JSON.stringify({
           success: true,
@@ -720,6 +811,16 @@ serve(async (req) => {
           status: "executed", result: { approve_tx: dfsApproveTxHash, deposit_tx: dfsDepositTxHash, amount: humanBalance },
         });
 
+        // Fire-and-forget email notification
+        const dfsSymbol = resolveTokenSymbol(dfsEffective);
+        sendPrivacyVaultEmail(user.email || "", "Privacy Vault Deposit (Shielded)", "🛡️", "Shielded Deposit Confirmed", [
+          { label: "Token", value: dfsSymbol },
+          { label: "Amount", value: `${humanBalance} ${dfsSymbol}` },
+          { label: "Shielded Address", value: targetAddr.slice(0, 10) + "…" + targetAddr.slice(-8) },
+          { label: "Approve Tx", value: dfsApproveTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${dfsApproveTxHash}` },
+          { label: "Deposit Tx", value: dfsDepositTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${dfsDepositTxHash}` },
+        ]).catch(() => {});
+
         return new Response(JSON.stringify({
           success: true,
           method: "on-chain-deposit",
@@ -802,7 +903,7 @@ serve(async (req) => {
         }
         console.log(`[PrivacyVault] withdrawWithTicket tx mined successfully`);
 
-        // Step 3: Forward tokens from signing wallet to user-specified recipient
+        // Forward from protocol liquidity pool to user-specified recipient
         const recipient = params.recipient as string | undefined;
         let forwardTxHash: string | undefined;
         if (recipient && recipient.startsWith("0x") && recipient.length === 42) {
@@ -826,6 +927,17 @@ serve(async (req) => {
           params: { amount, token, recipient: recipient || null, network: "ethereum-sepolia" },
           status: "executed", result: { ...ticketResult, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash },
         });
+
+        // Fire-and-forget email notification
+        const wdSymbol = resolveTokenSymbol(token as string);
+        const wdRows: Array<{ label: string; value: string; link?: string }> = [
+          { label: "Token", value: wdSymbol },
+          { label: "Amount", value: `${amount} ${wdSymbol}` },
+          { label: "Withdraw Tx", value: withdrawTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${withdrawTxHash}` },
+        ];
+        if (recipient) wdRows.push({ label: "Recipient", value: (recipient as string).slice(0, 10) + "…" + (recipient as string).slice(-8) });
+        if (forwardTxHash) wdRows.push({ label: "Forward Tx", value: forwardTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${forwardTxHash}` });
+        sendPrivacyVaultEmail(user.email || "", "Privacy Vault Withdrawal", "📤", "Withdrawal Confirmed", wdRows).catch(() => {});
 
         return new Response(JSON.stringify({ success: true, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash, ticket_id: ticketResult.id, result: ticketResult }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
