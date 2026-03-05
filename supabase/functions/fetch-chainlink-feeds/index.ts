@@ -77,7 +77,7 @@ async function fetchFeed(
   }
 
   // Fallback RPCs (network-aware)
-  const fallbacks = FALLBACK_RPCS_BY_NETWORK[f.network] || [];
+  const fallbacks = getFallbackRpcs()[f.network] || [];
   for (const rpc of fallbacks) {
     try {
       console.log(`Retrying ${f.pair} with fallback ${rpc}`);
