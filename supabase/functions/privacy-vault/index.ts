@@ -928,6 +928,17 @@ serve(async (req) => {
           status: "executed", result: { ...ticketResult, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash },
         });
 
+        // Fire-and-forget email notification
+        const wdSymbol = resolveTokenSymbol(token as string);
+        const wdRows: Array<{ label: string; value: string; link?: string }> = [
+          { label: "Token", value: wdSymbol },
+          { label: "Amount", value: `${amount} ${wdSymbol}` },
+          { label: "Withdraw Tx", value: withdrawTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${withdrawTxHash}` },
+        ];
+        if (recipient) wdRows.push({ label: "Recipient", value: (recipient as string).slice(0, 10) + "…" + (recipient as string).slice(-8) });
+        if (forwardTxHash) wdRows.push({ label: "Forward Tx", value: forwardTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${forwardTxHash}` });
+        sendPrivacyVaultEmail(user.email || "", "Privacy Vault Withdrawal", "📤", "Withdrawal Confirmed", wdRows).catch(() => {});
+
         return new Response(JSON.stringify({ success: true, withdraw_tx: withdrawTxHash, forward_tx: forwardTxHash, ticket_id: ticketResult.id, result: ticketResult }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
