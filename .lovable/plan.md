@@ -1,54 +1,63 @@
 
 
-## Optimizing CRE Workflows for Live `cre simulate` Execution
+# Update README.md — Comprehensive Project & CRE Documentation
 
-### Current State
+Full rewrite of `README.md` with two user-requested modifications applied:
+1. **No "Moltbook" references** — use "InControl" throughout
+2. **Detailed dashboard features section** covering all financial modules
 
-The project has 5 CRE workflows in `incontrol-cre-ts/`:
+## Structure
 
-| Workflow | Live API calls? | On-chain write? | Config ready? |
-|----------|----------------|-----------------|---------------|
-| `dca-trigger-ts` | Yes (Supabase REST + edge fn) | Via edge function | Yes |
-| `portfolio-summary-ts` | Partially (test config points to `api.exchangerate.host` with empty key) | No | No — test/sepolia configs have placeholder values |
-| `conf-http-ts` | Yes (Confidential HTTP) | No | Yes (uses vault secrets) |
-| `privacy-vault-ts` | Yes (Privacy Vault API) | No | Yes |
-| `x402-cre-verified-ts` | Yes (Supabase REST) | No | Yes |
+### 1. Header
+- **InControl — AI-Powered Portfolio Intelligence with Chainlink CRE**
+- One-paragraph summary (no Moltbook mention)
 
-### Key Insight
+### 2. Live Demo
+- Link to `https://wealth-whisperer-206.lovable.app`
 
-Since `cre simulate` hits live web APIs and `--broadcast` enables real testnet transactions, the changes fall into two categories:
+### 3. Dashboard Features (detailed)
+Describe each dashboard section visible in `Index.tsx`:
 
-### 1. ~~Fix broken/placeholder configs~~ ✅ DONE
+| Feature | Description |
+|---------|-------------|
+| **Key Metrics** | Net Worth, Total Debt, Monthly Income, Net Cash Flow, Yield Breakdown — all with trend indicators |
+| **Portfolio Management** | Assets by category (crypto, stocks, banking, real estate, commodities), buy/sell tracking, live prices via Chainlink feeds, allocation chart |
+| **Debt Management** | Multi-currency debt tracking (mortgage, credit card, student loan, personal, auto, medical), interest rate monitoring, monthly payment tracking, debt payoff calculator, optimization strategies |
+| **P&L Overview** | Profit & Loss per asset with realized/unrealized gains, transaction history, period selectors |
+| **Financial Goals** | Goal tracking with progress bars, months-to-goal projections, status indicators, AI recommendations |
+| **Net Worth & Allocation Charts** | Historical net worth chart, pie chart allocation breakdown |
+| **Portfolio History** | Monthly snapshots, performance tracking over time |
+| **Investment Strategy** | AI-generated investment recommendations based on free cash flow, debts, and goals |
+| **Income & Expenses** | Recurring and one-time income/expense tracking, upcoming expenses card |
+| **AI Financial Advisor** | Chat-based advisor with voice commands, memory across sessions |
+| **DCA Strategies** | Dollar-cost averaging setup and execution tracking (separate `/dca` page) |
+| **Customizable Layout** | Drag-to-reorder sections, show/hide cards, persistent layout preferences |
 
-All three files are already fixed:
-- **`config.test.json`** — ✅ Points to `api-price-feed`, uses `supabaseAnonKeySecret`
-- **`config.sepolia.json`** — ✅ Points to `api-price-feed`, uses `supabaseAnonKeySecret`
-- **`test-eurusd.ts`** — ✅ Simplified to 103 lines, no fallback hacks
+### 4. Architecture Overview
+ASCII diagram: Frontend → Supabase Backend → Chainlink CRE Workflows
 
-### 2. Add on-chain write capability to workflows that lack it
+### 5. Chainlink CRE Workflows
+Table of 5 workflows with triggers, capabilities, on-chain write status
 
-For the hackathon, `--broadcast` needs at least one on-chain write producing a tx hash. Currently only `dca-trigger-ts` writes on-chain (indirectly via edge function).
+### 6. On-Chain Contract
+- `PriceAttestationReceiver.sol` on Sepolia at `0xB60D27f47155446783Ee52C743Af78B3996817a5`
+- Confirmed TX hash
 
-**Add EVM write to `x402-cre-verified-ts`** — After fetching consensus-verified prices, write a price attestation on-chain using `EVMClient.write()`. This would:
-- Store the verified price hash on a testnet contract
-- Produce a real tx hash visible in simulation output
-- Demonstrate CRE's consensus → on-chain pipeline
+### 7. AI Agent Integration
+- MCP Server, x402 payment protocol, CRE-verified data
 
-**Add EVM write to `portfolio-summary-ts`** — After aggregating portfolio prices, write a summary hash on-chain as a portfolio snapshot attestation.
+### 8. Tech Stack
+- Frontend, backend, blockchain, AI tools
 
-### 3. Simplify the simulated edge function
+### 9. Simulation Commands
+- `cre workflow simulate` examples
 
-The `simulate-dca-cre` Supabase edge function duplicates the DCA workflow logic for the web UI. This stays as-is (web apps can't run `cre simulate`), but the README should document the one-shot CLI command:
+### 10. Local Development
+- npm install + dev instructions
 
-```bash
-cre workflow simulate ./incontrol-cre-ts/dca-trigger-ts --target=test-settings --broadcast
-```
+### 11. Environment Variables
+- List required vars without values
 
-### Files to change
-
-- `incontrol-cre-ts/portfolio-summary-ts/config.test.json` — real API endpoint
-- `incontrol-cre-ts/portfolio-summary-ts/config.sepolia.json` — real API endpoint  
-- `incontrol-cre-ts/portfolio-summary-ts/test-eurusd.ts` — simplify, remove fallback hacks
-- `incontrol-cre-ts/x402-cre-verified-ts/main.ts` — add EVM write for price attestation
-- `incontrol-cre-ts/portfolio-summary-ts/main.ts` — add EVM write for portfolio snapshot
+## File to change
+- **`README.md`** — Full rewrite
 
