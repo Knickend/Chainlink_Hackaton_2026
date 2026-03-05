@@ -575,6 +575,15 @@ serve(async (req) => {
           status: "executed", result,
         });
 
+        // Fire-and-forget email notification
+        const ptSymbol = resolveTokenSymbol(token as string);
+        const ptRecipient = (recipient as string).slice(0, 10) + "…" + (recipient as string).slice(-8);
+        sendPrivacyVaultEmail(user.email || "", "Private Transfer Sent", "🔒", "Private Transfer Sent", [
+          { label: "Token", value: ptSymbol },
+          { label: "Amount", value: `${amount} ${ptSymbol}` },
+          { label: "Recipient", value: ptRecipient },
+        ]).catch(() => {});
+
         return new Response(JSON.stringify({ success: true, result }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
