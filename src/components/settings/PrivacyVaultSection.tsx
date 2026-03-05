@@ -346,7 +346,7 @@ export function PrivacyVaultSection() {
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
                   { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
-                  { step: 2, icon: ArrowDownToLine, title: 'Send & Deposit', desc: 'Send tokens to your shielded address, then click "Deposit to Vault" to move them into the private ledger' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Send & Deposit', desc: 'Protocol executor deposits from pooled liquidity into the vault on your behalf via approve + deposit' },
                   { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw to any address' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
