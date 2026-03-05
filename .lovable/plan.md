@@ -18,20 +18,12 @@ The project has 5 CRE workflows in `incontrol-cre-ts/`:
 
 Since `cre simulate` hits live web APIs and `--broadcast` enables real testnet transactions, the changes fall into two categories:
 
-### 1. Fix broken/placeholder configs so `cre simulate` works out of the box
+### 1. ~~Fix broken/placeholder configs~~ ✅ DONE
 
-**`portfolio-summary-ts/config.test.json`** — Currently points to `api.exchangerate.host` with empty API key. Should point to the actual Supabase price feed endpoint:
-```json
-{
-  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed",
-  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
-  "workflows": [...]
-}
-```
-
-**`portfolio-summary-ts/config.sepolia.json`** — Same fix, currently has empty `supabaseApiKey`.
-
-**`portfolio-summary-ts/test-eurusd.ts`** — Massively over-engineered with fallback logic (170+ lines for a simple price fetch). Simplify since live APIs will actually respond. Remove the deterministic hash fallback and excessive config parsing duplications.
+All three files are already fixed:
+- **`config.test.json`** — ✅ Points to `api-price-feed`, uses `supabaseAnonKeySecret`
+- **`config.sepolia.json`** — ✅ Points to `api-price-feed`, uses `supabaseAnonKeySecret`
+- **`test-eurusd.ts`** — ✅ Simplified to 103 lines, no fallback hacks
 
 ### 2. Add on-chain write capability to workflows that lack it
 

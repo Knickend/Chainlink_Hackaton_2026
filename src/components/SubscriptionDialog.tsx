@@ -356,6 +356,11 @@ export function SubscriptionDialog({ open, onOpenChange, onSubscribe }: Subscrip
                 </div>
               </div>
 
+              {/* Hackathon Demo Notice */}
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm text-primary">
+                <span className="font-semibold">🏗️ Hackathon Demo:</span> This is a mockup — no real payment is processed. You can enter any random numbers.
+              </div>
+
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label htmlFor="card">Card Number</Label>
