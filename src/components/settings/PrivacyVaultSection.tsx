@@ -168,7 +168,7 @@ export function PrivacyVaultSection() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshBalances = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
+    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
     setIsRefreshing(false);
   };
 
