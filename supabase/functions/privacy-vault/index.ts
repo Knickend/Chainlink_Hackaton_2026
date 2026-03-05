@@ -29,6 +29,14 @@ const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 const VAULT_CONTRACT = EIP712_DOMAIN.verifyingContract;
 const CHAIN_ID = BigInt(EIP712_DOMAIN.chainId);
 
+// --- Architecture Note ---
+// The PRIVACY_VAULT_PRIVATE_KEY derives the "infra wallet" (0x8E6B…).
+// This is a protocol liquidity + executor wallet, NOT a custody wallet.
+// It holds pooled inventory backing all user vault balances and signs
+// approve, deposit, withdrawWithTicket, and ERC-20 transfer transactions.
+// Individual user balances are tracked off-chain in the database and
+// on-chain in the Privacy Vault's internal ledger.
+
 const TOKEN_DECIMALS: Record<string, number> = {
   "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
   "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
