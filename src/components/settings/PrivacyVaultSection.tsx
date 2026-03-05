@@ -241,7 +241,7 @@ export function PrivacyVaultSection() {
       const tokenLabel = COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens';
       toast({ title: 'Deposit Successful', description: `Deposited ${depositAmount} ${tokenLabel} into the Privacy Vault.` });
       setDepositAmount('');
-      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
+      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
     } catch (err) {
       toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
