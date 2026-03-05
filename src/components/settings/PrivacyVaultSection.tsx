@@ -80,13 +80,16 @@ export function PrivacyVaultSection() {
 
   const maxAmount = (() => {
     if (!fromAddress) return 0;
-    if (transferToken === '0x0000000000000000000000000000000000000000') {
-      return onchainBalances[fromAddress] ?? 0;
-    }
-    const tok = ERC20_TOKENS_TO_CHECK.find(t => t.address === transferToken);
-    if (!tok) return 0;
-    const entry = onchainTokenBalances[fromAddress]?.find(b => b.symbol === tok.symbol);
-    return entry?.amount ?? 0;
+    // Private transfers spend from the vault ledger, not on-chain balances
+    const tokenInfo = COMMON_TOKENS.find(t => t.address === transferToken);
+    if (!tokenInfo) return 0;
+    const tokenKey = Object.keys(TOKEN_DECIMALS).find(
+      k => TOKEN_DECIMALS[k].symbol === tokenInfo.label
+    );
+    if (!tokenKey) return 0;
+    const match = balances.find(b => b.token.toLowerCase() === tokenKey.toLowerCase());
+    if (!match) return 0;
+    return Number(match.amount) / Math.pow(10, TOKEN_DECIMALS[tokenKey].decimals);
   })();
 
   const invokePrivacy = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
