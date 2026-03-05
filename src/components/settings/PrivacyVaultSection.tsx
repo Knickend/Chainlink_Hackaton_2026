@@ -70,7 +70,7 @@ export function PrivacyVaultSection() {
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositResult, setDepositResult] = useState<Record<string, any> | null>(null);
-  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  
   const [howOpen, setHowOpen] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
