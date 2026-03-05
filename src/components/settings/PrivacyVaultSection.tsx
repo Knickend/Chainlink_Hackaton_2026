@@ -802,6 +802,9 @@ export function PrivacyVaultSection() {
                     Cancel
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  ℹ️ Private transfers update the vault's internal ledger only. Recipients must withdraw from the vault to move tokens to their on-chain wallet.
+                </p>
               </div>
             )}
           </CardContent>
