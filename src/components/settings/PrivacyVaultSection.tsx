@@ -312,8 +312,11 @@ export function PrivacyVaultSection() {
               </div>
             </div>
             <CardDescription>
-              Privacy-preserving token operations via Chainlink ACE — shielded addresses &amp; private transfers on Ethereum Sepolia
+              Privacy-preserving token operations via Chainlink ACE. Protocol liquidity is pooled in the vault — the executor wallet signs transactions on behalf of users, not as a custodian.
             </CardDescription>
+            <p className="text-[11px] text-muted-foreground/70 mt-1.5 leading-relaxed">
+              The executor wallet (0x8E6B…) holds protocol liquidity and signs transactions. Your balance is tracked in the vault's private ledger, not as a direct on-chain balance in the executor wallet.
+            </p>
             {onboardStatus === 'not-onboarded' && (
               <p className="text-xs text-amber-400 mt-2">
                 ⚠️ Your account is not yet registered with the Convergence protocol. Deposit ERC-20 tokens below to onboard and enable private transfers.
@@ -343,7 +346,7 @@ export function PrivacyVaultSection() {
               <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-0">
                 {[
                   { step: 1, icon: Shield, title: 'Generate Address', desc: 'Create a shielded address for receiving tokens privately' },
-                  { step: 2, icon: ArrowDownToLine, title: 'Send & Deposit', desc: 'Send tokens to your shielded address, then click "Deposit to Vault" to move them into the private ledger' },
+                  { step: 2, icon: ArrowDownToLine, title: 'Send & Deposit', desc: 'Protocol executor deposits from pooled liquidity into the vault on your behalf via approve + deposit' },
                   { step: 3, icon: SendHorizontal, title: 'Transfer or Withdraw', desc: 'Send privately or withdraw to any address' },
                 ].map((item, i) => (
                   <div key={item.step} className="flex flex-col sm:flex-row items-center flex-1 min-w-0">
@@ -514,7 +517,7 @@ export function PrivacyVaultSection() {
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
             )}
             <p className="text-xs text-muted-foreground mt-2">
-              ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger (ERC-20 deposits via the protocol). <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
+              ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger. Protocol liquidity in the executor wallet is pooled across all users — individual user balances are tracked off-chain in the database. <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
             </p>
           </CardContent>
         </Card>
@@ -528,7 +531,7 @@ export function PrivacyVaultSection() {
               <ArrowDownToLine className="w-4 h-4" />
               Deposit to Privacy Vault
             </CardTitle>
-            <CardDescription>Deposit tokens into the vault from the signing wallet's pooled liquidity</CardDescription>
+            <CardDescription>Protocol liquidity backs all deposits. The executor wallet signs approve + deposit transactions on your behalf.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">

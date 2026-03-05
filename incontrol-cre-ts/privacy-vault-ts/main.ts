@@ -1,3 +1,4 @@
+// Infra wallet acts as protocol liquidity + executor (not custody)
 /**
  * Privacy Vault CRE Workflow
  *

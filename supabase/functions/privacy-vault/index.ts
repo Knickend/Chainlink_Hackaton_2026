@@ -29,6 +29,14 @@ const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 const VAULT_CONTRACT = EIP712_DOMAIN.verifyingContract;
 const CHAIN_ID = BigInt(EIP712_DOMAIN.chainId);
 
+// --- Architecture Note ---
+// The PRIVACY_VAULT_PRIVATE_KEY derives the "infra wallet" (0x8E6B…).
+// This is a protocol liquidity + executor wallet, NOT a custody wallet.
+// It holds pooled inventory backing all user vault balances and signs
+// approve, deposit, withdrawWithTicket, and ERC-20 transfer transactions.
+// Individual user balances are tracked off-chain in the database and
+// on-chain in the Privacy Vault's internal ledger.
+
 const TOKEN_DECIMALS: Record<string, number> = {
   "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": 6,  // USDC
   "0x779877a7b0d9e8603169ddbd7836e478b4624789": 18, // LINK
@@ -588,7 +596,7 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Amount provided → perform on-chain approve + deposit from signing wallet (pooled liquidity)
+        // Protocol liquidity: executor wallet signs approve + deposit on behalf of user
         const depositDecimals = TOKEN_DECIMALS[effectiveToken.toLowerCase()] ?? 18;
         const depositAmount = Number(amount);
         const rawAmount = BigInt(Math.round(depositAmount * (10 ** depositDecimals)));
@@ -802,7 +810,7 @@ serve(async (req) => {
         }
         console.log(`[PrivacyVault] withdrawWithTicket tx mined successfully`);
 
-        // Step 3: Forward tokens from signing wallet to user-specified recipient
+        // Forward from protocol liquidity pool to user-specified recipient
         const recipient = params.recipient as string | undefined;
         let forwardTxHash: string | undefined;
         if (recipient && recipient.startsWith("0x") && recipient.length === 42) {
