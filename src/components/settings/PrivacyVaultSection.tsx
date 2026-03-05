@@ -29,14 +29,6 @@ const TOKEN_DECIMALS: Record<string, { symbol: string; decimals: number }> = {
   '0x0000000000000000000000000000000000000000': { symbol: 'SepoliaETH', decimals: 18 },
 };
 
-interface ActivityLogEntry {
-  id: string;
-  action_type: string;
-  status: string;
-  created_at: string;
-  result: Record<string, any> | null;
-  params: Record<string, any>;
-}
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -70,7 +62,7 @@ export function PrivacyVaultSection() {
   const [depositAmount, setDepositAmount] = useState('');
   const [depositToken, setDepositToken] = useState('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');
   const [depositResult, setDepositResult] = useState<Record<string, any> | null>(null);
-  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  
   const [howOpen, setHowOpen] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
@@ -152,23 +144,6 @@ export function PrivacyVaultSection() {
     }
   }, [user, invokePrivacy]);
 
-  const fetchActivityLog = useCallback(async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('agent_actions_log')
-        .select('id, action_type, status, created_at, result, params')
-        .eq('user_id', user.id)
-        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw', 'privacy-deposit', 'privacy-deposit-info', 'auto-deploy-policy-engine', 'auto-register-token'])
-        .order('created_at', { ascending: false })
-        .limit(10);
-      if (!error && data) {
-        setActivityLog(data as unknown as ActivityLogEntry[]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch activity log:', err);
-    }
-  }, [user]);
 
   const fetchBalances = useCallback(async () => {
     if (!user) return;
@@ -185,14 +160,14 @@ export function PrivacyVaultSection() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefreshBalances = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
+    await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
     setIsRefreshing(false);
   };
 
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog]);
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -266,7 +241,7 @@ export function PrivacyVaultSection() {
       const tokenLabel = COMMON_TOKENS.find(t => t.address === depositToken)?.label ?? 'tokens';
       toast({ title: 'Deposit Successful', description: `Deposited ${depositAmount} ${tokenLabel} into the Privacy Vault.` });
       setDepositAmount('');
-      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus(), fetchActivityLog()]);
+      await Promise.all([fetchBalances(), fetchAddresses(), checkOnboardStatus()]);
     } catch (err) {
       toast({ title: 'Deposit Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
@@ -833,72 +808,6 @@ export function PrivacyVaultSection() {
         </Card>
       </motion.div>
 
-      {/* Activity Log */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              Activity Log
-            </CardTitle>
-            <CardDescription>Recent privacy vault transactions with on-chain links</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activityLog.length > 0 ? (
-              <div className="space-y-2">
-                {activityLog.map((entry) => {
-                  const result = entry.result as Record<string, any> | null;
-                  const txHashes: { label: string; hash: string }[] = [];
-                  if (result?.wrap_tx) txHashes.push({ label: 'Wrap', hash: result.wrap_tx });
-                  if (result?.approve_tx) txHashes.push({ label: 'Approve', hash: result.approve_tx });
-                  if (result?.deposit_tx) txHashes.push({ label: 'Deposit', hash: result.deposit_tx });
-                  if (result?.transfer_tx) txHashes.push({ label: 'Transfer', hash: result.transfer_tx });
-                  if (result?.tx_hash) txHashes.push({ label: 'TX', hash: result.tx_hash });
-                  if (result?.policy_engine) txHashes.push({ label: 'PE', hash: result.policy_engine });
-                  return (
-                    <div key={entry.id} className="p-3 rounded-lg border border-border space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {entry.action_type.replace('privacy-vault-', '').replace('privacy-', '').replace('auto-', '⚡ ').replace(/-/g, ' ')}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${entry.status === 'success' || entry.status === 'executed' ? 'text-emerald-400 border-emerald-600/30' : entry.status === 'error' ? 'text-destructive border-destructive/30' : 'text-muted-foreground'}`}
-                          >
-                            {entry.status}
-                          </Badge>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(entry.created_at).toLocaleDateString()} {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      {txHashes.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {txHashes.map((tx) => (
-                            <a
-                              key={tx.hash}
-                              href={`https://sepolia.etherscan.io/${tx.label === 'PE' ? 'address' : 'tx'}/${tx.hash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              {tx.label}: {tx.hash.slice(0, 8)}…{tx.hash.slice(-6)}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No privacy vault activity yet.</p>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
     </div>
   );
 }
