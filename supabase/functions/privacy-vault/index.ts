@@ -811,6 +811,16 @@ serve(async (req) => {
           status: "executed", result: { approve_tx: dfsApproveTxHash, deposit_tx: dfsDepositTxHash, amount: humanBalance },
         });
 
+        // Fire-and-forget email notification
+        const dfsSymbol = resolveTokenSymbol(dfsEffective);
+        sendPrivacyVaultEmail(user.email || "", "Privacy Vault Deposit (Shielded)", "🛡️", "Shielded Deposit Confirmed", [
+          { label: "Token", value: dfsSymbol },
+          { label: "Amount", value: `${humanBalance} ${dfsSymbol}` },
+          { label: "Shielded Address", value: targetAddr.slice(0, 10) + "…" + targetAddr.slice(-8) },
+          { label: "Approve Tx", value: dfsApproveTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${dfsApproveTxHash}` },
+          { label: "Deposit Tx", value: dfsDepositTxHash.slice(0, 14) + "…", link: `https://sepolia.etherscan.io/tx/${dfsDepositTxHash}` },
+        ]).catch(() => {});
+
         return new Response(JSON.stringify({
           success: true,
           method: "on-chain-deposit",
