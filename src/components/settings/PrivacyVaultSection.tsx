@@ -461,8 +461,8 @@ export function PrivacyVaultSection() {
                  </div>
                ))}
               <p className="text-xs text-muted-foreground mt-3 px-1">
-                ℹ️ On-chain balances on shielded addresses represent <strong>pending inbound tokens</strong> that will be swept into the vault by the executor. Your actual spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
-              </p>
+                 ℹ️ On-chain balances remain on shielded addresses after deposit. The executor credits your vault using pooled liquidity. Your spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
+               </p>
               </CardContent>
             </Card>
           </motion.div>
