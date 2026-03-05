@@ -436,15 +436,15 @@ export function PrivacyVaultSection() {
                       {addr.shielded_address}
                     </p>
                     {onchainBalances[addr.shielded_address] !== undefined && (
-                      <p className="text-xs text-primary mt-1">
-                        On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Pending inbound: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
                      {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
                        <div key={i} className="flex items-center gap-2 mt-1">
-                         <p className="text-xs text-primary">
-                           On-chain: {tok.amount.toFixed(6)} {tok.symbol}
-                         </p>
+                         <p className="text-xs text-muted-foreground">
+                            Pending inbound: {tok.amount.toFixed(6)} {tok.symbol}
+                          </p>
                         </div>
                       ))}
                    </div>
