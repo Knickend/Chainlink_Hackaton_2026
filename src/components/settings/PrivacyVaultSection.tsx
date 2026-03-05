@@ -436,15 +436,15 @@ export function PrivacyVaultSection() {
                       {addr.shielded_address}
                     </p>
                     {onchainBalances[addr.shielded_address] !== undefined && (
-                      <p className="text-xs text-primary mt-1">
-                        On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Pending inbound: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
                      {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
                        <div key={i} className="flex items-center gap-2 mt-1">
-                         <p className="text-xs text-primary">
-                           On-chain: {tok.amount.toFixed(6)} {tok.symbol}
-                         </p>
+                         <p className="text-xs text-muted-foreground">
+                            Pending inbound: {tok.amount.toFixed(6)} {tok.symbol}
+                          </p>
                         </div>
                       ))}
                    </div>
@@ -473,12 +473,15 @@ export function PrivacyVaultSection() {
                    </div>
                  </div>
                ))}
-             </CardContent>
-           </Card>
-         </motion.div>
-       )}
+              <p className="text-xs text-muted-foreground mt-3 px-1">
+                ℹ️ On-chain balances on shielded addresses represent <strong>pending inbound tokens</strong> that will be swept into the vault by the executor. Your actual spendable balance is shown in <strong>Privacy Vault Balances</strong> below.
+              </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
-      {/* Privacy Balances */}
+       {/* Privacy Balances */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <Card className="glass-card">
           <CardHeader>
@@ -517,7 +520,7 @@ export function PrivacyVaultSection() {
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
             )}
             <p className="text-xs text-muted-foreground mt-2">
-              ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger. Protocol liquidity in the executor wallet is pooled across all users — individual user balances are tracked off-chain in the database. <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
+              ℹ️ <strong>Vault balances</strong> are your canonical spendable balance, reflecting the Privacy Vault's internal ledger. On-chain balances shown on shielded addresses above are <strong>pending inbound tokens</strong> — they will be swept into the vault by the executor wallet using pooled protocol liquidity.
             </p>
           </CardContent>
         </Card>
