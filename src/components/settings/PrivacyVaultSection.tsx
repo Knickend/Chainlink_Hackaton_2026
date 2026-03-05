@@ -312,8 +312,11 @@ export function PrivacyVaultSection() {
               </div>
             </div>
             <CardDescription>
-              Privacy-preserving token operations via Chainlink ACE — shielded addresses &amp; private transfers on Ethereum Sepolia
+              Privacy-preserving token operations via Chainlink ACE. Protocol liquidity is pooled in the vault — the executor wallet signs transactions on behalf of users, not as a custodian.
             </CardDescription>
+            <p className="text-[11px] text-muted-foreground/70 mt-1.5 leading-relaxed">
+              The executor wallet (0x8E6B…) holds protocol liquidity and signs transactions. Your balance is tracked in the vault's private ledger, not as a direct on-chain balance in the executor wallet.
+            </p>
             {onboardStatus === 'not-onboarded' && (
               <p className="text-xs text-amber-400 mt-2">
                 ⚠️ Your account is not yet registered with the Convergence protocol. Deposit ERC-20 tokens below to onboard and enable private transfers.
