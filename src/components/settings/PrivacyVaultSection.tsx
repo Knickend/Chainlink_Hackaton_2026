@@ -531,7 +531,7 @@ export function PrivacyVaultSection() {
               <ArrowDownToLine className="w-4 h-4" />
               Deposit to Privacy Vault
             </CardTitle>
-            <CardDescription>Deposit tokens into the vault from the signing wallet's pooled liquidity</CardDescription>
+            <CardDescription>Protocol liquidity backs all deposits. The executor wallet signs approve + deposit transactions on your behalf.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">

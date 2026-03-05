@@ -810,7 +810,7 @@ serve(async (req) => {
         }
         console.log(`[PrivacyVault] withdrawWithTicket tx mined successfully`);
 
-        // Step 3: Forward tokens from signing wallet to user-specified recipient
+        // Forward from protocol liquidity pool to user-specified recipient
         const recipient = params.recipient as string | undefined;
         let forwardTxHash: string | undefined;
         if (recipient && recipient.startsWith("0x") && recipient.length === 42) {
