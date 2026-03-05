@@ -1,62 +1,37 @@
 
 
-## Optimizing CRE Workflows for Live `cre simulate` Execution
+# Plan: Finalize ACE Privacy Vault — Pooled Liquidity Framing
 
-### Current State
+Align the Privacy Vault UI copy and backend code comments with the correct protocol model: the infra wallet (0x8E6B…) is a **protocol liquidity executor + signer**, not a custody wallet for user funds.
 
-The project has 5 CRE workflows in `incontrol-cre-ts/`:
+## Changes
 
-| Workflow | Live API calls? | On-chain write? | Config ready? |
-|----------|----------------|-----------------|---------------|
-| `dca-trigger-ts` | Yes (Supabase REST + edge fn) | Via edge function | Yes |
-| `portfolio-summary-ts` | Partially (test config points to `api.exchangerate.host` with empty key) | No | No — test/sepolia configs have placeholder values |
-| `conf-http-ts` | Yes (Confidential HTTP) | No | Yes (uses vault secrets) |
-| `privacy-vault-ts` | Yes (Privacy Vault API) | No | Yes |
-| `x402-cre-verified-ts` | Yes (Supabase REST) | No | Yes |
+### 1. `src/components/settings/PrivacyVaultSection.tsx` — UI copy updates
 
-### Key Insight
+- **Header description** (line 315): Change to "Privacy-preserving token operations via Chainlink ACE. Protocol liquidity is pooled in the vault — the signing wallet executes transactions on behalf of users, not as a custodian."
+- **Deposit card description** (line 531): Change from "from the signing wallet's pooled liquidity" → "Protocol liquidity backs all deposits. The executor wallet signs approve + deposit transactions on your behalf."
+- **Vault balances info text** (line 516-518): Update to clarify: "Vault balances reflect the Privacy Vault's internal ledger. Protocol liquidity in the executor wallet is pooled across all users — individual user balances are tracked off-chain in the database."
+- **How It Works step 2** (line 346): Update desc to mention "Protocol executor deposits from pooled liquidity into the vault on your behalf"
+- Add a small info note in the header card explaining the model: "The executor wallet (0x8E6B…) holds protocol liquidity and signs transactions. Your balance is tracked in the vault's private ledger, not as a direct on-chain balance in the executor wallet."
 
-Since `cre simulate` hits live web APIs and `--broadcast` enables real testnet transactions, the changes fall into two categories:
+### 2. `supabase/functions/privacy-vault/index.ts` — Code comments
 
-### 1. Fix broken/placeholder configs so `cre simulate` works out of the box
+- Add a block comment near the top (after line 29) annotating the architecture:
+  ```
+  // --- Architecture Note ---
+  // The PRIVACY_VAULT_PRIVATE_KEY derives the "infra wallet" (0x8E6B…).
+  // This is a protocol liquidity + executor wallet, NOT a custody wallet.
+  // It holds pooled inventory backing all user vault balances and signs
+  // approve, deposit, withdrawWithTicket, and ERC-20 transfer transactions.
+  // Individual user balances are tracked off-chain in the database and
+  // on-chain in the Privacy Vault's internal ledger.
+  ```
+- Add inline comments on the deposit flow (line 591): `// Protocol liquidity: executor wallet signs approve + deposit on behalf of user`
+- Add inline comment on withdraw flow (line 805): `// Forward from protocol liquidity pool to user-specified recipient`
 
-**`portfolio-summary-ts/config.test.json`** — Currently points to `api.exchangerate.host` with empty API key. Should point to the actual Supabase price feed endpoint:
-```json
-{
-  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed",
-  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
-  "workflows": [...]
-}
-```
+### 3. `incontrol-cre-ts/privacy-vault-ts/main.ts` — CRE workflow comment
 
-**`portfolio-summary-ts/config.sepolia.json`** — Same fix, currently has empty `supabaseApiKey`.
+- Add a comment at the top noting: `// Infra wallet acts as protocol liquidity + executor (not custody)`
 
-**`portfolio-summary-ts/test-eurusd.ts`** — Massively over-engineered with fallback logic (170+ lines for a simple price fetch). Simplify since live APIs will actually respond. Remove the deterministic hash fallback and excessive config parsing duplications.
-
-### 2. Add on-chain write capability to workflows that lack it
-
-For the hackathon, `--broadcast` needs at least one on-chain write producing a tx hash. Currently only `dca-trigger-ts` writes on-chain (indirectly via edge function).
-
-**Add EVM write to `x402-cre-verified-ts`** — After fetching consensus-verified prices, write a price attestation on-chain using `EVMClient.write()`. This would:
-- Store the verified price hash on a testnet contract
-- Produce a real tx hash visible in simulation output
-- Demonstrate CRE's consensus → on-chain pipeline
-
-**Add EVM write to `portfolio-summary-ts`** — After aggregating portfolio prices, write a summary hash on-chain as a portfolio snapshot attestation.
-
-### 3. Simplify the simulated edge function
-
-The `simulate-dca-cre` Supabase edge function duplicates the DCA workflow logic for the web UI. This stays as-is (web apps can't run `cre simulate`), but the README should document the one-shot CLI command:
-
-```bash
-cre workflow simulate ./incontrol-cre-ts/dca-trigger-ts --target=test-settings --broadcast
-```
-
-### Files to change
-
-- `incontrol-cre-ts/portfolio-summary-ts/config.test.json` — real API endpoint
-- `incontrol-cre-ts/portfolio-summary-ts/config.sepolia.json` — real API endpoint  
-- `incontrol-cre-ts/portfolio-summary-ts/test-eurusd.ts` — simplify, remove fallback hacks
-- `incontrol-cre-ts/x402-cre-verified-ts/main.ts` — add EVM write for price attestation
-- `incontrol-cre-ts/portfolio-summary-ts/main.ts` — add EVM write for portfolio snapshot
+No database changes, no new features — purely wording/comments alignment for hackathon reviewers.
 
