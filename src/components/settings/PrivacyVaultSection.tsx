@@ -174,8 +174,8 @@ export function PrivacyVaultSection() {
 
   useEffect(() => {
     setIsLoading(true);
-    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus(), fetchActivityLog()]).finally(() => setIsLoading(false));
-  }, [fetchAddresses, fetchBalances, checkOnboardStatus, fetchActivityLog]);
+    Promise.all([fetchAddresses(), fetchBalances(), checkOnboardStatus()]).finally(() => setIsLoading(false));
+  }, [fetchAddresses, fetchBalances, checkOnboardStatus]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
