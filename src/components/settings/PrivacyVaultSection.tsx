@@ -520,7 +520,7 @@ export function PrivacyVaultSection() {
               <p className="text-sm text-muted-foreground">No balances found. Deposit tokens to the Privacy Vault to get started.</p>
             )}
             <p className="text-xs text-muted-foreground mt-2">
-              ℹ️ <strong>Vault balances</strong> reflect the Privacy Vault's internal ledger. Protocol liquidity in the executor wallet is pooled across all users — individual user balances are tracked off-chain in the database. <strong>On-chain balances</strong> (shown per shielded address above) include native ETH sent directly on-chain.
+              ℹ️ <strong>Vault balances</strong> are your canonical spendable balance, reflecting the Privacy Vault's internal ledger. On-chain balances shown on shielded addresses above are <strong>pending inbound tokens</strong> — they will be swept into the vault by the executor wallet using pooled protocol liquidity.
             </p>
           </CardContent>
         </Card>
