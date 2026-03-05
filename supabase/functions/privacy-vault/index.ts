@@ -45,6 +45,70 @@ const TOKEN_DECIMALS: Record<string, number> = {
   "0x0000000000000000000000000000000000000000": 18, // ETH
 };
 
+const TOKEN_SYMBOLS: Record<string, string> = {
+  "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": "USDC",
+  "0x779877a7b0d9e8603169ddbd7836e478b4624789": "LINK",
+  "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": "WETH",
+  "0x7b79995e5f793a07bc00c21412e50ecae098e7f9": "WETH",
+  "0x0000000000000000000000000000000000000000": "ETH",
+};
+
+function resolveTokenSymbol(tokenAddress: string): string {
+  return TOKEN_SYMBOLS[tokenAddress.toLowerCase()] || tokenAddress.slice(0, 10) + "…";
+}
+
+// --- Privacy Vault Email Notifications ---
+
+async function sendPrivacyVaultEmail(
+  email: string,
+  subject: string,
+  activityIcon: string,
+  activityTitle: string,
+  rows: Array<{ label: string; value: string; link?: string }>,
+) {
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey || !email) return;
+
+  const resend = new Resend(resendKey);
+  const timestamp = new Date().toUTCString();
+
+  const rowsHtml = rows
+    .map(r => {
+      const val = r.link
+        ? `<a href="${r.link}" style="color:#10b981;text-decoration:none;font-family:monospace;font-size:13px;">${r.value}</a>`
+        : `<span style="font-weight:600;">${r.value}</span>`;
+      return `<tr><td style="padding:8px 0;color:#a1a1aa;">${r.label}</td><td style="padding:8px 0;">${val}</td></tr>`;
+    })
+    .join("");
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:0;">
+      <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:24px 32px;border-radius:12px 12px 0 0;text-align:center;">
+        <h1 style="margin:0;font-size:22px;color:#fff;">InControl</h1>
+      </div>
+      <div style="background:#18181b;padding:32px;border-radius:0 0 12px 12px;">
+        <h2 style="margin:0 0 16px;color:#fafafa;">${activityIcon} ${activityTitle}</h2>
+        <table style="width:100%;border-collapse:collapse;">${rowsHtml}
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Time</td><td style="padding:8px 0;font-weight:600;">${timestamp}</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #27272a;margin:24px 0;">
+        <p style="margin:0;font-size:13px;color:#52525b;text-align:center;">Privacy Vault activity notification from InControl.</p>
+      </div>
+    </div>`;
+
+  try {
+    await resend.emails.send({
+      from: "InControl <noreply@incontrol.finance>",
+      to: [email],
+      subject: `InControl: ${subject}`,
+      html,
+    });
+    console.log(`[PrivacyVault] Email sent to ${email}: ${subject}`);
+  } catch (e) {
+    console.error(`[PrivacyVault] Email send failed:`, e);
+  }
+}
+
 // --- Utility functions ---
 
 function hexToBytes(hex: string): Uint8Array {
