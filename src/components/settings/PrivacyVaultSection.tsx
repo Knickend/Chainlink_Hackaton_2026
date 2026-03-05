@@ -152,23 +152,6 @@ export function PrivacyVaultSection() {
     }
   }, [user, invokePrivacy]);
 
-  const fetchActivityLog = useCallback(async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('agent_actions_log')
-        .select('id, action_type, status, created_at, result, params')
-        .eq('user_id', user.id)
-        .in('action_type', ['privacy-vault-deposit', 'privacy-vault-transfer', 'privacy-withdraw', 'deposit', 'private-transfer', 'withdraw', 'privacy-deposit', 'privacy-deposit-info', 'auto-deploy-policy-engine', 'auto-register-token'])
-        .order('created_at', { ascending: false })
-        .limit(10);
-      if (!error && data) {
-        setActivityLog(data as unknown as ActivityLogEntry[]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch activity log:', err);
-    }
-  }, [user]);
 
   const fetchBalances = useCallback(async () => {
     if (!user) return;
