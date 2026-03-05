@@ -1,39 +1,62 @@
 
 
-# Email Notifications for Privacy Vault Activities
+## Optimizing CRE Workflows for Live `cre simulate` Execution
 
-## Overview
+### Current State
 
-Add email notifications for four key Privacy Vault activities: deposits, private transfers, and withdrawals. Notifications are sent to the user's auth email using Resend (already configured via `RESEND_API_KEY` secret).
+The project has 5 CRE workflows in `incontrol-cre-ts/`:
 
-## Changes
+| Workflow | Live API calls? | On-chain write? | Config ready? |
+|----------|----------------|-----------------|---------------|
+| `dca-trigger-ts` | Yes (Supabase REST + edge fn) | Via edge function | Yes |
+| `portfolio-summary-ts` | Partially (test config points to `api.exchangerate.host` with empty key) | No | No — test/sepolia configs have placeholder values |
+| `conf-http-ts` | Yes (Confidential HTTP) | No | Yes (uses vault secrets) |
+| `privacy-vault-ts` | Yes (Privacy Vault API) | No | Yes |
+| `x402-cre-verified-ts` | Yes (Supabase REST) | No | Yes |
 
-### 1. `supabase/functions/privacy-vault/index.ts`
+### Key Insight
 
-Add a helper function `sendPrivacyVaultEmail` (modeled on the existing `sendDepositEmail` in `check-wallet-balance`) that sends branded HTML emails via Resend. Then call it at the end of each successful action:
+Since `cre simulate` hits live web APIs and `--broadcast` enables real testnet transactions, the changes fall into two categories:
 
-- **`deposit` / `deposit-from-shielded`**: "Privacy Vault Deposit" email with token, amount, approve + deposit tx hashes, Sepolia Etherscan links
-- **`private-transfer`**: "Private Transfer Sent" email with recipient (truncated), amount, token
-- **`withdraw`**: "Privacy Vault Withdrawal" email with amount, token, recipient, withdraw tx hash, forward tx hash
+### 1. Fix broken/placeholder configs so `cre simulate` works out of the box
 
-The user's email is already available from `user.email` (resolved via `auth.getUser()` at line 450). Resend is imported and initialized at the top of the function. Emails are sent as fire-and-forget (wrapped in try/catch so failures don't block the response).
+**`portfolio-summary-ts/config.test.json`** — Currently points to `api.exchangerate.host` with empty API key. Should point to the actual Supabase price feed endpoint:
+```json
+{
+  "supabaseApiUrl": "https://edtudwkmswyjxamkdkbu.supabase.co/functions/v1/api-price-feed",
+  "supabaseApiKey": "${SUPABASE_ANON_KEY}",
+  "workflows": [...]
+}
+```
 
-**Token symbol resolution**: Use the existing `TOKEN_DECIMALS` map keys to resolve token addresses to human-readable names (USDC, LINK, WETH).
+**`portfolio-summary-ts/config.sepolia.json`** — Same fix, currently has empty `supabaseApiKey`.
 
-### 2. No database changes needed
+**`portfolio-summary-ts/test-eurusd.ts`** — Massively over-engineered with fallback logic (170+ lines for a simple price fetch). Simplify since live APIs will actually respond. Remove the deterministic hash fallback and excessive config parsing duplications.
 
-The `RESEND_API_KEY` secret is already configured. No new tables or migrations required.
+### 2. Add on-chain write capability to workflows that lack it
 
-### 3. No UI changes needed
+For the hackathon, `--broadcast` needs at least one on-chain write producing a tx hash. Currently only `dca-trigger-ts` writes on-chain (indirectly via edge function).
 
-Email notifications are purely backend. The existing Privacy Vault UI remains unchanged.
+**Add EVM write to `x402-cre-verified-ts`** — After fetching consensus-verified prices, write a price attestation on-chain using `EVMClient.write()`. This would:
+- Store the verified price hash on a testnet contract
+- Produce a real tx hash visible in simulation output
+- Demonstrate CRE's consensus → on-chain pipeline
 
-## Email Template Design
+**Add EVM write to `portfolio-summary-ts`** — After aggregating portfolio prices, write a summary hash on-chain as a portfolio snapshot attestation.
 
-Matches the existing InControl email style (dark theme, green gradient header, Sepolia Etherscan links). Each email includes:
-- Activity type header (Deposit/Transfer/Withdrawal)
-- Token and amount
-- Transaction hash(es) with clickable Etherscan links
-- Timestamp
-- Footer disclaimer
+### 3. Simplify the simulated edge function
+
+The `simulate-dca-cre` Supabase edge function duplicates the DCA workflow logic for the web UI. This stays as-is (web apps can't run `cre simulate`), but the README should document the one-shot CLI command:
+
+```bash
+cre workflow simulate ./incontrol-cre-ts/dca-trigger-ts --target=test-settings --broadcast
+```
+
+### Files to change
+
+- `incontrol-cre-ts/portfolio-summary-ts/config.test.json` — real API endpoint
+- `incontrol-cre-ts/portfolio-summary-ts/config.sepolia.json` — real API endpoint  
+- `incontrol-cre-ts/portfolio-summary-ts/test-eurusd.ts` — simplify, remove fallback hacks
+- `incontrol-cre-ts/x402-cre-verified-ts/main.ts` — add EVM write for price attestation
+- `incontrol-cre-ts/portfolio-summary-ts/main.ts` — add EVM write for portfolio snapshot
 
