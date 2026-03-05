@@ -415,16 +415,25 @@ export function PrivacyVaultSection() {
                     </p>
                     {onchainBalances[addr.shielded_address] !== undefined && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Pending inbound: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
+                        On-chain: {onchainBalances[addr.shielded_address].toFixed(6)} SepoliaETH
                       </p>
                     )}
-                     {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => (
-                       <div key={i} className="flex items-center gap-2 mt-1">
-                         <p className="text-xs text-muted-foreground">
-                            Pending inbound: {tok.amount.toFixed(6)} {tok.symbol}
-                          </p>
-                        </div>
-                      ))}
+                     {onchainTokenBalances[addr.shielded_address]?.map((tok, i) => {
+                       const vaultHasToken = balances.some(b => {
+                         const tokenKey = Object.keys(TOKEN_DECIMALS).find(k => TOKEN_DECIMALS[k].symbol === tok.symbol);
+                         return tokenKey && b.token.toLowerCase() === tokenKey.toLowerCase() && Number(b.amount) > 0;
+                       });
+                       return (
+                         <div key={i} className="flex items-center gap-2 mt-1">
+                           <p className="text-xs text-muted-foreground">
+                             On-chain: {tok.amount.toFixed(6)} {tok.symbol}
+                           </p>
+                           {vaultHasToken && (
+                             <span className="text-[10px] text-primary font-medium">(credited to vault ✓)</span>
+                           )}
+                         </div>
+                       );
+                     })}
                    </div>
                    <div className="flex items-center gap-1 shrink-0 ml-2">
                      <Button
