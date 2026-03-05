@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as secp256k1 from "https://esm.sh/@noble/secp256k1@2.1.0";
+import { Resend } from "npm:resend@^2.0.0";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.4.0/sha3";
 import { hmac } from "https://esm.sh/@noble/hashes@1.4.0/hmac";
 import { sha256 } from "https://esm.sh/@noble/hashes@1.4.0/sha256";
