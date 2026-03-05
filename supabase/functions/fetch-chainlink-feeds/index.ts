@@ -13,17 +13,19 @@ const corsHeaders = {
 const CACHE_TTL_MS = 30_000; // 30 seconds
 let cachedResponse: { data: any[]; timestamp: number } | null = null;
 
-// Network-aware fallback RPCs
-const FALLBACK_RPCS_BY_NETWORK: Record<string, string[]> = {
-  sepolia: [
-    'https://site1.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-    'https://site2.moralis-nodes.com/sepolia/0719ea3244184b24b638e0f5686b7534',
-  ],
-  base: [
-    'https://site1.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
-    'https://site2.moralis-nodes.com/base/0e245e61f3844e00802a1790097e9d91',
-  ],
-};
+// Network-aware fallback RPCs (loaded from secrets)
+function getFallbackRpcs(): Record<string, string[]> {
+  const sepoliaRpc = Deno.env.get('MORALIS_RPC_SEPOLIA');
+  const baseRpc = Deno.env.get('MORALIS_RPC_BASE');
+  return {
+    sepolia: sepoliaRpc
+      ? [sepoliaRpc, sepoliaRpc.replace('site1.', 'site2.')]
+      : [],
+    base: baseRpc
+      ? [baseRpc, baseRpc.replace('site1.', 'site2.')]
+      : [],
+  };
+}
 
 const ABI = [
   'function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)',
