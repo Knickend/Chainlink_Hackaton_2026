@@ -105,6 +105,20 @@ export const tutorialSteps: TutorialStep[] = [
     position: 'top',
   },
   {
+    id: 'dca-strategies',
+    target: 'dca-button',
+    title: 'DCA Strategies',
+    content: "Set up automated dollar-cost averaging powered by Chainlink CRE. Define buy schedules for any token, and the system executes trades through consensus-verified workflows. Access the full DCA dashboard here.",
+    position: 'bottom',
+  },
+  {
+    id: 'agent-settings',
+    target: 'settings-button',
+    title: 'Agent & Settings',
+    content: "Manage your profile, subscription, and AI agent wallet. Connect an agentic wallet to enable DeFi skills like sending USDC, trading tokens, and privacy-preserving transfers via Chainlink ACE.",
+    position: 'bottom',
+  },
+  {
     id: 'ai-advisor',
     target: 'ai-advisor-button',
     title: 'Your AI CFO',

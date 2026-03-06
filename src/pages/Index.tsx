@@ -305,6 +305,7 @@ const IndexContent = () => {
                 onClick={() => navigate('/settings')}
                 className="rounded-full"
                 title="Settings"
+                data-tutorial="settings-button"
               >
                 <Settings className="w-5 h-5" />
               </Button>
