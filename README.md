@@ -4,7 +4,7 @@
 
 ## 🌐 Live Demo
 
-**[https://wealth-whisperer-206.lovable.app](https://wealth-whisperer-206.lovable.app)**
+**[https://www.incontrol.finance **
 
 ---
 
