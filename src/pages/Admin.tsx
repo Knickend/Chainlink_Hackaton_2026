@@ -62,7 +62,7 @@ const Admin = () => {
     }
   }, [roleLoading, user, isAdmin, navigate]);
 
-  // Loading state
+  // Block render for non-admin users (defense in depth — RLS also protects all queries)
   if (authLoading || roleLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
