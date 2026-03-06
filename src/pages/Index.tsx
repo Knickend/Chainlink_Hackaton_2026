@@ -270,6 +270,7 @@ const IndexContent = () => {
                 onClick={() => navigate('/dca')}
                 className="gap-2"
                 title="DCA Strategies"
+                data-tutorial="dca-button"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span className="hidden sm:inline">DCA</span>
