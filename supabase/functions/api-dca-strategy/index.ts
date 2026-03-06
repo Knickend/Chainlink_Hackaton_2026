@@ -86,7 +86,19 @@ Deno.serve(async (req) => {
       return createSuccessResponse({
         timestamp: new Date().toISOString(),
         strategy: {
-          ...strategy,
+          id: strategy.id,
+          from_token: strategy.from_token,
+          to_token: strategy.to_token,
+          frequency: strategy.frequency,
+          amount_per_execution: strategy.amount_per_execution,
+          total_spent_usd: strategy.total_spent_usd,
+          tokens_accumulated: strategy.tokens_accumulated,
+          executions_completed: strategy.executions_completed,
+          is_active: strategy.is_active,
+          dip_threshold_pct: strategy.dip_threshold_pct,
+          dip_multiplier: strategy.dip_multiplier,
+          next_execution_at: strategy.next_execution_at,
+          created_at: strategy.created_at,
           recent_executions: (executions || []).map((e: Record<string, unknown>) => ({
             amount_usd: e.amount_usd,
             token_amount: e.token_amount,
