@@ -4,7 +4,7 @@
 
 ## 🌐 Live Demo
 
-**[https://www.incontrol.finance **
+**[https://www.incontrol.finance **  **(To get access to the pro feature of the app you can enter any random numbers for the payment input).**
 
 ---
 
