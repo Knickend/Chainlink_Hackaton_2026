@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp, PieChart, CreditCard, Target, Shield } from 'lucide-react';
+import { Wallet, TrendingUp, PieChart, CreditCard, Brain, Shield, Bot, RefreshCcw, Zap } from 'lucide-react';
 
 const features = [
   {
@@ -18,14 +18,29 @@ const features = [
     description: 'Visual breakdown of your wealth distribution with interactive charts.',
   },
   {
+    icon: Bot,
+    title: 'Agentic Wallet',
+    description: 'Connect an on-chain wallet to execute DeFi operations — send USDC, trade tokens, and manage funds directly from your dashboard on Base.',
+  },
+  {
+    icon: RefreshCcw,
+    title: 'Automated DCA',
+    description: 'Set up dollar-cost averaging strategies powered by Chainlink CRE. Automated, consensus-verified trade execution on a schedule you define.',
+  },
+  {
+    icon: Zap,
+    title: 'x402 Agent APIs',
+    description: 'Expose your financial data to autonomous AI agents via x402-monetized APIs. Pay-per-request access with confidential compute and on-chain verification.',
+  },
+  {
     icon: CreditCard,
     title: 'Debt Management',
     description: 'Track debts and calculate optimal payoff strategies with our smart tools.',
   },
   {
-    icon: Target,
-    title: 'Investment Strategy',
-    description: 'AI-powered allocation recommendations based on your financial goals.',
+    icon: Brain,
+    title: 'AI Financial Advisor',
+    description: 'AI-powered allocation recommendations and financial insights based on your goals and portfolio.',
   },
   {
     icon: Shield,

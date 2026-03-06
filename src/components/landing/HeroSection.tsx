@@ -35,8 +35,8 @@ export function HeroSection() {
 
           {/* Subheadline */}
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-            Track assets, manage debt, and build wealth across cryptocurrency, stocks, bonds, ETFs, 
-            commodities, and real estate — all in one beautiful dashboard.
+            Track assets, automate DCA strategies, and connect your portfolio to the AI agent economy
+            — powered by Chainlink CRE and on-chain verification.
           </p>
 
           {/* CTA Buttons */}

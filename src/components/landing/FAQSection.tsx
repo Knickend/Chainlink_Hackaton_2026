@@ -37,6 +37,16 @@ const faqs = [
     answer:
       'We accept all major credit cards through our secure payment processing system. Your payment information is handled securely and never stored on our servers.',
   },
+  {
+    question: 'What is the Agentic Wallet?',
+    answer:
+      'The Agentic Wallet is a Pro feature that connects an on-chain wallet on Base to your dashboard. It enables DeFi skills like sending USDC, trading tokens, and funding your wallet — all executed directly from InControl without switching apps.',
+  },
+  {
+    question: 'Can AI agents access InControl data?',
+    answer:
+      'Yes. InControl exposes financial data APIs via the x402 protocol, allowing autonomous AI agents to pay per request using USDC on Base. Agents can discover available tools through our MCP server and access portfolio summaries, price feeds, and more — all with confidential compute and on-chain verification via Chainlink CRE.',
+  },
 ];
 
 const containerVariants = {
