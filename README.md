@@ -4,7 +4,8 @@
 
 ## 🌐 Live Demo
 
-**[https://www.incontrol.finance **  **(To get access to the pro feature of the app you can enter any random numbers for the payment input).**
+**[https://www.incontrol.finance **  
+**(To get access to the pro features. Payment screen is a mockup — no real payment is processed. You can enter any random numbers.).**
 
 ---
 
