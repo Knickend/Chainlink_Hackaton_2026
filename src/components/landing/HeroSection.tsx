@@ -23,7 +23,7 @@ export function HeroSection() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-primary/5 border border-primary/30 backdrop-blur-sm shadow-sm mb-8">
             <span className="w-2 h-2 bg-primary rounded-full animate-pulse shadow-[0_0_8px_hsl(var(--primary))]" />
-            <span className="text-sm text-primary/90 font-medium tracking-wide">Track All Your Assets in One Place</span>
+            <span className="text-sm text-primary/90 font-medium tracking-wide">AI-Powered Portfolio Intelligence</span>
           </div>
 
           {/* Headline */}
